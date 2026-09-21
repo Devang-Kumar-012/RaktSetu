@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/*
+ * RaktSetu design tokens.
+ * Deep blood red as the anchor colour, warm neutrals for surfaces,
+ * generous type scale. Everything below is consumed via Tailwind
+ * arbitrary values or these CSS custom properties.
+ */
+@theme {
+  --color-blood-50: #fef2f2;
+  --color-blood-100: #fde3e3;
+  --color-blood-200: #fbcbcb;
+  --color-blood-300: #f7a5a5;
+  --color-blood-400: #f07373;
+  --color-blood-500: #e34b4b;
+  --color-blood-600: #cd2b2b;
+  --color-blood-700: #aa1f1f;
+  --color-blood-800: #8b1d1d;
+  --color-blood-900: #741d1d;
+  --color-blood-950: #3d0a0a;
+
+  --color-ink-50: #f7f7f6;
+  --color-ink-100: #efeeec;
+  --color-ink-200: #e0dedb;
+  --color-ink-400: #a3a09a;
+  --color-ink-600: #5c5952;
+  --color-ink-800: #2b2925;
+  --color-ink-900: #1c1a17;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-ink-50);
+  color: var(--color-ink-900);
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+}
+
+/* Readable default focus ring for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--color-blood-600);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
