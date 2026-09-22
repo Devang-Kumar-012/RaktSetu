@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { LogoutButton } from "@/components/auth/LogoutButton";
 import { ButtonLink } from "@/components/ui/Button";
 import { APP_NAME, MAIN_NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
+import type { Profile } from "@/types";
 
 /** RaktSetu wordmark: a simple blood-drop glyph plus bold text. */
 export function Brand({ compact = false }: { compact?: boolean }) {
@@ -29,9 +31,13 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function Navbar() {
+export function Navbar({ authed, profile }: { authed: boolean; profile: Profile | null }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  const firstName = profile?.full_name?.trim()?.split(" ")[0];
+  // Role-aware dashboard target — /dashboard itself redirects by role too.
+  const dashboardHref = profile?.role ? `/dashboard/${profile.role}` : "/dashboard";
 
   const navLinkClass = (href: string) =>
     cn(
@@ -55,12 +61,31 @@ export function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <ButtonLink href="/login" variant="ghost" size="md">
-            Log in
-          </ButtonLink>
-          <ButtonLink href="/register" size="md">
-            Join RaktSetu
-          </ButtonLink>
+          {authed ? (
+            <>
+              {firstName && (
+                <span className="text-base font-semibold text-ink-600">
+                  Hi, {firstName}
+                </span>
+              )}
+              <ButtonLink href="/profile" variant="ghost" size="md">
+                Profile
+              </ButtonLink>
+              <ButtonLink href={dashboardHref} size="md">
+                Dashboard
+              </ButtonLink>
+              <LogoutButton />
+            </>
+          ) : (
+            <>
+              <ButtonLink href="/login" variant="ghost" size="md">
+                Log in
+              </ButtonLink>
+              <ButtonLink href="/register" size="md">
+                Join RaktSetu
+              </ButtonLink>
+            </>
+          )}
         </div>
 
         <button
@@ -95,12 +120,35 @@ export function Navbar() {
             ))}
           </nav>
           <div className="mt-4 flex flex-col gap-3">
-            <ButtonLink href="/login" variant="secondary" onClick={() => setOpen(false)}>
-              Log in
-            </ButtonLink>
-            <ButtonLink href="/register" onClick={() => setOpen(false)}>
-              Join RaktSetu
-            </ButtonLink>
+            {authed ? (
+              <>
+                {firstName && (
+                  <p className="px-3 text-base font-semibold text-ink-600">
+                    Hi, {firstName}
+                  </p>
+                )}
+                <ButtonLink href={dashboardHref} onClick={() => setOpen(false)}>
+                  Dashboard
+                </ButtonLink>
+                <ButtonLink
+                  href="/profile"
+                  variant="secondary"
+                  onClick={() => setOpen(false)}
+                >
+                  My profile
+                </ButtonLink>
+                <LogoutButton />
+              </>
+            ) : (
+              <>
+                <ButtonLink href="/login" variant="secondary" onClick={() => setOpen(false)}>
+                  Log in
+                </ButtonLink>
+                <ButtonLink href="/register" onClick={() => setOpen(false)}>
+                  Join RaktSetu
+                </ButtonLink>
+              </>
+            )}
           </div>
         </div>
       )}

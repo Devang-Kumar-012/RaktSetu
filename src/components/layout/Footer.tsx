@@ -22,7 +22,7 @@ const columns = [
     links: [
       { href: "/login", label: "Log in" },
       { href: "/register", label: "Create account" },
-      { href: "/dashboard", label: "Dashboard" },
+      { href: "/profile", label: "My profile" },
     ],
   },
 ];

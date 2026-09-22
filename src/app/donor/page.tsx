@@ -1,23 +1,24 @@
 import type { Metadata } from "next";
 
 import { PageHeader, Section } from "@/components/layout/PageHeader";
+import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { ComingSoon } from "@/components/ui/States";
 
 export const metadata: Metadata = { title: "Become a donor" };
 
-const commitments = [
+const points = [
   {
-    title: "Register once",
-    body: "Your blood group, city, and preferred contact method. That is all we ask for — no health history forms.",
+    title: "What we ask for",
+    body: "Your blood group, your area, a phone number, and whether you are available right now. Nothing else — no health history, no home address.",
   },
   {
-    title: "Get alerted only when it matters",
-    body: "You are notified when a verified request matches your blood group nearby. Mute anytime.",
+    title: "You stay in control",
+    body: "Switch yourself to “temporarily unavailable” whenever you need to. Your phone number stays private and is never listed anywhere. You can also remove your saved location at any time.",
   },
   {
     title: "Screening stays professional",
-    body: "RaktSetu tracks that you donated and when — eligibility is always decided by the blood bank's medical staff, never by our software.",
+    body: "RaktSetu only keeps track of when you last donated and shows the earliest date you could donate again. That is a booking filter, not a medical decision — the blood bank's staff always decides.",
   },
 ];
 
@@ -27,11 +28,11 @@ export default function DonorPage() {
       <PageHeader
         eyebrow="Donate"
         title="Become a donor"
-        description="One registration. Then, only when someone nearby genuinely needs your blood type, you will hear from us."
+        description="Register once with your blood group and area. Update your availability whenever your situation changes."
       />
       <Section>
         <div className="grid gap-6 md:grid-cols-3">
-          {commitments.map((c) => (
+          {points.map((c) => (
             <Card key={c.title}>
               <CardHeader>
                 <CardTitle>{c.title}</CardTitle>
@@ -43,10 +44,28 @@ export default function DonorPage() {
           ))}
         </div>
 
+        <div className="mt-12 max-w-2xl">
+          <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
+            Ready to register?
+          </h2>
+          <p className="mt-3 text-lg text-ink-600">
+            Create a donor account, then fill in your donor profile. It takes a couple of
+            minutes, and you can edit everything later from your profile page.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-4">
+            <ButtonLink href="/register" size="lg">
+              Create a donor account
+            </ButtonLink>
+            <ButtonLink href="/login" variant="secondary" size="lg">
+              I already have an account
+            </ButtonLink>
+          </div>
+        </div>
+
         <div className="mt-12">
           <ComingSoon
-            title="Donor registration is coming online"
-            description="Donor profiles will be stored in Supabase with row-level security, so your data is only visible to you and the coordination features you opt into. Until launch, this page explains the commitment — it does not collect your details yet."
+            title="Alerts are the next step"
+            description="Request matching is built, but notifications are not live yet, so donors will not receive anything until that ships. Until then you can register and keep your availability up to date."
           />
         </div>
       </Section>

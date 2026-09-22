@@ -6,19 +6,19 @@ import { APP_NAME } from "@/lib/constants";
 
 const roles = [
   {
-    title: "You have a patient who needs blood",
-    body: "A friend, relative, or volunteer creates the request on your behalf — with the hospital and blood group details. You focus on the person, not the app.",
+    title: "You're arranging blood for someone",
+    body: "Create a request with the blood group, hospital, and how soon it's needed. It takes a couple of minutes — the patient doesn't need an account.",
     action: { href: "/request-blood", label: "Request blood" },
   },
   {
-    title: "You are willing to donate",
-    body: "Register once with your blood group and city. When someone nearby genuinely needs your blood type, you get a clear, actionable notification.",
+    title: "You're willing to donate",
+    body: "Sign up once with your blood group and locality. When someone near that area needs your blood type, RaktSetu can match you to the request.",
     action: { href: "/donor", label: "Become a donor" },
   },
   {
-    title: "You are a hospital or blood bank",
-    body: "Verify requests and record the final screening decision. RaktSetu handles outreach and coordination — medical eligibility always stays with you.",
-    action: { href: "/admin", label: "Admin section" },
+    title: "You work at a blood bank",
+    body: "Donors who reach you go through your normal screening process. RaktSetu only handles the coordination before that.",
+    action: { href: "/admin", label: "How we work with blood banks" },
   },
 ];
 
@@ -29,11 +29,11 @@ export default function HomePage() {
 
       <Section>
         <h2 className="text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-          Built for the people around the patient
+          Three kinds of people make this work
         </h2>
         <p className="mt-4 max-w-2xl text-lg text-ink-600">
-          Blood is needed at the worst possible moment. {APP_NAME} splits the work so
-          nobody has to figure out an app alone.
+          Blood is usually needed at the worst possible moment. RaktSetu splits the work
+          so no one person has to figure everything out alone.
         </p>
 
         <div className="mt-10 grid gap-6 md:grid-cols-3">

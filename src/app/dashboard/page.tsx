@@ -1,18 +1,42 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { PageHeader, Section } from "@/components/layout/PageHeader";
-import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
-import { ComingSoon } from "@/components/ui/States";
+import { Alert } from "@/components/ui/Alert";
+import { getSessionInfo } from "@/lib/profile";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export default async function DashboardPage() {
+  const { configured, user, profile } = await getSessionInfo();
 
-const previews = [
-  { title: "Your requests", body: "Track blood requests you have created or are helping with." },
-  { title: "Donor alerts", body: "See nearby requests matching your blood group." },
-  { title: "Activity log", body: "Every confirmation and update, in one timeline." },
-];
+  if (!configured) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Your account"
+          title="Dashboard"
+          description="One place for your requests, donor alerts, and activity."
+        />
+        <Section className="max-w-xl">
+          <Alert variant="warning" title="Authentication is not configured yet">
+            The Supabase project URL and anon key are missing from this deployment.
+            Add them to <code>.env.local</code> and restart the app — then log in to see
+            your dashboard here.
+          </Alert>
+        </Section>
+      </>
+    );
+  }
 
-export default function DashboardPage() {
+  if (!user) {
+    // Middleware normally catches this; second line of defence.
+    redirect("/login?next=%2Fdashboard");
+  }
+
+  // Send every user straight to the dashboard for their role.
+  if (profile) {
+    redirect(`/dashboard/${profile.role}`);
+  }
+
+  // Authenticated but no profile row yet (migration not applied, or brand-new account).
   return (
     <>
       <PageHeader
@@ -20,23 +44,12 @@ export default function DashboardPage() {
         title="Dashboard"
         description="One place for your requests, donor alerts, and activity."
       />
-      <Section>
-        <ComingSoon
-          title="The dashboard arrives with accounts"
-          description="This space will show your live requests, matching donor alerts, and activity history once Supabase authentication is switched on. It is deliberately empty now — nothing here fakes data."
-        />
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {previews.map((p) => (
-            <Card key={p.title}>
-              <CardHeader>
-                <CardTitle>{p.title}</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <p className="text-ink-600">{p.body}</p>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
+      <Section className="max-w-xl">
+        <Alert variant="warning" title="Profile is still being set up">
+          Your account exists, but its profile row has not been created yet. If this
+          message stays, the database migrations (0001_profiles.sql and
+          0002_role_profiles.sql) may not have been applied to the Supabase project yet.
+        </Alert>
       </Section>
     </>
   );
