@@ -128,3 +128,29 @@ export const MAIN_NAV_ITEMS = [
   { href: "/contact", label: "Help" },
 ] as const;
 
+
+/**
+ * Donor alert / response system defaults.
+ *
+ * These are APPLICATION defaults, not medical guidance. The blood bank's
+ * screening is always authoritative, and the nearest available donor is always
+ * offered first. Timing defaults can be changed here and mirrored in the
+ * database in supabase/migrations/0008_alerts.sql.
+ */
+export const ALERT_RINGS_KM = [3, 7, 15] as const;
+export const ALERT_WINDOW_MINUTES = 10;
+export const ALERT_DUE_AT_OFFSET_MINUTES = 120;
+
+export const ALERT_RING_LABELS: Record<number, string> = {
+  3: "within 3 km",
+  7: "within 7 km",
+  15: "within 15 km",
+};
+
+export const ALERT_STATUS_LABELS: Record<string, string> = {
+  queued: "Queued",
+  sent: "Sent",
+  opened: "Opened",
+  responded: "Responded",
+};
+

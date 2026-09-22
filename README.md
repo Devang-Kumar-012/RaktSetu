@@ -34,6 +34,18 @@ Run these in the Supabase SQL editor (Dashboard → SQL Editor), in order:
    `match_donors_for_request()` function
 6. `supabase/migrations/0006_location_access.sql` — column grants so donors can store
    their own approximate coordinates (rounded to ~1 km by the app)
+7. `supabase/migrations/0007_matching_experience.sql` — `*` safe view, ring-band coverage info,
+   and `matching_donor_stats()` used by the requester matches page
+8. `supabase/migrations/0008_alerts.sql` — donor alerts table, RLS, `expand_alert_rings()`,
+   `mark_alert_responded()`, safe alert/match stats views, and the alert & acceptance NOTIFY
+   channels used by in-app notifications
+9. `supabase/migrations/0009_notifications.sql` — notifications table, RLS, safe view, and the
+   server-side notification emitters wired into request lifecycle + alert/acceptance events
+10. `supabase/migrations/0010_donation_history.sql` — donation history table, RLS, safe view,
+   and the “record completed donation” bus for donor → request completions
+11. `supabase/migrations/0011_donor_dashboard.sql` — donor dashboard counts view, accepted & active
+   alert queues, donation history access for donors, and the donor-dashboard read policy so
+   server-side donor dashboard functions cannot be used by other roles
 
 All are idempotent — safe to re-run.
 
