@@ -29,7 +29,7 @@ export function DonorStatusBadges({ donor }: { donor: DonorProfile }) {
 
   return (
     <>
-      <Card>
+      <Card glass>
         <CardHeader>
           <CardTitle>Your donor details</CardTitle>
         </CardHeader>

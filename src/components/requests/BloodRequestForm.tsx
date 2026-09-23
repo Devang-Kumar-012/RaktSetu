@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, type FormEvent } from "react";
 import { useActionState } from "react";
 
 import { createBloodRequest } from "@/lib/actions/requests";
@@ -10,6 +11,7 @@ import {
 } from "@/lib/actions/location";
 import { initialProfileActionState } from "@/lib/actions/action-state";
 import { BLOOD_GROUPS, BLOOD_COMPONENTS, URGENCY_OPTIONS, MIN_UNITS, MAX_UNITS, REQUEST_NOTE_MAX } from "@/lib/constants";
+import { bloodRequestFieldErrors, type BloodRequestFieldInput } from "@/lib/validation";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
@@ -20,10 +22,30 @@ function defaultDeadline(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Read every validated field straight off the form, as raw strings. */
+function readFields(form: HTMLFormElement): BloodRequestFieldInput {
+  const fd = new FormData(form);
+  const text = (name: string) => String(fd.get(name) ?? "").trim();
+  return {
+    bloodGroup: text("bloodGroup"),
+    bloodComponent: text("bloodComponent"),
+    units: text("units"),
+    hospitalName: text("hospitalName"),
+    hospitalLocality: text("hospitalLocality"),
+    urgency: text("urgency"),
+    requiredBy: text("requiredBy"),
+    contactName: text("contactName"),
+    contactPhone: text("contactPhone"),
+    note: text("note"),
+  };
+}
+
 /**
  * Emergency-first blood request form. Large labels, big controls, one
- * obvious primary action. Validation errors come back from the server
- * action; the form never pretends to submit anything itself.
+ * obvious primary action. Invalid or incomplete submissions are caught in
+ * the browser first (same validators as the server, field-by-field, with
+ * focus moved to the first problem); the server action then re-validates
+ * everything before touching the database.
  */
 export function BloodRequestForm({ contactName }: { contactName: string }) {
   const [state, formAction, pending] = useActionState(
@@ -34,14 +56,50 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
     lookupAreaCandidates,
     initialLocationLookupState
   );
+  const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+
+  /** Pre-submit validation — blocks the server round trip when invalid. */
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    const errors = bloodRequestFieldErrors(readFields(form));
+    setClientErrors(errors);
+
+    const firstField = Object.keys(errors)[0];
+    if (firstField) {
+      event.preventDefault();
+      const field = form.elements.namedItem(firstField);
+      if (field instanceof HTMLElement) field.focus();
+    }
+  }
+
+  const clientErrorCount = Object.keys(clientErrors).length;
 
   return (
-    <form action={formAction} className="space-y-8" noValidate>
+    <form action={formAction} onSubmit={handleSubmit} className="space-y-8" noValidate>
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
+      {clientErrorCount > 0 && (
+        <Alert variant="error" title="Please check the highlighted fields">
+          {clientErrorCount === 1
+            ? clientErrors[Object.keys(clientErrors)[0]]
+            : `${clientErrorCount} fields need attention before this request can be sent.`}
+        </Alert>
+      )}
+      <p className="text-sm text-ink-600">
+        Fields marked <span className="font-bold text-blood-700">*</span> are
+        required — only the additional note is optional.
+      </p>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <Select label="Blood group needed" name="bloodGroup" required disabled={pending} defaultValue="">
+        <Select
+          label="Blood group needed"
+          name="bloodGroup"
+          required
+          requiredMark
+          disabled={pending}
+          defaultValue=""
+          error={clientErrors.bloodGroup}
+        >
           <option value="" disabled>
             Select blood group
           </option>
@@ -52,7 +110,15 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           ))}
         </Select>
 
-        <Select label="Component" name="bloodComponent" required disabled={pending} defaultValue="whole_blood">
+        <Select
+          label="Component"
+          name="bloodComponent"
+          required
+          requiredMark
+          disabled={pending}
+          defaultValue="whole_blood"
+          error={clientErrors.bloodComponent}
+        >
           {BLOOD_COMPONENTS.map((c) => (
             <option key={c.value} value={c.value}>
               {c.label}
@@ -70,10 +136,20 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           max={MAX_UNITS}
           defaultValue={1}
           required
+          requiredMark
           disabled={pending}
+          error={clientErrors.units}
         />
 
-        <Select label="How urgent is it?" name="urgency" required disabled={pending} defaultValue="urgent">
+        <Select
+          label="How urgent is it?"
+          name="urgency"
+          required
+          requiredMark
+          disabled={pending}
+          defaultValue="urgent"
+          error={clientErrors.urgency}
+        >
           {URGENCY_OPTIONS.map((u) => (
             <option key={u.value} value={u.value}>
               {u.label} — {u.description}
@@ -89,7 +165,9 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           placeholder="e.g. St. Martha's Hospital"
           maxLength={120}
           required
+          requiredMark
           disabled={pending}
+          error={clientErrors.hospitalName}
         />
         <Input
           label="Hospital locality"
@@ -97,7 +175,9 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           placeholder="e.g. Bengaluru Central"
           maxLength={120}
           required
+          requiredMark
           disabled={pending}
+          error={clientErrors.hospitalLocality}
         />
       </div>
 
@@ -107,7 +187,10 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
         type="datetime-local"
         defaultValue={defaultDeadline()}
         required
+        requiredMark
         disabled={pending}
+        error={clientErrors.requiredBy}
+        hint="Must be in the future and within 30 days. Alerts to donors start as soon as the request is created."
       />
 
       <details className="rounded-md border border-ink-200 bg-ink-50 p-5">
@@ -178,7 +261,9 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
             defaultValue={contactName}
             maxLength={80}
             required
+            requiredMark
             disabled={pending}
+            error={clientErrors.contactName}
           />
           <Input
             label="Contact phone"
@@ -186,7 +271,9 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
             type="tel"
             placeholder="e.g. +91 98765 43210"
             required
+            requiredMark
             disabled={pending}
+            error={clientErrors.contactPhone}
           />
         </div>
       </fieldset>
@@ -198,6 +285,7 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
         rows={3}
         placeholder="Anything a donor should know — e.g. ward name, timings."
         disabled={pending}
+        error={clientErrors.note}
       />
 
       <div className="border-t border-ink-200 pt-6">

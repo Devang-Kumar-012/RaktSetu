@@ -53,10 +53,44 @@ export interface DonorProfile {
 export interface VolunteerProfile {
   user_id: string;
   locality: string | null;
+  phone: string | null;
   availability: DonorAvailability;
   created_at: string;
   updated_at: string;
 }
+
+/** Row shape of `request_assistance` (migration 0009). Own-row RLS only. */
+export type AssistanceStatus = "assisting" | "stopped";
+
+export interface RequestAssistance {
+  id: string;
+  request_id: string;
+  volunteer_id: string;
+  status: AssistanceStatus;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Safe request view returned by volunteer_* SQL functions (migration 0009).
+ *  Deliberately excludes requester contact details and any donor private data. */
+export interface VolunteerRequestView {
+  id: string;
+  blood_group: string;
+  blood_component: BloodComponent;
+  units: number;
+  hospital_name: string;
+  hospital_locality: string;
+  urgency: RequestUrgency;
+  required_by: string;
+  status: BloodRequestStatus;
+  note: string | null;
+  created_at: string;
+  donor_accepted: boolean;
+  volunteers_assisting: number;
+  me_assisting: boolean;
+}
+
 
 /** Minimal donor info exposed for future matching (view `donor_directory`).
  *  Deliberately excludes name, phone, last donation date, and donation count. */
@@ -109,4 +143,205 @@ export interface BloodRequestFormValues {
   contactName: string;
   contactPhone: string;
   note: string;
+}
+
+/** Singleton row of `platform_settings` (migration 0010). Admin-managed. */
+export interface PlatformSettings {
+  id: number;
+  alert_rings_km: number[];
+  alert_window_minutes: number;
+  alert_due_at_offset_minutes: number;
+  donation_interval_days: number;
+  updated_at: string;
+}
+
+/** Row shape of `request_reports` (migration 0010). */
+export type ReportReason = "fake" | "spam" | "harassment" | "other";
+export type ReportStatus = "open" | "reviewed" | "dismissed";
+
+export interface RequestReport {
+  id: string;
+  request_id: string;
+  reporter_id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: ReportStatus;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Row shape of `donation_history` (migration 0010). No medical data. */
+export interface DonationRecord {
+  id: string;
+  donor_id: string;
+  request_id: string | null;
+  donated_on: string;
+  units: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Return shape of admin_platform_overview() (migration 0010). */
+export interface AdminOverview {
+  total_users: number;
+  total_donors: number;
+  total_requesters: number;
+  total_volunteers: number;
+  total_admins: number;
+  suspended_users: number;
+  active_requests: number;
+  fulfilled_requests: number;
+  expired_requests: number;
+  cancelled_requests: number;
+  completed_donations: number;
+  open_reports: number;
+  active_alerts: number;
+  accepted_alerts: number;
+  available_donors: number;
+}
+
+/** Return shape of admin_list_alerts() (migration 0010). Admin-only. */
+export interface AdminAlertRow {
+  alert_id: number;
+  request_id: string;
+  donor_id: string;
+  ring_km: number;
+  status: string;
+  response: string | null;
+  due_at: string;
+  created_at: string;
+  responded_at: string | null;
+  accepted_at: string | null;
+  blood_group: string;
+  hospital_name: string;
+  hospital_locality: string;
+}
+
+/** Row shape returned by public.donor_active_alerts() (migration 0011).
+ *  The donor's OWN alert queue — requester contact fields are null except
+ *  inside the caller's own accepted alert while contact_shared_until. */
+export interface DonorAlertRow {
+  alert_id: number;
+  request_id: string;
+  ring_km: number;
+  /** APPROXIMATE whole-km straight-line distance from the caller's own rounded
+   *  point to the hospital (0012, haversine_km). Null when either side has no
+   *  point. Coordinates themselves are never returned. */
+  approx_distance_km: number | null;
+  status: "queued" | "sent" | "opened" | "responded" | "expired";
+  response: "accepted" | "declined" | null;
+  due_at: string;
+  created_at: string;
+  responded_at: string | null;
+  contact_shared_until: string | null;
+  blood_group: string;
+  blood_component: BloodComponent;
+  units: number;
+  hospital_name: string;
+  hospital_locality: string;
+  urgency: RequestUrgency;
+  required_by: string;
+  note: string | null;
+  request_status: BloodRequestStatus;
+  requester_contact_name: string | null;
+  requester_contact_phone: string | null;
+}
+
+/** Row shape returned by public.donor_donation_history() (migration 0012) —
+ *  the caller's OWN completed donations. Request columns are null when the
+ *  record is not linked to a request. Never requester contact, never
+ *  coordinates — coordination and counts only, no medical data. */
+export interface DonorDonationRow {
+  donation_date: string;
+  units: number;
+  blood_component: BloodComponent | null;
+  hospital_name: string | null;
+  hospital_locality: string | null;
+  request_status: BloodRequestStatus | null;
+  request_id: string | null;
+}
+
+/** Row shape returned by public.reveal_accepted_donors() (migration 0011).
+ *  The only path exposing donor contact to another user: requester-only,
+ *  post-acceptance, until contact_shared_until. */
+export interface AcceptedDonor {
+  request_id: string;
+  donor_name: string;
+  donor_phone: string;
+  donor_blood_group: string;
+  donor_locality: string;
+}
+
+/** Row shape returned by public.requester_ring_status() (migration 0011) —
+ *  ring-engine progress for the caller's OWN requests only. */
+export interface RequesterRingStatus {
+  request_id: string;
+  ring_index: number;
+  ring_km: number;
+  started_at: string;
+  finished_at: string | null;
+  alerts_sent: number;
+  outcome: "accepted" | "request_closed" | "rings_exhausted" | null;
+}
+
+/** Row shape returned by public.admin_ring_progress() (migration 0011). */
+export interface AdminRingProgressRow {
+  request_id: string;
+  ring_index: number;
+  ring_km: number;
+  started_at: string;
+  finished_at: string | null;
+  alerts_sent: number;
+  outcome: string | null;
+  request_status: string;
+  blood_group: string;
+  hospital_name: string;
+  hospital_locality: string;
+  required_by: string;
+}
+
+/** Row shape of `notifications` (migrations 0011–0013). In-app only — RaktSetu
+ *  has no email/SMS/chat providers anywhere in the system.
+ *
+ *  ONE kind per logical event: the kind, together with `user_id`, `request_id`
+ *  and `alert_id`, is the stable event key the database uses to deliver a given
+ *  event to a given recipient at most once (migration 0013). */
+export type NotificationKind =
+  // donor: emergency alerts
+  | "alert_received"
+  | "alert_expiring"
+  | "already_accepted"
+  // shared lifecycle (donor + requester)
+  | "request_closed"
+  | "request_fulfilled"
+  | "request_cancelled"
+  | "request_expired"
+  // requester lifecycle
+  | "request_created"
+  | "donor_accepted"
+  | "rings_exhausted"
+  // donor: eligibility / account
+  | "eligibility_updated"
+  // volunteer: coordination
+  | "volunteer_request_nearby"
+  | "assisted_request_accepted"
+  | "assisted_request_fulfilled"
+  | "assisted_request_cancelled"
+  | "assisted_request_expired"
+  // admin: operations
+  | "admin_report_received";
+
+export interface NotificationRow {
+  id: number;
+  user_id: string;
+  kind: NotificationKind;
+
+  request_id: string | null;
+  alert_id: number | null;
+  title: string;
+  body: string;
+  link: string | null;
+  read_at: string | null;
+  created_at: string;
 }

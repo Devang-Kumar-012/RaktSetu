@@ -4,6 +4,10 @@ import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
 import { getSessionInfo } from "@/lib/profile";
 
+// Session-gated: render per request so the auth/role check is never baked
+// into a static prerender (which would redirect forever in production).
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const { configured, user, profile } = await getSessionInfo();
 

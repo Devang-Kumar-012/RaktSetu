@@ -28,9 +28,27 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 2. donor_alerts table
 -- ---------------------------------------------------------------------------
+-- request_id is uuid to match blood_requests.id. A previous draft used bigint,
+-- which made the FK (and therefore this whole migration) fail to apply.
+-- If an old table somehow exists with the wrong type, drop and rebuild it:
+-- alerts were never functional with a non-matching FK, so no data is lost.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'donor_alerts'
+      AND column_name = 'request_id'
+      AND data_type <> 'uuid'
+  ) THEN
+    DROP TABLE public.donor_alerts CASCADE;
+  END IF;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS public.donor_alerts (
   id              bigserial PRIMARY KEY,
-  request_id      bigint      NOT NULL REFERENCES public.blood_requests(id)
+  request_id      uuid        NOT NULL REFERENCES public.blood_requests(id)
                                  ON DELETE CASCADE,
   donor_id        uuid        NOT NULL REFERENCES public.profiles(id)
                                  ON DELETE CASCADE,
@@ -57,6 +75,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS set_donor_alerts_updated_at ON public.donor_alerts;
 CREATE TRIGGER set_donor_alerts_updated_at
   BEFORE UPDATE ON public.donor_alerts
   FOR EACH ROW
@@ -66,6 +85,13 @@ CREATE TRIGGER set_donor_alerts_updated_at
 -- 3. Row-level security for donor_alerts
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.donor_alerts ENABLE ROW LEVEL SECURITY;
+
+-- Policies are dropped and recreated so re-running the migration never errors.
+DROP POLICY IF EXISTS donor_alerts_donor_select ON public.donor_alerts;
+DROP POLICY IF EXISTS donor_alerts_donor_update ON public.donor_alerts;
+DROP POLICY IF EXISTS donor_alerts_requester_select ON public.donor_alerts;
+DROP POLICY IF EXISTS donor_alerts_no_insert ON public.donor_alerts;
+DROP POLICY IF EXISTS donor_alerts_admin_select ON public.donor_alerts;
 
 -- Donors can see and update (respond to) only their own sent alerts.
 CREATE POLICY donor_alerts_donor_select ON public.donor_alerts

@@ -8,20 +8,35 @@ const controlBase =
   "focus:border-blood-600 focus:ring-2 focus:ring-blood-100 focus:outline-none " +
   "disabled:cursor-not-allowed disabled:bg-ink-100";
 
+/** Red asterisk for required fields. The input's own `required` attribute
+ *  still carries the semantics for assistive technology (the mark is
+ *  decorative), so forms with noValidate can stay visually explicit. */
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" className="font-bold text-blood-700">
+      {" "}
+      *
+    </span>
+  );
+}
+
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   hint?: string;
   error?: string;
+  /** Show the decorative required asterisk next to the label. */
+  requiredMark?: boolean;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  function Input({ label, hint, error, className, id, ...rest }, ref) {
+  function Input({ label, hint, error, requiredMark, className, id, ...rest }, ref) {
     const inputId = id ?? rest.name;
     return (
       <div className="w-full">
         {label && (
           <label htmlFor={inputId} className="mb-1.5 block text-base font-semibold text-ink-900">
             {label}
+            {requiredMark && <RequiredMark />}
           </label>
         )}
         <input
@@ -51,16 +66,19 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   hint?: string;
   error?: string;
+  /** Show the decorative required asterisk next to the label. */
+  requiredMark?: boolean;
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  function Select({ label, hint, error, className, id, children, ...rest }, ref) {
+  function Select({ label, hint, error, requiredMark, className, id, children, ...rest }, ref) {
     const selectId = id ?? rest.name;
     return (
       <div className="w-full">
         {label && (
           <label htmlFor={selectId} className="mb-1.5 block text-base font-semibold text-ink-900">
             {label}
+            {requiredMark && <RequiredMark />}
           </label>
         )}
         <select

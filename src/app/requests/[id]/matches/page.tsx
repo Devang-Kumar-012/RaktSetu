@@ -88,7 +88,8 @@ export default async function RequestMatchesPage({
         <p className="mt-2 text-base text-ink-600">
           Checked within {MATCH_RINGS_KM.join(" km, ")} km of {bloodRequest.hospital_locality}.
           Distances are rough estimates, and matching pauses while your request is not
-          active. Alerts are not sent yet — this screen shows who would respond first.
+          active. Alerting runs on its own ring-by-ring timeline — this screen previews who
+          would match right now and never alerts anyone by itself.
         </p>
 
         <div className="mt-6">
@@ -97,12 +98,15 @@ export default async function RequestMatchesPage({
 
         <Alert variant="info" title="Privacy, by design" className="mt-8">
           Donors are listed by blood group, area, and rough distance only. Phone numbers
-          are never shown here — a number would be shared with you only after a donor
-          accepts a future request alert, and that is not built yet. The blood bank
-          always has the final word on eligibility.
+          are never shown here — a number is shared with you only after a donor accepts
+          your alert, and only until the response window closes. The blood bank always has
+          the final word on eligibility.
         </Alert>
 
         <div className="mt-8 flex flex-wrap gap-4">
+          <ButtonLink href={`/requests/${bloodRequest.id}`} variant="secondary">
+            Request details and alerts
+          </ButtonLink>
           <ButtonLink href="/dashboard/requester" variant="secondary">
             Back to my requests
           </ButtonLink>

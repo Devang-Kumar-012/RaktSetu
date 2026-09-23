@@ -9,7 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check:rules": "tsx scripts/check-rules.ts",
-    "check": "npm run check:rules && npm run build",
+    "check:rings": "tsx scripts/check-rings.ts",
+    "check": "npm run check:rules && npm run check:rings && npm run build",
     "smoke": "sh scripts/smoke-test.sh"
   },
   "dependencies": {

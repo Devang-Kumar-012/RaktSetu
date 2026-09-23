@@ -22,7 +22,7 @@ function requireEnv(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(
       `Missing environment variable: ${name}. ` +
-        `Copy .env.example to .env.local and set it.`
+      `Copy .env.example to .env.local and set it.`
     );
   }
   return value;

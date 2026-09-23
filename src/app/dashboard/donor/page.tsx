@@ -3,11 +3,30 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
-import { ComingSoon } from "@/components/ui/States";
+import { EmptyState } from "@/components/ui/States";
+import { DonorAlertCard } from "@/components/alerts/DonorAlertCard";
+import { AvailabilityControl } from "@/components/donor/AvailabilityControl";
 import { DonorStatusBadges } from "@/components/donor/DonorStatusBadges";
-import type { DonorProfile } from "@/types";
+import { RingStatusStrip } from "@/components/donor/RingStatusStrip";
+import { isAlertActionable } from "@/lib/alert-rings";
+import type { AlertState } from "@/lib/alert-rings";
+import {
+  ALERT_RINGS_KM,
+  ALERT_WINDOW_MINUTES,
+  BLOOD_COMPONENT_LABELS,
+  REQUEST_STATUS_LABELS,
+  REQUEST_STATUS_STYLES,
+} from "@/lib/constants";
+import { getDonorEligibility } from "@/lib/eligibility";
+import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/utils";
+import type { DonorAlertRow, DonorDonationRow, DonorProfile } from "@/types";
 
 export const metadata = { title: "Donor dashboard" };
+
+// Session-gated: render per request so the role check is never baked into a
+// static prerender (which would redirect forever in production).
+export const dynamic = "force-dynamic";
 
 export default async function DonorDashboardPage() {
   const { user, profile } = await requireRolePage("donor");
@@ -23,6 +42,51 @@ export default async function DonorDashboardPage() {
 
   const donorProfile = (donor as DonorProfile) ?? null;
   const firstName = profile.full_name.trim().split(" ")[0];
+
+  // Emergency alert queue (ring engine — migration 0011). Actionability is
+  // decided here with the SERVER clock; the database re-checks everything
+  // atomically when the donor submits accept/decline. The queue splits into
+  // still-actionable alerts, this donor's acceptances, and everything already
+  // closed/declined (hidden so a past alert never resurfaces as new).
+  const { data: alertRows } = await supabase.rpc("donor_active_alerts", {
+    p_limit: 20,
+  });
+  const nowMs = Date.now();
+  const alertCards = ((alertRows as DonorAlertRow[] | null) ?? []).map((row) => {
+    const actionable = isAlertActionable(
+      {
+        id: row.alert_id,
+        requestId: row.request_id,
+        donorId: user.id,
+        ringKm: row.ring_km,
+        status: row.status,
+        dueAt: new Date(row.due_at).getTime(),
+        response: row.response,
+      } satisfies AlertState,
+      nowMs
+    );
+    return {
+      row,
+      actionable,
+      minutesLeft: actionable
+        ? Math.max(
+            0,
+            Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
+          )
+        : null,
+    };
+  });
+  const openCards = alertCards.filter((c) => c.actionable);
+  const acceptedCards = alertCards.filter((c) => c.row.response === "accepted");
+  const closedCount =
+    alertCards.length - openCards.length - acceptedCards.length;
+
+  // Own donation history (migration 0012 — SECURITY DEFINER, own rows only).
+  const { data: historyRows } = await supabase.rpc("donor_donation_history", {
+    p_limit: 20,
+  });
+  const donationHistory = (historyRows as DonorDonationRow[] | null) ?? [];
+  const eligibility = getDonorEligibility(donorProfile);
 
   return (
     <>
@@ -42,21 +106,158 @@ export default async function DonorDashboardPage() {
             </div>
           </Alert>
         ) : (
-          <DonorStatusBadges donor={donorProfile} />
+          <>
+            <DonorStatusBadges donor={donorProfile} />
+            <div className="mt-6">
+              <AvailabilityControl donor={donorProfile} />
+            </div>
+          </>
         )}
 
         <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
-          Coming to your dashboard
+          Emergency alerts
         </h2>
-        <div className="mt-6 grid gap-6 md:grid-cols-2">
-          <ComingSoon
-            title="Nearby request matching"
-            description="When a verified request matches your blood group near your locality, you will be alerted here — only while you are available and past the donation interval."
-          />
-          <ComingSoon
-            title="Donation history"
-            description="A record of the requests you responded to. Your eligibility is always decided by the blood bank's medical staff, never by RaktSetu."
-          />
+        <p className="mt-2 text-base text-ink-600">
+          Matching donors are alerted in expanding rings —{" "}
+          {ALERT_RINGS_KM.map((km) => `${km} km`).join(" → ")},{" "}
+          {ALERT_WINDOW_MINUTES} minutes per ring — only while you are available
+          and past the donation interval. Accepting shares the requester&apos;s
+          contact with you; declining is respected permanently for that request.
+        </p>
+
+        <RingStatusStrip
+          items={openCards.map(({ row, minutesLeft }) => ({
+            ringKm: row.ring_km,
+            minutesLeft: minutesLeft ?? 0,
+            requestStatus: row.request_status,
+          }))}
+        />
+
+        <div className="mt-6 space-y-6">
+          {openCards.length > 0 ? (
+            openCards.map(({ row, actionable, minutesLeft }) => (
+              <DonorAlertCard
+                key={row.alert_id}
+                alert={row}
+                actionable={actionable}
+                minutesLeft={minutesLeft}
+              />
+            ))
+          ) : acceptedCards.length > 0 ? (
+            <p className="rounded-lg border border-dashed border-ink-200 bg-white px-5 py-6 text-center text-base text-ink-600">
+              No open alerts right now — your accepted requests are just below.
+            </p>
+          ) : (
+            <EmptyState
+              title="No alerts right now"
+              description="When a verified nearby request matches your blood group, it will appear here with accept and decline buttons."
+            />
+          )}
+        </div>
+
+        {acceptedCards.length > 0 && (
+          <>
+            <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+              Your accepted requests
+            </h2>
+            <p className="mt-2 text-base text-ink-600">
+              Coordination details for requests you committed to — screening at
+              the blood bank always remains the final step.
+            </p>
+            <div className="mt-6 space-y-6">
+              {acceptedCards.map(({ row }) => (
+                <DonorAlertCard
+                  key={row.alert_id}
+                  alert={row}
+                  actionable={false}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {closedCount > 0 && (
+          <p className="mt-6 text-sm text-ink-400">
+            {closedCount} earlier alert{closedCount === 1 ? "" : "s"} closed or
+            declined.
+          </p>
+        )}
+
+        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+          Donation history
+        </h2>
+        <p className="mt-2 text-base text-ink-600">
+          Completed donations recorded by your coordinator
+          {donorProfile && (
+            <>
+              {" · "}
+              <strong className="text-ink-900">{donationHistory.length}</strong>{" "}
+              shown,{" "}
+              <strong className="text-ink-900">
+                {donorProfile.donation_count}
+              </strong>{" "}
+              on record
+            </>
+          )}
+          .
+        </p>
+
+        {donorProfile && (
+          <p className="mt-3 text-base text-ink-600">
+            <strong className="text-ink-900">
+              {eligibility.status === "not_currently_eligible"
+                ? `Next eligible: ${eligibility.nextEligibleLabel}`
+                : eligibility.status === "available"
+                  ? "You are eligible to match now"
+                  : "Matching is paused while you are unavailable"}
+            </strong>{" "}
+            — an availability filter only. Final eligibility is always the
+            blood bank&apos;s medical screening.
+          </p>
+        )}
+
+        <div className="mt-6 space-y-4">
+          {donationHistory.length === 0 ? (
+            <EmptyState
+              title="No donations recorded yet"
+              description="Completed donations appear here once your coordinator records them — coordination records only, never medical data."
+            />
+          ) : (
+            donationHistory.map((row) => (
+              <div
+                key={`${row.donation_date}-${row.request_id ?? "none"}`}
+                className="rounded-lg border border-ink-200 bg-white px-5 py-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-base font-bold text-ink-900">
+                    {formatDate(row.donation_date)} ·{" "}
+                    {row.blood_component
+                      ? BLOOD_COMPONENT_LABELS[row.blood_component]
+                      : "Donation"}{" "}
+                    · {row.units} {row.units === 1 ? "unit" : "units"}
+                  </p>
+                  <span
+                    className={cn(
+                      "rounded-md border px-3 py-1 text-sm font-bold",
+                      row.request_status
+                        ? REQUEST_STATUS_STYLES[row.request_status]
+                        : "border-ink-200 bg-ink-100 text-ink-600"
+                    )}
+                  >
+                    {row.request_status
+                      ? REQUEST_STATUS_LABELS[row.request_status]
+                      : "Not linked to a request"}
+                  </span>
+                </div>
+                {row.hospital_name && (
+                  <p className="mt-1 text-base text-ink-600">
+                    {row.hospital_name}
+                    {row.hospital_locality && ` — ${row.hospital_locality}`}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </Section>
     </>

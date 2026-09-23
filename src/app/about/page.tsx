@@ -37,7 +37,7 @@ export default function AboutPage() {
           </div>
 
           <div className="space-y-6">
-            <Card>
+            <Card glass>
               <CardHeader>
                 <CardTitle>What we will never do</CardTitle>
               </CardHeader>
@@ -50,7 +50,7 @@ export default function AboutPage() {
                 </ul>
               </CardBody>
             </Card>
-            <Card>
+            <Card glass>
               <CardHeader>
                 <CardTitle>Where the line sits</CardTitle>
               </CardHeader>

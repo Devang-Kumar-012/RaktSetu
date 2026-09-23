@@ -36,16 +36,37 @@ Run these in the Supabase SQL editor (Dashboard → SQL Editor), in order:
    their own approximate coordinates (rounded to ~1 km by the app)
 7. `supabase/migrations/0007_matching_experience.sql` — `*` safe view, ring-band coverage info,
    and `matching_donor_stats()` used by the requester matches page
-8. `supabase/migrations/0008_alerts.sql` — donor alerts table, RLS, `expand_alert_rings()`,
-   `mark_alert_responded()`, safe alert/match stats views, and the alert & acceptance NOTIFY
-   channels used by in-app notifications
-9. `supabase/migrations/0009_notifications.sql` — notifications table, RLS, safe view, and the
-   server-side notification emitters wired into request lifecycle + alert/acceptance events
-10. `supabase/migrations/0010_donation_history.sql` — donation history table, RLS, safe view,
-   and the “record completed donation” bus for donor → request completions
-11. `supabase/migrations/0011_donor_dashboard.sql` — donor dashboard counts view, accepted & active
-   alert queues, donation history access for donors, and the donor-dashboard read policy so
-   server-side donor dashboard functions cannot be used by other roles
+8. `supabase/migrations/0008_alerts.sql` — `donor_alerts` table, RLS (own-row donor reads),
+   the UNIQUE (request, donor) guarantee, and safe alert/match stats views. Its header
+   promises the ring engine and atomic acceptance that migration 0011 now delivers.
+9. `supabase/migrations/0009_volunteer_coordination.sql` — private volunteer phone,
+   `request_assistance` (volunteer↔request coordination, separate from request status),
+   RLS, and the role-checked `volunteer_active_requests()` / `volunteer_request_detail()`
+   functions that expose only safe request fields to volunteers
+10. `supabase/migrations/0010_admin_platform.sql` — admin-managed `platform_settings`
+    (ring distances, ring window, alert offset, donation interval) wired into the
+    coordination functions, `request_reports` (abuse reporting), `donation_history`
+    (administration-only donation records), admin account-status RLS, and the
+    role-checked `admin_platform_overview()` / `admin_list_alerts()` functions
+11. `supabase/migrations/0011_emergency_alert_rings.sql` — the emergency alert-ring engine:
+    `expand_alert_rings()` (first configured ring, then the next after every
+    `alert_window_minutes()` window — 3 km → 7 km → 15 km by default, distances from
+    `platform_settings`; pg_cron every minute plus an opportunistic app tick; idempotent
+    via `request_ring_progress` PK and `FOR UPDATE SKIP LOCKED`),
+    atomic first-acceptance-wins `mark_alert_responded()`, the in-app `notifications`
+    table with SECURITY DEFINER emitters (no external providers),
+    `donor_active_alerts()`, `reveal_accepted_donors()`, `requester_ring_status()`,
+    and `admin_ring_progress()`
+
+12. `supabase/migrations/0012_donor_experience.sql` — the donor-facing alert
+    experience: widens the notification kinds (one-shot expiring nudge,
+    already-claimed, specific fulfilled/cancelled/expired outcomes, eligibility
+    updates) with guarded/idempotent SECURITY DEFINER emitters, recreates
+    `donor_active_alerts()` with an approximate whole-km distance (the caller's
+    own rounded point only — coordinates never leave the function), adds
+    `donor_donation_history()` (own rows + safe request fields), and syncs
+    `last_donation_date`/`donation_count` when an admin records a donation so
+    the cooldown actually starts
 
 All are idempotent — safe to re-run.
 
@@ -79,8 +100,9 @@ All are idempotent — safe to re-run.
 - Compatibility rules (whole blood: standard ABO/Rh matrix; platelets: ABO-identical,
   Rh− donor may give Rh+) are an application-level filter only — the blood bank's
   screening is authoritative. Have them verified with a professional before launch.
-- The upcoming 3 km → 7 km → 15 km alert-ring system should call this same function
-  and filter on `distance_km`. Notifications are a later stage.
+- The emergency ring engine (migration 0011) calls this same function per ring with
+  `p_radius_km` and filters on `distance_km`, re-evaluating every rule from scratch each
+  ring; in-app notifications ship with it (no external providers).
 
 ## Blood requests
 
@@ -91,8 +113,10 @@ All are idempotent — safe to re-run.
   (future, ≤ 30 days), contact name + private phone, optional ≤ 500-char note.
 - Lifecycle: `active` → `fulfilled` | `expired` | `cancelled` (terminal states are
   final, enforced by an RLS `with check` guard). New requests start `active`.
-- The contact phone is private (own-row RLS only) — future donor matching must reveal
-  it only after a donor accepts a request.
+- The contact phone is private (own-row RLS only). Since migration 0011 it is revealed
+  ONLY after a valid acceptance, and only to the two sides of that acceptance
+  (`reveal_accepted_donors()` for the requester, `donor_active_alerts()` for the donor),
+  each time-boxed by `contact_shared_until`.
 
 ## Donor availability & eligibility
 
@@ -106,6 +130,11 @@ All are idempotent — safe to re-run.
   from `donor_directory` in the database itself.
 - This is an application-level availability filter only — final eligibility is always
   determined by the blood bank's medical screening.
+- When an admin records a donation (`donation_history`, migration 0010), a SECURITY
+  DEFINER trigger (0012) copies the date into `last_donation_date` (unless a later one
+  exists) and recounts `donation_count` — the cooldown the profile form promises
+  actually starts, and the donor gets one `eligibility_updated` notification whenever
+  the recorded date changes.
 
 ## Role dashboards
 
@@ -113,6 +142,32 @@ All are idempotent — safe to re-run.
 (`/dashboard/donor`, `/dashboard/requester`, `/dashboard/volunteer`, `/dashboard/admin`).
 Authorization is enforced server-side on every role page **and** by Row Level Security —
 hiding UI is never the security boundary.
+
+The donor dashboard (`/dashboard/donor`) shows: matching status plus a mobile-first
+availability control (driven by the existing `updateDonorProfile` server action), a
+read-only ring strip (ring, minutes left to respond, request state), the actionable
+alert queue with large "I can help" / "I can't help" buttons (declined and closed
+alerts auto-hide), accepted requests with the time-boxed requester contact and next
+steps, and donation history with the next eligibility date (availability filter only —
+never a medical judgement).
+
+The requester dashboard (`/dashboard/requester`) separates ACTIVE requests from closed ones
+(fulfilled, expired, cancelled), shows each request's ring-by-ring progress with the total
+number of donors alerted, reveals an accepted donor's time-boxed contact, and links to the
+request details page (`/requests/[id]`): full request facts, alert progress per ring, the
+live time left before the deadline, the accepted donor, and the race-safe "mark fulfilled" /
+"cancel request" actions (a zero-row update means the state moved first, and the request
+answers with a plain-language message). `/requests/[id]/matches` remains the read-only
+preview of who would match. Both requester pages refresh themselves through the ONE shared
+live signal — window focus/visibility plus a best-effort Realtime INSERT on the caller's own
+`notifications` rows — and stay fully usable when realtime is unavailable.
+
+`/notifications` is the shared in-app notification centre for every role — alert
+received/expiring, another donor already accepted, request fulfilled/cancelled/expired
+(with the accepted donor told specifically), acceptances, closures, ring completion,
+and donation-interval updates — emitted exclusively by SECURITY DEFINER database
+functions (0011 + 0012): idempotent and emitters-only. RaktSetu has no email/SMS/chat
+providers.
 
 ## Tech stack
 
@@ -137,7 +192,14 @@ npm run dev
 - `npm run check:rules` — application-rule checks (geo/distance, blood-group
   compatibility incl. a TS↔SQL mirror comparison, donor availability/cooldown).
   No database or credentials needed.
-- `npm run check` — rule checks, then the production build
+- `npm run check:rings` — emergency ring-engine checks with a fake clock: ring start,
+  10-minute window boundaries, exhaustion, closure/acceptance stops, idempotence, ring
+  selection rules, due-at computation, atomic acceptance outcomes, privacy gates,
+  SQL↔TS invariants, and the migration-0012 donor-experience security regression
+  group (emitter privileges, own-row gates, approximate-distance-only output,
+  notification idempotence, untouched request lifecycle). No database or credentials
+  needed.
+- `npm run check` — rule checks, ring-engine checks, then the production build
 - `npm run smoke` — start a local server and hit every route (writes results to
   `/tmp/rs-routes.txt`)
 

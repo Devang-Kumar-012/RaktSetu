@@ -177,25 +177,25 @@ export type MatchResult =
   | { kind: "inactive"; summary: MatchSummary }
   | { kind: "no-donors"; summary: MatchSummary }
   | {
-      kind: "no-location";
-      summary: MatchSummary;
-      /** Compatible donors, sorted by nothing — there is no distance to sort by. */
-      donors: MatchedDonor[];
-    }
+    kind: "no-location";
+    summary: MatchSummary;
+    /** Compatible donors, sorted by nothing — there is no distance to sort by. */
+    donors: MatchedDonor[];
+  }
   | {
-      kind: "out-of-range";
-      summary: MatchSummary;
-      /** Donors that exist, but beyond the outermost ring. */
-      donors: MatchedDonor[];
-      searchRadiusKm: number;
-    }
+    kind: "out-of-range";
+    summary: MatchSummary;
+    /** Donors that exist, but beyond the outermost ring. */
+    donors: MatchedDonor[];
+    searchRadiusKm: number;
+  }
   | {
-      kind: "matches";
-      summary: MatchSummary;
-      donors: MatchedDonor[];
-      /** Ring we expanded to in order to include the nearest donors. */
-      searchRadiusKm: number;
-    };
+    kind: "matches";
+    summary: MatchSummary;
+    donors: MatchedDonor[];
+    /** Ring we expanded to in order to include the nearest donors. */
+    searchRadiusKm: number;
+  };
 
 /**
  * Runs the full matching check for one request: compatible group + component,

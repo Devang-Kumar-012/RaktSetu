@@ -10,6 +10,10 @@ import { BLOOD_GROUPS } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Request blood" };
 
+// Session-aware: the form renders only for a signed-in active requester, so
+// the auth check must run per request — never baked into a static prerender.
+export const dynamic = "force-dynamic";
+
 export default async function RequestBloodPage() {
   const session = await getSessionInfo();
   const isRequester =

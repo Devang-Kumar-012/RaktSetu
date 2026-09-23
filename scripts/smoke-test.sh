@@ -35,7 +35,7 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-for route in / /login /register /forgot-password /reset-password /auth/callback /dashboard /dashboard/donor /dashboard/requester /dashboard/volunteer /dashboard/admin /profile /profile/donor /profile/volunteer /request-blood /donor /admin /about /contact /nope-does-not-exist; do
+for route in / /login /register /forgot-password /reset-password /auth/callback /dashboard /dashboard/donor /dashboard/requester /dashboard/volunteer /dashboard/admin /profile /profile/donor /profile/volunteer /request-blood /donor /admin /about /contact /notifications /nope-does-not-exist; do
   code=$(curl -s -o /tmp/rs-body.html -w "%{http_code}" "http://localhost:$PORT${route}")
   title=$(grep -o "<title>[^<]*</title>" /tmp/rs-body.html | head -1)
   echo "$route -> HTTP $code ${title}" >> "$OUT"

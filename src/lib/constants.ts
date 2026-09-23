@@ -141,6 +141,10 @@ export const ALERT_RINGS_KM = [3, 7, 15] as const;
 export const ALERT_WINDOW_MINUTES = 10;
 export const ALERT_DUE_AT_OFFSET_MINUTES = 120;
 
+/** Minutes before due_at at which an open alert receives its ONE "expiring"
+ *  in-app nudge. Mirrored by emit_alert_expiring() in migration 0012. */
+export const ALERT_EXPIRING_NOTICE_MINUTES = 15;
+
 export const ALERT_RING_LABELS: Record<number, string> = {
   3: "within 3 km",
   7: "within 7 km",
@@ -152,5 +156,51 @@ export const ALERT_STATUS_LABELS: Record<string, string> = {
   sent: "Sent",
   opened: "Opened",
   responded: "Responded",
+  expired: "Expired",
 };
+
+/** Volunteer coordination (migration 0009). */
+export const ASSISTANCE_NOTE_MAX = 300;
+
+export const ASSISTANCE_STATUS_LABELS: Record<string, string> = {
+  assisting: "Assisting",
+  stopped: "Stopped assisting",
+};
+
+/** Request abuse reports (migration 0010). */
+export const REPORT_REASONS = [
+  { value: "fake", label: "Fake or suspicious request" },
+  { value: "spam", label: "Spam or repeated posting" },
+  { value: "harassment", label: "Harassment or inappropriate content" },
+  { value: "other", label: "Something else" },
+] as const;
+
+export const REPORT_REASON_LABELS: Record<string, string> = {
+  fake: "Fake / suspicious",
+  spam: "Spam",
+  harassment: "Harassment",
+  other: "Other",
+};
+
+export const REPORT_STATUS_LABELS: Record<string, string> = {
+  open: "Open",
+  reviewed: "Reviewed",
+  dismissed: "Dismissed",
+};
+
+export const REPORT_DETAILS_MAX = 500;
+
+/** Platform settings bounds (mirror the database checks in migration 0010). */
+export const SETTINGS_BOUNDS = {
+  ringMin: 1,
+  ringMax: 50,
+  windowMin: 1,
+  windowMax: 240,
+  offsetMin: 15,
+  offsetMax: 1440,
+  intervalMin: 30,
+  intervalMax: 365,
+} as const;
+
+
 

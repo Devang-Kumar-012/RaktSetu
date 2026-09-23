@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ProfileActionState } from "@/lib/actions/action-state";
 import { getSessionInfo } from "@/lib/profile";
@@ -80,5 +82,9 @@ export async function updateDonorProfile(
     return { ok: false, error: "Could not save your donor profile. Please try again." };
   }
 
+  // Availability can change here (dashboard control) or on the profile page,
+  // so both views of the donor's status re-render from the saved row.
+  revalidatePath("/dashboard/donor");
+  revalidatePath("/profile/donor");
   return { ok: true, error: null, success: "Donor profile saved." };
 }

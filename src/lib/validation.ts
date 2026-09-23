@@ -144,3 +144,61 @@ export function validateRequestNote(value: string): string | null {
   }
   return null;
 }
+
+/** Optional volunteer coordination note (migration 0009). */
+import { ASSISTANCE_NOTE_MAX } from "@/lib/constants";
+
+export function validateAssistanceNote(value: string): string | null {
+  const note = value.trim();
+  if (note.length > ASSISTANCE_NOTE_MAX) {
+    return `Note must be ${ASSISTANCE_NOTE_MAX} characters or fewer.`;
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Blood request form — client-side pre-submit validation                    */
+/* ------------------------------------------------------------------------ */
+
+/** Raw string values as they come from the request form fields. */
+export interface BloodRequestFieldInput {
+  bloodGroup: string;
+  bloodComponent: string;
+  units: string;
+  hospitalName: string;
+  hospitalLocality: string;
+  urgency: string;
+  requiredBy: string;
+  contactName: string;
+  contactPhone: string;
+  note: string;
+}
+
+/**
+ * Field-keyed errors for the request form, using EXACTLY the same validators
+ * (and the same order) as createBloodRequest so an invalid submission is
+ * caught in the browser before the server round trip. The server action
+ * re-validates regardless — this is convenience only, never the boundary.
+ */
+export function bloodRequestFieldErrors(
+  values: BloodRequestFieldInput
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const collect = (field: keyof BloodRequestFieldInput, message: string | null) => {
+    if (message) errors[field] = message;
+  };
+
+  collect("bloodGroup", validateBloodGroup(values.bloodGroup));
+  collect("bloodComponent", validateBloodComponent(values.bloodComponent));
+  collect("units", validateUnits(values.units));
+  collect("urgency", validateUrgency(values.urgency));
+  collect("hospitalName", validateHospitalName(values.hospitalName));
+  collect("hospitalLocality", validateLocality(values.hospitalLocality));
+  collect("requiredBy", validateRequiredBy(values.requiredBy));
+  collect("contactName", validateContactName(values.contactName));
+  collect("contactPhone", validatePhone(values.contactPhone));
+  collect("note", validateRequestNote(values.note));
+
+  return errors;
+}
+

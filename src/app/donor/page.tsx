@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
-import { ComingSoon } from "@/components/ui/States";
 
 export const metadata: Metadata = { title: "Become a donor" };
 
@@ -33,7 +32,7 @@ export default function DonorPage() {
       <Section>
         <div className="grid gap-6 md:grid-cols-3">
           {points.map((c) => (
-            <Card key={c.title}>
+            <Card key={c.title} glass>
               <CardHeader>
                 <CardTitle>{c.title}</CardTitle>
               </CardHeader>
@@ -62,11 +61,18 @@ export default function DonorPage() {
           </div>
         </div>
 
-        <div className="mt-12">
-          <ComingSoon
-            title="Alerts are the next step"
-            description="Request matching is built, but notifications are not live yet, so donors will not receive anything until that ships. Until then you can register and keep your availability up to date."
-          />
+        <div className="mt-12 max-w-2xl">
+          <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
+            How alerts reach you
+          </h2>
+          <p className="mt-3 text-lg text-ink-600">
+            When a request matches your blood group, RaktSetu alerts donors in expanding
+            rings — nearby first (3 km), then wider (7 km, then 15 km) if nobody accepts,
+            with a short window per ring. Alerts appear on your dashboard and under
+            Notifications: accept or decline with one tap. Only after you accept do you
+            get the requester&apos;s contact to coordinate — and the blood bank&apos;s
+            screening always comes first.
+          </p>
         </div>
       </Section>
     </>

@@ -4,7 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { APP_NAME } from "@/lib/constants";
 import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseConfigured } from "@/lib/env";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile"];
+const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/volunteer", "/admin"];
+
 const AUTH_PAGES = ["/login", "/register"];
 
 /**

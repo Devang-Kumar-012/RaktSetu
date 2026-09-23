@@ -12,6 +12,10 @@ import type { DonorProfile } from "@/types";
 
 export const metadata = { title: "Donor profile" };
 
+// Session-gated: render per request so the role check is never baked into a
+// static prerender (which would redirect forever in production).
+export const dynamic = "force-dynamic";
+
 export default async function DonorProfilePage() {
   // Server-side authorization: only donors reach this page.
   const { user } = await requireRolePage("donor");

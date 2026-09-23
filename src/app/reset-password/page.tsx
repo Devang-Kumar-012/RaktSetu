@@ -9,6 +9,10 @@ import { getSessionInfo } from "@/lib/profile";
 
 export const metadata: Metadata = { title: "Set a new password" };
 
+// Session-aware: the recovery session decides which state renders, so the
+// check must run per request — never baked into a static prerender.
+export const dynamic = "force-dynamic";
+
 export default async function ResetPasswordPage() {
   const { configured, user } = await getSessionInfo();
 

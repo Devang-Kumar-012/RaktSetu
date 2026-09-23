@@ -1,6 +1,6 @@
 import { requireRolePage } from "@/lib/profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { describeGap, formatDate, formatDateTime } from "@/lib/utils";
 import {
   BLOOD_COMPONENT_LABELS,
   REQUEST_STATUS_LABELS,
@@ -12,10 +12,17 @@ import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/States";
+import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 import { RequestActions } from "@/components/requests/RequestActions";
-import type { BloodRequest } from "@/types";
+import { RequestCountdown } from "@/components/requests/RequestCountdown";
+import { ALERT_RINGS_KM, ALERT_WINDOW_MINUTES } from "@/lib/constants";
+import type { AcceptedDonor, BloodRequest, RequesterRingStatus } from "@/types";
 
 export const metadata = { title: "Requester dashboard" };
+
+// Session-gated: render per request so the role check is never baked into a
+// static prerender (which would redirect forever in production).
+export const dynamic = "force-dynamic";
 
 export default async function RequesterDashboardPage() {
   const { user, profile } = await requireRolePage("requester");
@@ -33,11 +40,42 @@ export default async function RequesterDashboardPage() {
   const active = list.filter((r) => r.status === "active");
   const past = list.filter((r) => r.status !== "active");
 
+  // Post-acceptance reveal + ring-engine progress — both SECURITY DEFINER,
+  // own-requests only (migration 0011). Donor contact appears only while the
+  // database still reports contact_shared_until; nothing is derivable here.
+  const requestIds = list.map((r) => r.id);
+  const [{ data: revealRows }, { data: ringRows }] = await Promise.all([
+    supabase.rpc("reveal_accepted_donors", { p_request_ids: requestIds }),
+    supabase.rpc("requester_ring_status", { p_request_ids: requestIds }),
+  ]);
+  const acceptedByRequest = new Map<string, AcceptedDonor>(
+    ((revealRows as AcceptedDonor[] | null) ?? []).map((d) => [d.request_id, d])
+  );
+  const ringsByRequest = new Map<string, RequesterRingStatus>();
+  for (const row of (ringRows as RequesterRingStatus[] | null) ?? []) {
+    const seen = ringsByRequest.get(row.request_id);
+    if (!seen || row.ring_index > seen.ring_index) {
+      ringsByRequest.set(row.request_id, row);
+    }
+  }
+
+  // Total donors alerted per request, summed across the rings that ran.
+  const alertedByRequest = new Map<string, number>();
+  for (const row of (ringRows as RequesterRingStatus[] | null) ?? []) {
+    alertedByRequest.set(
+      row.request_id,
+      (alertedByRequest.get(row.request_id) ?? 0) + row.alerts_sent
+    );
+  }
+
   function RequestCard({ request }: { request: BloodRequest }) {
     const isActive = request.status === "active";
     const pastDeadline = new Date(request.required_by).getTime() < Date.now();
+    const ring = ringsByRequest.get(request.id);
+    const acceptedDonor = acceptedByRequest.get(request.id);
+    const alerted = alertedByRequest.get(request.id) ?? 0;
     return (
-      <Card>
+      <Card glass={isActive}>
         <CardBody className="pt-6">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-2xl font-extrabold text-blood-700">
@@ -66,6 +104,15 @@ export default async function RequesterDashboardPage() {
           <p className="mt-1 text-base text-ink-600">
             {URGENCY_LABELS[request.urgency]} · Required by{" "}
             {formatDateTime(request.required_by)}
+            {isActive && (
+              <>
+                {" — "}
+                <RequestCountdown
+                  deadlineIso={request.required_by}
+                  fallback={describeGap(new Date(request.required_by).getTime() - Date.now())}
+                />
+              </>
+            )}
           </p>
           {request.note && <p className="mt-2 text-base text-ink-600">{request.note}</p>}
           <p className="mt-2 text-sm text-ink-600">
@@ -74,7 +121,78 @@ export default async function RequesterDashboardPage() {
               : "No map pin for this hospital — donors are matched by locality text."}
           </p>
 
+          {ring && (
+            <p className="mt-2 text-sm text-ink-600">
+              {ring.finished_at === null ? (
+                <>
+                  Alert ring {ring.ring_index} of {ALERT_RINGS_KM.length} live —
+                  donors within {ring.ring_km} km ({ring.alerts_sent} alerted,
+                  renews every {ALERT_WINDOW_MINUTES} minutes until someone
+                  accepts or the rings run out).
+                </>
+              ) : (
+                <>
+                  Ring process finished at ring {ring.ring_index} ({ring.ring_km}
+                  km, {ring.alerts_sent} alerted) —{" "}
+                  {ring.outcome === "accepted"
+                    ? "a donor accepted."
+                    : ring.outcome === "rings_exhausted"
+                      ? "all rings completed without an acceptance."
+                      : "the request closed."}
+                </>
+              )}
+            </p>
+          )}
+
+          {ring && ring.finished_at !== null && alerted > 0 && (
+            <p className="mt-1 text-sm text-ink-600">
+              {alerted} {alerted === 1 ? "donor was" : "donors were"} alerted in total
+              before the rings stopped.
+            </p>
+          )}
+          {acceptedDonor && (
+            <div className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-green-900">
+              <p className="font-bold">Accepted donor — coordinate directly</p>
+              <p className="mt-1 text-base">
+                {acceptedDonor.donor_name} ·{" "}
+                <a
+                  href={`tel:${acceptedDonor.donor_phone}`}
+                  className="font-bold underline"
+                >
+                  {acceptedDonor.donor_phone}
+                </a>
+              </p>
+              <p className="mt-1 text-sm">
+                {acceptedDonor.donor_blood_group} ·{" "}
+                {acceptedDonor.donor_locality} · contact is visible here until
+                the response deadline. Final eligibility is the blood
+                bank&apos;s screening decision.
+              </p>
+            </div>
+          )}
+
+          {!isActive && (
+            <p className="mt-3 rounded-md bg-ink-50 px-4 py-3 text-sm text-ink-600">
+              {request.status === "fulfilled"
+                ? "Fulfilled — this request is closed and donors are no longer alerted."
+                : request.status === "cancelled"
+                  ? "Cancelled — no further alerts are sent. Create a new request if blood is needed again."
+                  : "Expired — the deadline passed and the request is closed. Create a new request if blood is still needed."}
+            </p>
+          )}
+
           {isActive && <RequestActions requestId={request.id} />}
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <ButtonLink href={`/requests/${request.id}`} variant="secondary">
+              View details
+            </ButtonLink>
+            {isActive && (
+              <ButtonLink href={`/requests/${request.id}/matches`} variant="ghost">
+                Matching donors
+              </ButtonLink>
+            )}
+          </div>
         </CardBody>
       </Card>
     );
@@ -82,6 +200,11 @@ export default async function RequesterDashboardPage() {
 
   return (
     <>
+      {/* One shared live signal for the whole app: refetch on focus/visibility
+          plus a best-effort realtime INSERT on notifications. The page stays
+          fully usable when realtime is unavailable. */}
+      <LiveRefresh />
+
       <PageHeader
         eyebrow="Requester dashboard"
         title={`Hi, ${firstName}`}
@@ -90,7 +213,7 @@ export default async function RequesterDashboardPage() {
 
       <Section>
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap gap-x-10 gap-y-4">
+          <div className="glass flex flex-wrap gap-x-10 gap-y-4 rounded-lg px-6 py-5">
             <div>
               <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
                 Active requests
@@ -121,8 +244,12 @@ export default async function RequesterDashboardPage() {
         <div className="mt-6 space-y-6">
           {active.length === 0 ? (
             <EmptyState
-              title="No active requests"
-              description="When someone needs blood, create a request and RaktSetu will look for matching donors near that hospital."
+              title={list.length === 0 ? "No requests yet" : "No active requests"}
+              description={
+                list.length === 0
+                  ? "When someone needs blood, create a request and RaktSetu alerts matching donors near that hospital — nearest ring first, widening until someone accepts. Requests you close stay below with their outcome."
+                  : "Nothing is being alerted right now. Open a new request the moment blood is needed and matching starts immediately."
+              }
               action={
                 <ButtonLink href="/request-blood">Create a blood request</ButtonLink>
               }
@@ -132,26 +259,32 @@ export default async function RequesterDashboardPage() {
           )}
         </div>
 
-        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
-          Past requests
-        </h2>
-        <div className="mt-6 space-y-6">
-          {past.length === 0 ? (
-            <EmptyState
-              title="No past requests yet"
-              description="Fulfilled, expired, and cancelled requests will appear here."
-            />
-          ) : (
-            past.map((r) => <RequestCard key={r.id} request={r} />)
-          )}
-        </div>
+        {list.length > 0 && (
+          <>
+            <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+              Past requests
+            </h2>
+            <div className="mt-6 space-y-6">
+              {past.length === 0 ? (
+                <EmptyState
+                  title="No past requests yet"
+                  description="Fulfilled, expired, and cancelled requests will appear here with what happened — and whether a donor ever accepted."
+                />
+              ) : (
+                past.map((r) => <RequestCard key={r.id} request={r} />)
+              )}
+            </div>
+          </>
+        )}
 
         <Alert variant="info" title="Your contact details are protected" className="mt-10">
-          The phone number on a request is stored privately and is never listed publicly.
-          Donors only ever see your area and an approximate distance, not your number.
-          Sharing a number with one chosen donor is a later feature — for now, you stay in
-          control of who you give it to. Final donor eligibility is always decided by the
-          blood bank&apos;s medical screening.
+          The phone number on a request is stored privately and is never listed
+          publicly — donors who are merely alerted see only your hospital&apos;s
+          area and an approximate distance. When a donor accepts, you see each
+          other&apos;s contact on these dashboards only, and only until the
+          response deadline, so you can coordinate the donation directly. Final
+          donor eligibility is always decided by the blood bank&apos;s medical
+          screening.
         </Alert>
       </Section>
     </>

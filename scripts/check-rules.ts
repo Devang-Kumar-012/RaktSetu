@@ -222,9 +222,9 @@ check("pipeline excludes paused, cooling and incompatible donors", matched.map((
 check(
   "pipeline: sorted by real distance (near < far)",
   matched[0].distance_km !== null &&
-    matched[1].distance_km !== null &&
-    matched[0].distance_km < matched[1].distance_km &&
-    matched[0].distance_km > 0,
+  matched[1].distance_km !== null &&
+  matched[0].distance_km < matched[1].distance_km &&
+  matched[0].distance_km > 0,
   true
 );
 check(

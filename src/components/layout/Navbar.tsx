@@ -31,13 +31,41 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function Navbar({ authed, profile }: { authed: boolean; profile: Profile | null }) {
+/** Unread pill for the notification link — always an exact database count. */
+function UnreadBadge({ count, className }: { count: number; className?: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className={cn(
+        "rounded-full bg-blood-700 px-2 py-0.5 text-xs font-bold text-white",
+        className
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+export function Navbar({
+  authed,
+  profile,
+  unreadNotifications = 0,
+}: {
+  authed: boolean;
+  profile: Profile | null;
+  /** Unread in-app notifications for the signed-in user (0 when signed out). */
+  unreadNotifications?: number;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
   const firstName = profile?.full_name?.trim()?.split(" ")[0];
   // Role-aware dashboard target — /dashboard itself redirects by role too.
   const dashboardHref = profile?.role ? `/dashboard/${profile.role}` : "/dashboard";
+  const notificationsLabel =
+    unreadNotifications > 0
+      ? `Notifications, ${unreadNotifications} unread`
+      : "Notifications";
 
   const navLinkClass = (href: string) =>
     cn(
@@ -48,7 +76,7 @@ export function Navbar({ authed, profile }: { authed: boolean; profile: Profile 
     );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-ink-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+    <header className="sticky top-0 z-50 glass-bar border-b border-ink-200">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Brand />
 
@@ -68,6 +96,20 @@ export function Navbar({ authed, profile }: { authed: boolean; profile: Profile 
                   Hi, {firstName}
                 </span>
               )}
+              <span className="relative inline-flex items-center">
+                <ButtonLink
+                  href="/notifications"
+                  variant="ghost"
+                  size="md"
+                  aria-label={notificationsLabel}
+                >
+                  Notifications
+                </ButtonLink>
+                <UnreadBadge
+                  count={unreadNotifications}
+                  className="pointer-events-none absolute -right-1 -top-1"
+                />
+              </span>
               <ButtonLink href="/profile" variant="ghost" size="md">
                 Profile
               </ButtonLink>
@@ -106,7 +148,7 @@ export function Navbar({ authed, profile }: { authed: boolean; profile: Profile 
       </div>
 
       {open && (
-        <div className="border-t border-ink-200 bg-white px-4 pb-6 pt-2 md:hidden">
+        <div className="border-t border-ink-200 px-4 pb-6 pt-2 md:hidden">
           <nav aria-label="Mobile navigation" className="flex flex-col gap-1">
             {MAIN_NAV_ITEMS.map((item) => (
               <Link
@@ -129,6 +171,15 @@ export function Navbar({ authed, profile }: { authed: boolean; profile: Profile 
                 )}
                 <ButtonLink href={dashboardHref} onClick={() => setOpen(false)}>
                   Dashboard
+                </ButtonLink>
+                <ButtonLink
+                  href="/notifications"
+                  variant="secondary"
+                  aria-label={notificationsLabel}
+                  onClick={() => setOpen(false)}
+                >
+                  Notifications
+                  <UnreadBadge count={unreadNotifications} />
                 </ButtonLink>
                 <ButtonLink
                   href="/profile"

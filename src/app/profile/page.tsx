@@ -9,6 +9,10 @@ import { ProfileNameForm } from "@/components/profile/ProfileNameForm";
 
 export const metadata = { title: "My profile" };
 
+// Session-gated: render per request so the auth check is never baked into a
+// static prerender (which would redirect forever in production).
+export const dynamic = "force-dynamic";
+
 export default async function ProfilePage() {
   const { user, profile } = await requireAuthPage();
 
@@ -21,7 +25,7 @@ export default async function ProfilePage() {
       />
 
       <Section className="max-w-2xl">
-        <Card>
+        <Card glass>
           <CardHeader>
             <CardTitle>Account</CardTitle>
           </CardHeader>

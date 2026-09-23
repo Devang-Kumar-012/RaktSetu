@@ -8,6 +8,10 @@ import type { VolunteerProfile } from "@/types";
 
 export const metadata = { title: "Volunteer profile" };
 
+// Session-gated: render per request so the role check is never baked into a
+// static prerender (which would redirect forever in production).
+export const dynamic = "force-dynamic";
+
 export default async function VolunteerProfilePage() {
   // Server-side authorization: only volunteers reach this page.
   const { user } = await requireRolePage("volunteer");
@@ -15,7 +19,7 @@ export default async function VolunteerProfilePage() {
   const supabase = await createSupabaseServerClient();
   const { data: volunteer } = await supabase
     .from("volunteer_profiles")
-    .select("user_id, locality, availability, created_at, updated_at")
+    .select("user_id, locality, availability, phone, created_at, updated_at")
     .eq("user_id", user.id)
     .maybeSingle();
 

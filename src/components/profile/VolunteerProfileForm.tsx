@@ -23,6 +23,17 @@ export function VolunteerProfileForm({ volunteer }: { volunteer: VolunteerProfil
       {state.success && <Alert variant="success">{state.success}</Alert>}
 
       <Input
+        label="Phone (optional, private)"
+        name="phone"
+        type="tel"
+        defaultValue={volunteer?.phone ?? ""}
+        placeholder="e.g. +91 98765 43210"
+        hint="Only you and platform administrators can see this. Never shown to requesters or donors."
+        maxLength={20}
+        disabled={pending}
+      />
+
+      <Input
         label="Locality (optional)"
         name="locality"
         type="text"

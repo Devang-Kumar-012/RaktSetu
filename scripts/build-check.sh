@@ -4,12 +4,20 @@
 # Detailed build output: /tmp/rs-build.log
 cd "$(dirname "$0")/.." || exit 1
 
-echo "== rule checks (geo, blood-group rules, availability/cooldown) =="
+echo "== rule checks (geo, blood-group rules, availability/cooldown, matching) =="
 if ! sh scripts/check-rules.sh; then
   echo "RULE_CHECKS=FAIL"
   exit 1
 fi
 echo "RULE_CHECKS=PASS"
+
+echo ""
+echo "== SQL/TS compatibility checks =="
+if ! sh scripts/check-sql-sync.sh; then
+  echo "SQL_SYNC=FAIL"
+  exit 1
+fi
+echo "SQL_SYNC=PASS"
 
 echo ""
 echo "== production build =="
