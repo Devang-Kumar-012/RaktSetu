@@ -118,6 +118,39 @@ Run these in the Supabase SQL editor (Dashboard → SQL Editor), in order:
     so each donor gets at most one of each drive event per drive. No SMS,
     e-mail, WhatsApp, Telegram or other external provider is introduced.
 
+16. `supabase/migrations/0016_engagement_preferences_settings.sql` — donor
+    engagement, notification preferences and central platform settings. Three
+    cooperating layers, all built on what already exists:
+    - **Recognition is computed, never stored.** `donor_recognition()` reads
+      `donation_history` — the authoritative ledger — and nothing else. It does
+      not read `donor_alerts` at all, so being alerted or answering "I can help"
+      can never count as giving blood. Computing rather than persisting means
+      recognition cannot drift, be reset by an account change, or be inflated by
+      a bad insert. Own-row, donor-role only, and it returns no contact or
+      location data.
+    - **Notification preferences** cover three *advisory* categories only
+      (drive updates, donation reminders, milestones). Emergency alerts,
+      acceptances, request outcomes and account changes are deliberately **not
+      suppressible** — a user cannot opt out of the emergency workflow, and the
+      preference form offers no such toggle. Suppression is a `BEFORE INSERT`
+      trigger, so it holds for every emitter, including ones that insert
+      directly. Own-row RLS, with no admin SELECT policy at all.
+    - **Central settings** add `max_alert_rings`, reminder lead times and the
+      drive reminder window. Defaults reproduce current behaviour exactly.
+      `max_alert_rings` is a *real* setting: `alert_rings_km()` clamps the ring
+      list, and the engine already derives its ring count from that accessor, so
+      the ring engine needed no change.
+    - `notifications.dedupe_key` generalises the event-once key beyond
+      request/alert/drive, so a donor can be told about several distinct
+      milestones instead of exactly one. `notify_user` is drop-and-recreate (a
+      surviving 8-arg overload would make every existing emitter call ambiguous
+      at runtime), never overloaded. Duplicate same-day donations are blocked at
+      the database level, closing the last gap that could inflate recognition.
+    - Reminders are one-shot, guarded per donation and per alert, and only ever
+      reference an alert still inside its response window. The cooldown reminder
+      states in its own body that it is an application-level tracking mechanism
+      and not medical advice. No external notification provider.
+
 All are idempotent — safe to re-run.
 
 ## Locations & distance (privacy model)
@@ -288,7 +321,13 @@ npm run dev
   campus-drive group (drives never touch the request lifecycle, drive donations
   reuse the existing ledger and its cooldown, duplicate registrations and
   donations are database-blocked, and no public drive surface reads donor
-  contact or location). No database or credentials needed.
+  contact or location) and the migration-0016 engagement group (recognition is
+  computed from the donation ledger alone and never from alerts or acceptances,
+  duplicate same-day donations cannot inflate it, emergency notifications are
+  structurally unsuppressible while advisory categories are enforced by a
+  database trigger, and the new central settings are validated server-side
+  against the same bounds as their CHECK constraints). No database or
+  credentials needed.
 - `npm run check` — rule checks, ring-engine checks, then the production build
 - `npm run smoke` — start a local server and hit every route (writes results to
   `/tmp/rs-routes.txt`)

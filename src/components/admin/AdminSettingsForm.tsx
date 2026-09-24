@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ELIGIBILITY_DISCLAIMER } from "@/lib/donation-config";
+import { SETTINGS_0016_BOUNDS } from "@/lib/constants";
 import type { PlatformSettings } from "@/types";
 
 /**
@@ -25,12 +26,31 @@ export function AdminSettingsForm({ settings }: { settings: PlatformSettings }) 
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 
+      <h3 className="text-lg font-bold text-ink-900">Emergency matching</h3>
+      <p className="-mt-2 text-sm text-ink-600">
+        How far and how fast an emergency request widens its search.
+      </p>
+
       <Input
         label="Emergency ring distances (km)"
         name="alertRings"
         type="text"
         defaultValue={settings.alert_rings_km.join(", ")}
         hint="Comma-separated list, expanded outward as a request stays open. e.g. 3, 7, 15"
+        disabled={pending}
+      />
+
+      {/* 0016: a real, engine-honoured cap. Lowering it makes the search expand
+          in fewer, wider steps; it can never be 0, which would stop the engine
+          expanding at all. */}
+      <Input
+        label="Maximum rings to use"
+        name="maxAlertRings"
+        type="number"
+        min={SETTINGS_0016_BOUNDS.maxAlertRings.min}
+        max={SETTINGS_0016_BOUNDS.maxAlertRings.max}
+        defaultValue={settings.max_alert_rings}
+        hint={`How many of the distances above may be used, in order (${SETTINGS_0016_BOUNDS.maxAlertRings.min}-${SETTINGS_0016_BOUNDS.maxAlertRings.max}). Lower it to widen the search faster.`}
         disabled={pending}
       />
 
@@ -64,6 +84,45 @@ export function AdminSettingsForm({ settings }: { settings: PlatformSettings }) 
         max={365}
         defaultValue={settings.donation_interval_days}
         hint={ELIGIBILITY_DISCLAIMER}
+        disabled={pending}
+      />
+
+      <h3 className="text-lg font-bold text-ink-900">Notifications & reminders</h3>
+      <p className="-mt-2 text-sm text-ink-600">
+        When advisory in-app reminders are sent. All are one-shot, so a setting
+        can never cause a notification storm.
+      </p>
+
+      <Input
+        label="Donation interval reminder (days before it ends)"
+        name="cooldownReminderLeadDays"
+        type="number"
+        min={SETTINGS_0016_BOUNDS.cooldownReminderLeadDays.min}
+        max={SETTINGS_0016_BOUNDS.cooldownReminderLeadDays.max}
+        defaultValue={settings.cooldown_reminder_lead_days}
+        hint="A nudge while the application-level donation interval is nearly over. Donors can turn this category off in their own notification preferences."
+        disabled={pending}
+      />
+
+      <Input
+        label="Unanswered alert reminder (hours)"
+        name="donorAlertReminderHours"
+        type="number"
+        min={SETTINGS_0016_BOUNDS.donorAlertReminderHours.min}
+        max={SETTINGS_0016_BOUNDS.donorAlertReminderHours.max}
+        defaultValue={settings.donor_alert_reminder_hours}
+        hint="How long an emergency alert may go unanswered before the donor is nudged once."
+        disabled={pending}
+      />
+
+      <Input
+        label="Campus drive reminder window (hours)"
+        name="driveReminderWindowHours"
+        type="number"
+        min={SETTINGS_0016_BOUNDS.driveReminderWindowHours.min}
+        max={SETTINGS_0016_BOUNDS.driveReminderWindowHours.max}
+        defaultValue={settings.drive_reminder_window_hours}
+        hint="How far ahead a registered donor is reminded about an upcoming campus drive."
         disabled={pending}
       />
 

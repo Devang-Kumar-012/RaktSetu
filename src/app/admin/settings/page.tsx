@@ -6,7 +6,7 @@ import { formatDateTime } from "@/lib/utils";
 import { ELIGIBILITY_DISCLAIMER } from "@/lib/donation-config";
 import { AdminSettingsForm } from "@/components/admin/AdminSettingsForm";
 import { AdminSafetyLimitsForm } from "@/components/admin/AdminSafetyLimitsForm";
-import { SAFETY_LIMITS_DEFAULTS } from "@/lib/constants";
+import { SAFETY_LIMITS_DEFAULTS, SETTINGS_DEFAULTS } from "@/lib/constants";
 import type { PlatformSafetyLimits, PlatformSettings } from "@/types";
 
 export const metadata = { title: "Platform settings — admin" };
@@ -19,7 +19,7 @@ export default async function AdminSettingsPage() {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("platform_settings")
-    .select("id, alert_rings_km, alert_window_minutes, alert_due_at_offset_minutes, donation_interval_days, updated_at")
+    .select("id, alert_rings_km, alert_window_minutes, alert_due_at_offset_minutes, donation_interval_days, max_alert_rings, cooldown_reminder_lead_days, donor_alert_reminder_hours, drive_reminder_window_hours, updated_at")
     .eq("id", 1)
     .maybeSingle();
 
@@ -31,6 +31,10 @@ export default async function AdminSettingsPage() {
       alert_window_minutes: 10,
       alert_due_at_offset_minutes: 120,
       donation_interval_days: 90,
+      max_alert_rings: SETTINGS_DEFAULTS.maxAlertRings,
+      cooldown_reminder_lead_days: SETTINGS_DEFAULTS.cooldownReminderLeadDays,
+      donor_alert_reminder_hours: SETTINGS_DEFAULTS.donorAlertReminderHours,
+      drive_reminder_window_hours: SETTINGS_DEFAULTS.driveReminderWindowHours,
       updated_at: new Date().toISOString(),
     } satisfies PlatformSettings);
 

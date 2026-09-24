@@ -4,7 +4,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ELIGIBILITY_DISCLAIMER, DONATION_INTERVAL_LABEL } from "@/lib/donation-config";
 import { getDonorEligibility, getDonorProfileCompletion } from "@/lib/eligibility";
 import { formatDate } from "@/lib/utils";
-import type { DonorProfile } from "@/types";
+import type { DonorProfile, DonorRecognition } from "@/types";
 
 const STATUS_STYLES: Record<string, string> = {
   available: "bg-green-50 text-green-900 border border-green-200",
@@ -23,6 +23,125 @@ const STATUS_LABELS: Record<string, string> = {
  * (availability + interval-based eligibility), and profile completion.
  * Server component — no interactivity needed.
  */
+/**
+ * Donor recognition panel (migration 0016).
+ *
+ * Rendered from donor_recognition(), which is computed from donation_history
+ * alone. It therefore CANNOT count alerts received, "I can help" responses,
+ * requests, or anything unverified — there is no such input in the data it
+ * reads. A cancelled or expired request contributes nothing, because only a
+ * recorded donation counts.
+ *
+ * Server component, no interactivity needed. Shows the donor's OWN record
+ * only, and exposes no contact, location or profile detail.
+ */
+export function DonorRecognitionCard({
+  recognition,
+}: {
+  recognition: DonorRecognition | null;
+}) {
+  if (!recognition) {
+    return (
+      <Card glass>
+        <CardHeader>
+          <CardTitle>Your giving record</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <p className="text-base text-ink-600">
+            Your giving record could not be loaded. Completed donations appear
+            here once an administrator records them.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  const reached = (recognition.milestones ?? []).filter((m) => m.reached);
+  const next = recognition.next_milestone;
+  const toNext = next === null ? 0 : next - recognition.total_donations;
+
+  return (
+    <Card glass>
+      <CardHeader>
+        <CardTitle>Your giving record</CardTitle>
+      </CardHeader>
+      <CardBody>
+        <div className="flex flex-wrap gap-x-10 gap-y-4">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
+              Completed donations
+            </p>
+            <p className="text-3xl font-extrabold text-blood-700">
+              {recognition.total_donations}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
+              Units recorded
+            </p>
+            <p className="text-3xl font-extrabold text-ink-900">
+              {recognition.total_units}
+            </p>
+          </div>
+          {recognition.last_donation && (
+            <div>
+              <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
+                Most recent
+              </p>
+              <p className="text-xl font-bold text-ink-900">
+                {formatDate(recognition.last_donation)}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {recognition.total_donations === 0 ? (
+          <p className="mt-6 text-base text-ink-600">
+            No completed donations are recorded yet. When an administrator
+            records one, your milestones appear here.
+          </p>
+        ) : (
+          <>
+            <p className="mt-6 text-base font-semibold text-ink-800">
+              {next === null
+                ? "You have reached every milestone we track. Thank you."
+                : `${toNext} more ${toNext === 1 ? "donation" : "donations"} to reach ${next}.`}
+            </p>
+
+            {/* Ladder in normal document flow — no overlapping or floating
+                badges. Reached rungs are filled, unreached are outlined. */}
+            <ul className="mt-4 flex flex-wrap gap-2">
+              {(recognition.milestones ?? []).map((m) => (
+                <li
+                  key={m.count}
+                  className={
+                    m.reached
+                      ? "rounded-md border border-blood-200 bg-blood-50 px-3 py-1.5 text-sm font-bold text-blood-700"
+                      : "rounded-md border border-dashed border-ink-200 px-3 py-1.5 text-sm font-semibold text-ink-500"
+                  }
+                >
+                  {m.count} {m.count === 1 ? "donation" : "donations"}
+                  {m.reached && <span className="sr-only"> — reached</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        <p className="mt-6 text-sm text-ink-600">
+          {reached.length > 0
+            ? `Milestones reached: ${reached.map((m) => m.count).join(", ")}. `
+            : ""}
+          This counts completed donations recorded on your account only. It is
+          never based on emergency alerts you received or requests you
+          responded to, and it is not a statement about medical eligibility —
+          the blood bank always decides that.
+        </p>
+      </CardBody>
+    </Card>
+  );
+}
+
 export function DonorStatusBadges({ donor }: { donor: DonorProfile }) {
   const eligibility = getDonorEligibility(donor);
   const completion = getDonorProfileCompletion(donor);

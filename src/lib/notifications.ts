@@ -32,7 +32,7 @@ export type NotificationViewerRole =
 /** The minimal row shape the resolver needs (keeps it usable offline). */
 export type NotificationLike = Pick<
   NotificationRow,
-  "kind" | "request_id" | "alert_id" | "link" | "drive_id"
+  "kind" | "request_id" | "alert_id" | "link" | "drive_id" | "dedupe_key"
 >;
 
 /** Human labels, one per database kind (mirrors notifications_kind_check). */
@@ -67,6 +67,10 @@ export const NOTIFICATION_KIND_LABELS: Record<string, string> = {
   drive_upcoming_reminder: "Drive coming up",
   drive_updated: "Drive update",
   drive_completed: "Drive completed",
+  // 0016: advisory engagement (never emergency workflow notices)
+  recognition_milestone: "Donation milestone",
+  donor_cooldown_ending: "Donation interval",
+  donor_alert_pending: "Alert awaiting you",
 };
 
 /** Every kind the database accepts — kept in sync with migration 0013. */
@@ -95,6 +99,10 @@ export const NOTIFICATION_KINDS = [
   "drive_upcoming_reminder",
   "drive_updated",
   "drive_completed",
+  // 0016: advisory engagement
+  "recognition_milestone",
+  "donor_cooldown_ending",
+  "donor_alert_pending",
 ] as const;
 
 export function notificationKindLabel(kind: string): string {
@@ -144,6 +152,16 @@ const DRIVE_KINDS = new Set<string>([
   "drive_completed",
 ]);
 
+/** 0016: advisory engagement kinds. All are about the donor's own record or
+ *  their own unanswered alert, so they resolve to the donor dashboard — where
+ *  recognition and availability live. Listed explicitly (never a prefix match)
+ *  so a future kind cannot silently inherit a destination. */
+const ENGAGEMENT_KINDS = new Set<string>([
+  "recognition_milestone",
+  "donor_cooldown_ending",
+  "donor_alert_pending",
+]);
+
 /**
  * Stored links come from the database (NOT NULL-checked against a path-only
  * regular expression in migration 0011). Re-validated here so a client can
@@ -183,6 +201,14 @@ export function resolveNotificationDestination(
   // that can receive one (a donor, or an admin/volunteer managing drives) can
   // legitimately open that drive. A requester is never a drive recipient, so
   // that role gets no drive destination rather than a link to an unusable page.
+  // 0016: advisory engagement (donor's own record / own unanswered alert).
+  if (ENGAGEMENT_KINDS.has(kind)) {
+    if (role === "donor") {
+      return { href: "/dashboard/donor", label: "Open donor dashboard" };
+    }
+    return null;  // only a donor is ever the recipient of these
+  }
+
   if (DRIVE_KINDS.has(kind)) {
     if (notification.drive_id && role !== "requester") {
       return { href: `/drives/${notification.drive_id}`, label: "Open drive" };

@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ProfileActionState } from "@/lib/actions/action-state";
 import { getSessionInfo } from "@/lib/profile";
-import { REPORT_REASONS, SAFETY_LIMITS_BOUNDS, SETTINGS_BOUNDS } from "@/lib/constants";
+import {
+  REPORT_REASONS,
+  SAFETY_LIMITS_BOUNDS,
+  SETTINGS_0016_BOUNDS,
+  SETTINGS_BOUNDS,
+} from "@/lib/constants";
 import { UNIQUE_VIOLATION, safetyLimitMessage } from "@/lib/safety";
 import { validateReportDetails, validateRequestNote } from "@/lib/validation";
 
@@ -193,6 +198,48 @@ export async function updatePlatformSettings(
     };
   }
 
+  // 0016 central settings. Validated against the SAME bounds as the database
+  // CHECK constraints, so an invalid value (a negative distance, a zero ring
+  // count, an absurd duration) can never be stored or break the ring engine.
+  const S = SETTINGS_0016_BOUNDS;
+  const readSetting = (field: string, min: number, max: number): number | string => {
+    const value = Number(formData.get(field));
+    if (!Number.isInteger(value) || value < min || value > max) {
+      return `Each platform setting must be a whole number between ${min} and ${max}.`;
+    }
+    return value;
+  };
+
+  const maxRings = readSetting("maxAlertRings", S.maxAlertRings.min, S.maxAlertRings.max);
+  if (typeof maxRings === "string") return { ok: false, error: maxRings };
+  const cooldownLead = readSetting(
+    "cooldownReminderLeadDays",
+    S.cooldownReminderLeadDays.min,
+    S.cooldownReminderLeadDays.max
+  );
+  if (typeof cooldownLead === "string") return { ok: false, error: cooldownLead };
+  const alertReminder = readSetting(
+    "donorAlertReminderHours",
+    S.donorAlertReminderHours.min,
+    S.donorAlertReminderHours.max
+  );
+  if (typeof alertReminder === "string") return { ok: false, error: alertReminder };
+  const driveReminder = readSetting(
+    "driveReminderWindowHours",
+    S.driveReminderWindowHours.min,
+    S.driveReminderWindowHours.max
+  );
+  if (typeof driveReminder === "string") return { ok: false, error: driveReminder };
+
+  // A ring count above the number of configured distances would ask the engine
+  // to use rings that do not exist, so reject rather than store nonsense.
+  if (maxRings > rings.length) {
+    return {
+      ok: false,
+      error: `Maximum rings (${maxRings}) cannot exceed the number of ring distances you listed (${rings.length}).`,
+    };
+  }
+
   const supabase = await createSupabaseServerClient();
   const { error: dbError } = await supabase
     .from("platform_settings")
@@ -201,6 +248,10 @@ export async function updatePlatformSettings(
       alert_window_minutes: windowMinutes,
       alert_due_at_offset_minutes: offsetMinutes,
       donation_interval_days: intervalDays,
+      max_alert_rings: maxRings,
+      cooldown_reminder_lead_days: cooldownLead,
+      donor_alert_reminder_hours: alertReminder,
+      drive_reminder_window_hours: driveReminder,
     })
     .eq("id", 1);
 

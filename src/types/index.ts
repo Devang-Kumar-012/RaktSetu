@@ -152,6 +152,11 @@ export interface PlatformSettings {
   alert_window_minutes: number;
   alert_due_at_offset_minutes: number;
   donation_interval_days: number;
+  /** 0016: central operational values. Defaults reproduce current behaviour. */
+  max_alert_rings: number;
+  cooldown_reminder_lead_days: number;
+  donor_alert_reminder_hours: number;
+  drive_reminder_window_hours: number;
   updated_at: string;
 }
 
@@ -276,6 +281,35 @@ export interface AdminOverview {
   active_alerts: number;
   accepted_alerts: number;
   available_donors: number;
+}
+
+/** One rung of the recognition ladder, as returned by donor_recognition(). */
+export interface RecognitionMilestone {
+  count: number;
+  reached: boolean;
+}
+
+/** A donor's OWN recognition, computed from donation_history (migration 0016).
+ *  Never derived from alerts, acceptances or any medical judgement. */
+export interface DonorRecognition {
+  total_donations: number;
+  total_units: number;
+  first_donation: string | null;
+  last_donation: string | null;
+  /** The next rung, or null once the ladder is complete. */
+  next_milestone: number | null;
+  milestones: RecognitionMilestone[] | null;
+}
+
+/** Per-user notification preferences (migration 0016). Advisory categories
+ *  only — emergency workflow notices are never suppressible. */
+export interface NotificationPreferences {
+  user_id: string;
+  drive_updates: boolean;
+  donor_reminders: boolean;
+  recognition_updates: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 /** Singleton row of platform_safety_limits (migration 0014). Every anti-abuse
@@ -430,7 +464,11 @@ export type NotificationKind =
   | "drive_registered"
   | "drive_upcoming_reminder"
   | "drive_updated"
-  | "drive_completed";
+  | "drive_completed"
+  // 0016: advisory engagement categories (never emergency workflow notices)
+  | "recognition_milestone"
+  | "donor_cooldown_ending"
+  | "donor_alert_pending";
 
 export interface NotificationRow {
   id: number;
@@ -442,6 +480,9 @@ export interface NotificationRow {
   /** 0015: set for campus-drive events, so the same donor gets at most one of
    *  each drive event per drive rather than one ever. */
   drive_id: string | null;
+  /** 0016: stable server-chosen reference for events belonging to neither a
+   *  request, alert nor drive (a recognition milestone, a cooldown reminder). */
+  dedupe_key: string | null;
   title: string;
   body: string;
   link: string | null;

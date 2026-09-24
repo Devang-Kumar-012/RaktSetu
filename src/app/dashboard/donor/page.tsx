@@ -5,8 +5,9 @@ import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/States";
 import { DonorAlertCard } from "@/components/alerts/DonorAlertCard";
+import { tickDonorReminders } from "@/lib/actions/notifications";
 import { AvailabilityControl } from "@/components/donor/AvailabilityControl";
-import { DonorStatusBadges } from "@/components/donor/DonorStatusBadges";
+import { DonorStatusBadges, DonorRecognitionCard } from "@/components/donor/DonorStatusBadges";
 import { DriveCard } from "@/components/drives/DriveCard";
 import { RingStatusStrip } from "@/components/donor/RingStatusStrip";
 import { isAlertActionable } from "@/lib/alert-rings";
@@ -26,6 +27,7 @@ import type {
   DonorAlertRow,
   DonorDonationRow,
   DonorProfile,
+  DonorRecognition,
   DriveRegistration,
 } from "@/types";
 
@@ -95,6 +97,14 @@ export default async function DonorDashboardPage() {
   const donationHistory = (historyRows as DonorDonationRow[] | null) ?? [];
   const eligibility = getDonorEligibility(donorProfile);
 
+  // Advisory donor reminders (migration 0016) are a one-shot, idempotent
+  // sweep, ticked here so they still go out when pg_cron is unavailable.
+  await tickDonorReminders();
+
+  // Own recognition (migration 0016) — computed from donation_history only.
+  const { data: recognitionRows } = await supabase.rpc("donor_recognition");
+  const recognition = ((recognitionRows as DonorRecognition[] | null) ?? [])[0] ?? null;
+
   // Campus drives (migration 0015). Published drives are readable by any
   // signed-in user; the viewer's OWN registrations are what RLS will return,
   // so this can never show anyone else's participation.
@@ -145,6 +155,10 @@ export default async function DonorDashboardPage() {
             </div>
           </>
         )}
+
+        <div className="mt-6">
+          <DonorRecognitionCard recognition={recognition} />
+        </div>
 
         {/* Campus drives (migration 0015) — deliberately a separate section
             from emergency alerts below. A planned drive is not an emergency,

@@ -192,6 +192,16 @@ const sql0014 = readFileSync(
 );
 const srcSafety = readFileSync(join(ROOT, "src/lib/safety.ts"), "utf8");
 const srcAdminActions = readFileSync(join(ROOT, "src/lib/actions/admin.ts"), "utf8");
+// Declared up here (not in section 17) because the notification-kind parity
+// check above needs it to find the latest constraint definition.
+const sql0016 = readFileSync(
+  join(ROOT, "supabase/migrations/0016_engagement_preferences_settings.sql"),
+  "utf8"
+);
+const srcAdminSettingsPage = readFileSync(
+  join(ROOT, "src/app/admin/settings/page.tsx"),
+  "utf8"
+);
 const srcAdminReports = readFileSync(
   join(ROOT, "src/app/admin/reports/page.tsx"),
   "utf8"
@@ -980,7 +990,7 @@ check(
 // it with the campus-drive kinds, so reading 0013 alone would report TS↔SQL as
 // out of parity the moment a drive kind is added.
 const kindBlockMarker = "add constraint notifications_kind_check check (kind in (";
-const kindSources = [sql0013, sql0015].filter((s) => s.includes(kindBlockMarker));
+const kindSources = [sql0013, sql0015, sql0016].filter((s) => s.includes(kindBlockMarker));
 const lastKindSource = kindSources[kindSources.length - 1] ?? "";
 const kindBlockAt = lastKindSource.indexOf(kindBlockMarker);
 const kindBlock = lastKindSource.slice(
@@ -1083,9 +1093,17 @@ function notif(
   requestId: string | null = null,
   alertId: number | null = null,
   link: string | null = null,
-  driveId: string | null = null
+  driveId: string | null = null,
+  dedupeKey: string | null = null
 ): NotificationLike {
-  return { kind, request_id: requestId, alert_id: alertId, link, drive_id: driveId };
+  return {
+    kind,
+    request_id: requestId,
+    alert_id: alertId,
+    link,
+    drive_id: driveId,
+    dedupe_key: dedupeKey,
+  };
 }
 check(
   "13. requester notifications open the existing request details page",
@@ -1888,6 +1906,195 @@ check(
     true
   );
 }
+
+// --- 17. donor engagement, preferences & central settings (migration 0016) ----
+// Recognition is the highest-consequence thing added here: if it ever counted
+// alerts or acceptances, the platform would be lying to donors about their own
+// contribution. These checks pin the authoritative source.
+const sql0016Code = stripSqlComments(sql0016);
+const srcPrefsForm = readFileSync(
+  join(ROOT, "src/components/profile/NotificationPreferencesForm.tsx"),
+  "utf8"
+);
+const srcSettingsForm = readFileSync(
+  join(ROOT, "src/components/admin/AdminSettingsForm.tsx"),
+  "utf8"
+);
+const srcRecognition = readFileSync(
+  join(ROOT, "src/components/donor/DonorStatusBadges.tsx"),
+  "utf8"
+);
+const recognitionBody = sql0016.slice(
+  sql0016.indexOf("create or replace function public.donor_recognition")
+);
+check(
+  "17. recognition is derived ONLY from donation_history, never from alerts or acceptances",
+  recognitionBody.includes("create or replace function public.donor_recognition") &&
+    recognitionBody.includes("from public.donation_history") &&
+    // the function body must not touch donor_alerts at all
+    !/donor_alerts/.test(recognitionBody.slice(0, recognitionBody.indexOf("$$;") + 3)) &&
+    srcRecognition.includes("donor_recognition()"),
+  true
+);
+check(
+  "17. recognition is own-row and donor-only",
+  sql0016.includes("grant execute on function public.donor_recognition() to authenticated") &&
+    sql0016.includes("revoke all on function public.donor_recognition() from public, anon") &&
+    sql0016.includes("where p.id = auth.uid() and p.role = 'donor'") &&
+    // no private field may appear in the returned shape
+    !/phone|latitude|longitude|locality|full_name/.test(
+      sql0016.slice(
+        sql0016.indexOf("returns table ("),
+        sql0016.indexOf("language plpgsql")
+      )
+    ),
+  true
+);
+check(
+  "17. duplicate donation records cannot inflate recognition",
+  sql0016.includes("donation_history_donor_day_uidx") &&
+    sql0016.includes("on public.donation_history (donor_id, donated_on)") &&
+    sql0015.includes("donation_history_drive_once_uidx") &&
+    sql0010.includes(
+      "constraint donation_history_unique unique (donor_id, request_id, donated_on)"
+    ),
+  true
+);
+check(
+  "17. milestone notices dedupe per milestone (a donor can be told more than once)",
+  sql0016.includes("'milestone-' || v_next::text") &&
+    sql0016.includes("coalesce(new.dedupe_key, '')") &&
+    sql0016.includes("n.dedupe_key is not distinct from new.dedupe_key") &&
+    sql0016.includes("add column if not exists dedupe_key text"),
+  true
+);
+check(
+  "17. notification preferences are own-row only and never admin-readable",
+  sql0016.includes("create table if not exists public.notification_preferences") &&
+    sql0016.includes("using (user_id = auth.uid())") &&
+    !/is_current_user_admin/.test(
+      sql0016.slice(
+        sql0016.indexOf("create table if not exists public.notification_preferences"),
+        sql0016.indexOf("-- The one place the category")
+      )
+    ),
+  true
+);
+check(
+  "17. emergency workflow notifications are never suppressible",
+  // An unmapped (null) category must always pass, and no emergency kind may be
+  // mapped to a suppressible column.
+  sql0016.includes("when p_kind like 'drive\\_%'") &&
+    sql0016.includes("else null") &&
+    sql0016.includes("v_category := public.notification_category(new.kind)") &&
+    sql0016.includes("if v_category is null then") &&
+    !/alert_received|donor_accepted|request_fulfilled|request_cancelled|request_expired|request_created/.test(
+      sql0016.slice(
+        sql0016.indexOf("create or replace function public.notification_category"),
+        sql0016.indexOf(
+          "$$;",
+          sql0016.indexOf("create or replace function public.notification_category")
+        )
+      )
+    ),
+  true
+);
+
+check(
+  "17. preferences are enforced in the database for every emitter",
+  sql0016.includes("create trigger notifications_apply_preferences") &&
+    sql0016.includes("before insert on public.notifications") &&
+    sql0016.includes("execute function public.apply_notification_preferences()"),
+  true
+);
+check(
+  "17. the preference form offers no emergency toggle and writes the caller's own row",
+  !/name="[a-z_]*(emergency|alert|accept)[a-z_]*"/i.test(srcPrefsForm) &&
+    srcPrefsForm.includes("Emergency notifications cannot be turned off") &&
+    srcNotifActions.includes("user_id: session.user.id") &&
+    srcNotifActions.includes("NOTIFICATION_PREFERENCE_KEYS"),
+  true
+);
+check(
+  "17. reminders are one-shot, advisory, and never reference a closed request",
+  sql0016.includes("cooldown_reminder_sent_for") &&
+    sql0016.includes("pending_reminder_sent_at") &&
+    sql0016.includes("not medical advice") &&
+    sql0016.includes("blood bank always decides") &&
+    // LINE-ANCHORED, not substring: a plain `includes("a.due_at > now()")` is
+    // also satisfied by `a.due_at > now() - interval '100 years'`, which would
+    // happily reference a long-closed request. Requiring the comparison to end
+    // the line means the reminder can only ever see a live response window.
+    /^\s+and a\.due_at > now\(\),?\s*$/m.test(sql0016) &&
+    /^\s+and a\.pending_reminder_sent_at is null,?\s*$/m.test(sql0016) &&
+    /^\s+where a\.response is null\s*$/m.test(sql0016) &&
+    /^\s+and a\.status in \('sent', 'opened'\),?\s*$/m.test(sql0016) &&
+    sql0016.includes("blood bank always decides"),
+  true
+);
+check(
+  "17. the donor reminder sweep is executable by the app tick (revoke then grant)",
+  sql0016.includes("grant execute on function public.emit_donor_reminders() to authenticated") &&
+    srcNotifActions.includes('supabase.rpc("emit_donor_reminders")'),
+  true
+);
+check(
+  "17. central settings defaults reproduce current behaviour and stay admin-only",
+  sql0016.includes("max_alert_rings integer not null default 5") &&
+    sql0016.includes("cooldown_reminder_lead_days integer not null default 3") &&
+    sql0016.includes("donor_alert_reminder_hours integer not null default 24") &&
+    sql0016.includes("drive_reminder_window_hours integer not null default 48") &&
+    sql0016.includes("array[3, 7, 15]") &&
+    // the gate lives in the admin LAYOUT, which wraps every /admin page
+    readFileSync(join(ROOT, "src/app/admin/layout.tsx"), "utf8").includes(
+      'requireRolePage("admin")'
+    ),
+  true
+);
+check(
+  "17. max ring count is a REAL setting the engine honours, not a label",
+  sql0016.includes("create or replace function public.alert_rings_km()") &&
+    sql0016.includes("max_alert_rings from public.platform_settings") &&
+    sql0016.includes("s.r[1:s.m]") &&
+    // the engine reads this accessor, so clamping it here is what makes it work
+    sql0011.includes("coalesce(public.alert_rings_km(), array[3, 7, 15])"),
+  true
+);
+check(
+  "17. admin settings validate every new value server-side against its bound",
+  // Match on the FIELD NAME, not the whole call: the formatter wraps the
+  // argument onto its own line, so a literal `readSetting("x"` never matches.
+  [
+    "maxAlertRings",
+    "cooldownReminderLeadDays",
+    "donorAlertReminderHours",
+    "driveReminderWindowHours",
+  ].every((field) => new RegExp(`readSetting\\(\\s*"${field}"`).test(srcAdminActions)) &&
+    srcAdminActions.includes("maxRings > rings.length") &&
+    srcSettingsForm.includes("maxAlertRings") &&
+    srcSettingsForm.includes("driveReminderWindowHours"),
+  true
+);
+check(
+  "17. no external provider, no new request status, no request-lifecycle writes",
+  !/twilio|sendgrid|mailgun|smtp|whatsapp|telegram/i.test(sql0016Code) &&
+    !sql0016Code.includes("'accepted'") &&
+    !/update\s+public\.blood_requests/i.test(sql0016) &&
+    !/insert\s+into\s+public\.blood_requests/i.test(sql0016),
+  true
+);
+check(
+  "17. notify_user is replaced, not overloaded (9 args, revoke re-applied)",
+  sql0016.includes(
+    "drop function if exists public.notify_user(uuid, text, text, text, uuid, bigint, text, uuid);"
+  ) &&
+    sql0016.includes("p_dedupe_key text   default null") &&
+    sql0016.includes(
+      "revoke all on function public.notify_user(uuid, text, text, text, uuid, bigint, text, uuid, text)"
+    ),
+  true
+);
+
 
 if (failures.length > 0) {
 

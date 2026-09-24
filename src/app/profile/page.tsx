@@ -6,6 +6,9 @@ import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { ProfileNameForm } from "@/components/profile/ProfileNameForm";
+import { NotificationPreferencesForm } from "@/components/profile/NotificationPreferencesForm";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { NotificationPreferences } from "@/types";
 
 export const metadata = { title: "My profile" };
 
@@ -15,6 +18,15 @@ export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
   const { user, profile } = await requireAuthPage();
+
+  // Own-row RLS: this can only ever return the caller's own preferences.
+  const supabase = await createSupabaseServerClient();
+  const { data: prefsRow } = await supabase
+    .from("notification_preferences")
+    .select("user_id, drive_updates, donor_reminders, recognition_updates, created_at, updated_at")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const preferences = (prefsRow as NotificationPreferences | null) ?? null;
 
   return (
     <>
@@ -76,6 +88,19 @@ export default async function ProfilePage() {
                 the database migrations (0001, 0002) if this message stays.
               </Alert>
             )}
+          </CardBody>
+        </Card>
+
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle>Notification preferences</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="mb-5 text-base text-ink-600">
+              Choose which advisory updates you receive. Only you can see and
+              change these.
+            </p>
+            <NotificationPreferencesForm preferences={preferences} />
           </CardBody>
         </Card>
 

@@ -291,6 +291,71 @@ export const DRIVE_TARGET_BOUNDS = { min: 1, max: 5000 } as const;
  */
 export const DRIVE_REMINDER_WINDOW_HOURS = 48;
 
+/**
+ * Central operational settings added in migration 0016.
+ *
+ * These mirror the CHECK constraints on platform_settings exactly, so the admin
+ * form can never submit a value the database would reject. Defaults reproduce
+ * current RaktSetu behaviour, so an untouched install is unchanged.
+ */
+export const SETTINGS_DEFAULTS = {
+  maxAlertRings: 5,
+  cooldownReminderLeadDays: 3,
+  donorAlertReminderHours: 24,
+  driveReminderWindowHours: 48,
+} as const;
+
+export const SETTINGS_0016_BOUNDS = {
+  /** A ring count below 1 would stop the engine expanding at all. */
+  maxAlertRings: { min: 1, max: 5 },
+  cooldownReminderLeadDays: { min: 1, max: 30 },
+  donorAlertReminderHours: { min: 1, max: 168 },
+  driveReminderWindowHours: { min: 1, max: 168 },
+} as const;
+
+/**
+ * Advisory notification categories a user may switch off (migration 0016).
+ *
+ * Deliberately NOT a mute-everything list: emergency alerts, acceptances,
+ * request-lifecycle and account notifications are never suppressible, because
+ * they ARE the emergency workflow. A user cannot opt out of the thing that
+ * saves a life.
+ */
+export const NOTIFICATION_PREFERENCE_CATEGORIES = [
+  {
+    key: "drive_updates",
+    label: "Campus blood drive updates",
+    description: "Registration confirmations, schedule changes and cancellations.",
+  },
+  {
+    key: "donor_reminders",
+    label: "Donation reminders",
+    description:
+      "A nudge when your application-level donation interval is nearly over, or when an alert you were sent is still unanswered.",
+  },
+  {
+    key: "recognition_updates",
+    label: "Donation milestones",
+    description: "Recognition when a recorded donation reaches a milestone.",
+  },
+] as const;
+
+export const NOTIFICATION_PREFERENCE_KEYS = [
+  "drive_updates",
+  "donor_reminders",
+  "recognition_updates",
+] as const;
+
+/**
+ * Donor recognition ladder (migration 0016). Mirrors the SQL `unnest(array[…])`
+ * so the UI and the database agree on what a milestone is.
+ *
+ * Recognition is derived ONLY from completed, recorded donations. It is never
+ * based on alerts received, "I can help" responses, requests, or any medical
+ * judgement.
+ */
+export const RECOGNITION_MILESTONES = [1, 3, 5, 10, 25, 50] as const;
+
 /** Platform settings bounds (mirror the database checks in migration 0010). */
 export const SETTINGS_BOUNDS = {
   ringMin: 1,
