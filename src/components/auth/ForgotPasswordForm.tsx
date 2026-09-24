@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
+import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
@@ -53,12 +54,7 @@ export function ForgotPasswordForm() {
   }
 
   if (!configured) {
-    return (
-      <Alert variant="warning" title="Authentication is not configured yet">
-        The Supabase project URL and anon key are missing from this deployment.
-        Add them to <code>.env.local</code> and restart the app to enable password reset.
-      </Alert>
-    );
+    return <AuthNotConfigured action="resetting your password" />;
   }
 
   if (sent) {

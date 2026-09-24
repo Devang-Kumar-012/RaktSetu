@@ -91,11 +91,34 @@ import {
   ELIGIBILITY_DISCLAIMER,
 } from "../src/lib/donation-config";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { DonorProfile, NotificationRow } from "../src/types";
 
 let passed = 0;
 const failures: string[] = [];
+
+/** Repository root, resolved from this file rather than process.cwd() so the
+ *  suite behaves identically no matter which directory it is invoked from. */
+const ROOT = resolve(__dirname, "..");
+
+/**
+ * Strips // and block comments so assertions test what a user actually SEES,
+ * not the prose describing it. Several components here explain in a doc
+ * comment exactly the thing a check forbids mentioning; without this, the
+ * explanation satisfies — or trips — the check by accident.
+ */
+function stripJsComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+/** Recursively lists files under a directory, skipping build/dependency trees. */
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry);
+    if (entry === "node_modules" || entry === ".next" || entry === ".git") return [];
+    return statSync(full).isDirectory() ? walk(full) : [full];
+  });
+}
 
 /** Asserts `actual` deep-equals `expected`; `label` describes the behaviour. */
 function eq<T>(label: string, actual: T, expected: T): void {
@@ -846,6 +869,180 @@ eq(
 
 // ===========================================================================
 // REPORT
+
+// ===========================================================================
+// 15. AUTH DEPLOYMENT READINESS
+// ===========================================================================
+// These are the failures that produced a live site where nobody could log in.
+// They are cheap to check and expensive to discover in production.
+{
+  const envSrc = readFileSync(join(ROOT, "src/lib/env.ts"), "utf8");
+  const netlify = readFileSync(join(ROOT, "netlify.toml"), "utf8");
+  const envExample = readFileSync(join(ROOT, ".env.example"), "utf8");
+  const notConfigured = readFileSync(
+    join(ROOT, "src/components/auth/AuthNotConfigured.tsx"),
+    "utf8",
+  );
+  const middleware = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
+  const callback = readFileSync(join(ROOT, "src/app/auth/callback/route.ts"), "utf8");
+
+  // The configuration state must be reported in terms of the two PUBLIC
+  // variables only. A service-role reference in client-reachable code would
+  // be a credential leak.
+  ok(
+    "env handling references only the public URL and anon key",
+    envSrc.includes("NEXT_PUBLIC_SUPABASE_URL") &&
+      envSrc.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
+      !/SERVICE_ROLE|service_role|DATABASE_PASSWORD|POSTGRES_PASSWORD/i.test(envSrc),
+  );
+  ok(
+    "the not-configured message names both public variables",
+    notConfigured.includes("NEXT_PUBLIC_SUPABASE_URL") &&
+      notConfigured.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+  );
+  ok(
+    "the not-configured message never mentions a service-role key",
+    // Comment-stripped: the component's own JSDoc explains that the
+    // service-role key is never referenced, and a raw scan would flag that
+    // explanation as though it were rendered to the user.
+    !/service.?role/i.test(stripJsComments(notConfigured)),
+  );
+  ok(
+    "the not-configured message points at Netlify, not just a local file",
+    /netlify/i.test(notConfigured) && /environment variables/i.test(notConfigured),
+  );
+
+  // Every auth surface must use the shared component rather than repeating
+  // its own (previously misleading) inline copy.
+  const AUTH_SURFACES = [
+    "src/components/auth/LoginForm.tsx",
+    "src/components/auth/RegisterForm.tsx",
+    "src/components/auth/ForgotPasswordForm.tsx",
+    "src/components/auth/ResetPasswordForm.tsx",
+    "src/app/reset-password/page.tsx",
+    "src/app/dashboard/page.tsx",
+  ];
+  for (const f of AUTH_SURFACES) {
+    const s = readFileSync(join(ROOT, f), "utf8");
+    ok(
+      `auth surface uses the shared not-configured notice: ${f.replace("src/", "")}`,
+      s.includes("AuthNotConfigured") &&
+        !s.includes("Authentication is not configured yet"),
+    );
+  }
+
+  // Deployment config must carry no credentials of any kind.
+  ok(
+    "netlify.toml contains no secret-like assignment",
+    !/eyJ[A-Za-z0-9_-]{10,}/.test(netlify) && // JWT-shaped anon/service key
+      !/service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(netlify),
+  );
+  ok("netlify.toml builds with the project build command", netlify.includes('command = "npm run build"'));
+  ok("netlify.toml publishes the Next.js output", netlify.includes('publish = ".next"'));
+  ok("netlify.toml installs the Next.js runtime plugin", netlify.includes("@netlify/plugin-nextjs"));
+  ok(
+    "the scheduler route is marked no-store on Netlify",
+    /for\s*=\s*"\/api\/cron\/\*"/.test(netlify) && /no-store/.test(netlify),
+  );
+
+  // The redirect target must come from the incoming request, never a baked-in
+  // localhost, or every production email link would point at a developer's
+  // machine.
+  ok(
+    "the auth callback derives its origin from the request, not a hard-coded host",
+    callback.includes("origin") && !/localhost/.test(callback),
+  );
+  ok("no source file hard-codes localhost", !/localhost/.test(callback));
+  ok(
+    "redirects are sanitised rather than followed blindly",
+    callback.includes("sanitizeNextPath"),
+  );
+
+  // A deployment missing its public config must still be reachable and must
+  // never crash: the middleware allows traffic through rather than throwing.
+  ok(
+    "middleware degrades safely when Supabase is unconfigured",
+    middleware.includes("isSupabaseConfigured()") &&
+      /if\s*\(!isSupabaseConfigured\(\)\)[\s\S]{0,200}return response/.test(middleware),
+  );
+
+  // Every private prefix must be guarded at the edge as well as in the page.
+  for (const p of ["/dashboard", "/profile", "/volunteer", "/admin", "/notifications", "/requests"]) {
+    ok(`middleware protects ${p}`, middleware.includes(`"${p}"`));
+  }
+  ok(
+    "public drive browsing is NOT behind the auth guard",
+    !middleware.includes('"/drives"'),
+  );
+
+  // Every auth CTA must reach the ONE canonical implementation, and any
+  // ?role= must be a public role. A CTA pointing at a duplicate or invented
+  // route would silently strand a visitor on a dead end.
+  const AUTH_ROUTE_RE = /href="(\/(?:login|register)(?:\?[^"]*)?)"/g;
+  // Widened to Set<string>: the inferred literal union would reject the
+  // arbitrary string parsed out of an href, which is precisely the untrusted
+  // input this check exists to inspect.
+  const roleValues = new Set<string>(REGISTER_ROLES.map((r) => r.value));
+  for (const f of walk(ROOT).filter((x) => x.endsWith(".tsx"))) {
+    const s = stripJsComments(readFileSync(f, "utf8"));
+    for (const m of s.matchAll(AUTH_ROUTE_RE)) {
+      const href = m[1];
+      const rel = f.replace(ROOT, "src");
+      ok(
+        `${rel} -> ${href} uses a canonical auth route`,
+        /^\/(login|register)(\?|$)/.test(href),
+      );
+      const role = /[?&]role=([^&"]+)/.exec(href);
+      if (role) {
+        ok(
+          `${rel} preselects a PUBLIC role (${decodeURIComponent(role[1])})`,
+          roleValues.has(decodeURIComponent(role[1])),
+        );
+      }
+      // A next= must be internal, or it is an open redirect.
+      const next = /[?&]next=([^&"]+)/.exec(href);
+      if (next) {
+        ok(
+          `${rel} next= is an internal path`,
+          decodeURIComponent(next[1]).startsWith("/"),
+        );
+      }
+    }
+  }
+  ok(
+    "no duplicate auth routes exist alongside the canonical pair",
+    !["signin", "sign-in", "signup", "sign-up", "create-account"].some((r) =>
+      existsSync(join(ROOT, "src/app", r)),
+    ),
+  );
+
+  // Terminology: the brief requires "Log in" and "Create account".
+  const navbar = readFileSync(join(ROOT, "src/components/layout/Navbar.tsx"), "utf8");
+  ok("navbar offers 'Log in'", navbar.includes("Log in"));
+  ok("navbar offers 'Create account'", navbar.includes("Create account"));
+  ok(
+    "navbar no longer uses the mixed 'Join RaktSetu' / 'Sign up' wording",
+    !/Join RaktSetu|Sign\s?up|Sign\s?in/i.test(navbar),
+  );
+
+  // .env.example must tell a deployer where the values actually go.
+  ok(
+    ".env.example documents the Netlify variable names",
+    envExample.includes("NEXT_PUBLIC_SUPABASE_URL") &&
+      envExample.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
+      envExample.includes("CRON_SECRET"),
+  );
+  ok(
+    ".env.example warns the public values are build-time",
+    /build/i.test(envExample),
+  );
+  ok(
+    ".env.example warns against the service-role key",
+    /service-role/i.test(envExample),
+  );
+}
+
+
 // ===========================================================================
 if (failures.length > 0) {
   console.error(`\n✗ ${failures.length} invariant check(s) failed:`);

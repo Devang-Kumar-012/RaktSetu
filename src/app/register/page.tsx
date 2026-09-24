@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { AuthShell } from "@/components/auth/AuthShell";
 
-export const metadata: Metadata = { title: "Register" };
+export const metadata: Metadata = { title: "Create account" };
 
 // A role-specific CTA (e.g. /register?role=requester) preselects the role the
 // person already chose, rather than being a link that implies a selection the

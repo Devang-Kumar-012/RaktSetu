@@ -39,7 +39,7 @@ export function DonorSection() {
           <ButtonLink href="/donor" size="lg">
             Become a donor
           </ButtonLink>
-          <ButtonLink href="/register" variant="secondary" size="lg">
+          <ButtonLink href="/register?role=donor" variant="secondary" size="lg">
             Create a free account
           </ButtonLink>
         </div>

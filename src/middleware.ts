@@ -4,7 +4,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { APP_NAME } from "@/lib/constants";
 import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseConfigured } from "@/lib/env";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/volunteer", "/admin"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/profile",
+  "/volunteer",
+  "/admin",
+  // Private, but previously absent here and therefore reached the page before
+  // being redirected. Each page enforces its own guard regardless; listing them
+  // here turns that redirect into an early, cheap one and keeps the set honest.
+  // `/drives` is deliberately NOT listed — browsing published drives is public.
+  "/notifications",
+  "/requests",
+  "/request-blood",
+];
 
 const AUTH_PAGES = ["/login", "/register"];
 

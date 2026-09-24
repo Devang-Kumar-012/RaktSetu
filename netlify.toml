@@ -1,0 +1,33 @@
+# Netlify deployment configuration.
+#
+# Contains NO credentials. Supabase values are supplied as environment variables
+# in the Netlify UI (Site configuration → Environment variables), not here:
+#
+#   NEXT_PUBLIC_SUPABASE_URL        https://<project-ref>.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY   the project's public "anon" key
+#   CRON_SECRET                     shared secret for /api/cron/tick
+#
+# Both NEXT_PUBLIC_ values are safe to expose: they are public credentials and
+# every row they can read is protected by Row Level Security. The Supabase
+# service-role key must NEVER be added to this file or any client-reachable
+# variable.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Next.js on Netlify needs this so client-side navigation requests are rewritten
+# to the SSR server instead of 404ing, and middleware runs at the edge.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# The scheduler endpoint must never be cached or indexed.
+[[headers]]
+  for = "/api/cron/*"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
+    X-Robots-Tag = "noindex"
+    X-Frame-Options = "DENY"

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { PageHeader, Section } from "@/components/layout/PageHeader";
+import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Alert } from "@/components/ui/Alert";
 import { getSessionInfo } from "@/lib/profile";
 
@@ -20,11 +21,7 @@ export default async function DashboardPage() {
           description="One place for your requests, donor alerts, and activity."
         />
         <Section className="max-w-xl">
-          <Alert variant="warning" title="Authentication is not configured yet">
-            The Supabase project URL and anon key are missing from this deployment.
-            Add them to <code>.env.local</code> and restart the app — then log in to see
-            your dashboard here.
-          </Alert>
+          <AuthNotConfigured action="loading your dashboard" />
         </Section>
       </>
     );

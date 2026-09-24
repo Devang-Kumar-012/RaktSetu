@@ -52,7 +52,7 @@ export default function DonorPage() {
             minutes, and you can edit everything later from your profile page.
           </p>
           <div className="mt-6 flex flex-wrap gap-4">
-            <ButtonLink href="/register" size="lg">
+            <ButtonLink href="/register?role=donor" size="lg">
               Create a donor account
             </ButtonLink>
             <ButtonLink href="/login" variant="secondary" size="lg">

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
@@ -26,9 +27,7 @@ export default async function ResetPasswordPage() {
       description="Choose a strong password you do not use anywhere else."
     >
       {!configured ? (
-        <Alert variant="warning" title="Authentication is not configured yet">
-          The Supabase project URL and anon key are missing from this deployment.
-        </Alert>
+        <AuthNotConfigured action="resetting your password" />
       ) : !hasRecoverySession ? (
         <Alert variant="error" title="This reset link is not valid anymore">
           Reset links expire and work only once. Request a fresh one — it takes a

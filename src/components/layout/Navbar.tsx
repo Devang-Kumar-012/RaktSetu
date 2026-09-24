@@ -127,7 +127,7 @@ export function Navbar({
                 Log in
               </ButtonLink>
               <ButtonLink href="/register" size="md">
-                Join RaktSetu
+                Create account
               </ButtonLink>
             </>
           )}
@@ -199,7 +199,7 @@ export function Navbar({
                   Log in
                 </ButtonLink>
                 <ButtonLink href="/register" onClick={() => setOpen(false)}>
-                  Join RaktSetu
+                  Create account
                 </ButtonLink>
               </>
             )}

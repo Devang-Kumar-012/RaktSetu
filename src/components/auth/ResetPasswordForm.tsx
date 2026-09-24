@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
+import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Button } from "@/components/ui/Button";
 import { PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
@@ -54,12 +55,7 @@ export function ResetPasswordForm() {
   }
 
   if (!configured) {
-    return (
-      <Alert variant="warning" title="Authentication is not configured yet">
-        The Supabase project URL and anon key are missing from this deployment.
-        Add them to <code>.env.local</code> and restart the app.
-      </Alert>
-    );
+    return <AuthNotConfigured action="setting a new password" />;
   }
 
   return (
