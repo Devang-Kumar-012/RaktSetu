@@ -68,6 +68,56 @@ Run these in the Supabase SQL editor (Dashboard → SQL Editor), in order:
     `last_donation_date`/`donation_count` when an admin records a donation so
     the cooldown actually starts
 
+13. `supabase/migrations/0013_notification_consistency.sql` — the notification
+    centre and its event consistency: nine new kinds (one stable kind per
+    logical event — request created, volunteer-nearby, assisted-request
+    accepted/fulfilled/cancelled/expired, admin report received, acceptance
+    confirmed, account status changed), duplicate
+    prevention as a database invariant (partial unique index on
+    `(user_id, kind, request_id, alert_id)` plus a `BEFORE INSERT` guard that
+    silently skips an already-delivered event on every insert path), a
+    requester + assisting-volunteer arm for the single active→terminal
+    transition, a locality-scoped volunteer alert notice, one operational admin
+    notice (a new abuse report), and `prune_read_notifications()` — a bounded,
+    read-only, never-unread retention sweep driven by the existing guarded
+    pg_cron install, plus an index for the shell's unread badge
+
+14. `supabase/migrations/0014_platform_safety.sql` — anti-abuse, request reporting and
+    platform safety. It also **fixes a real defect in 0010**, which revoked UPDATE on
+    `request_reports` and never granted it back: the "Admins can review reports" policy
+    existed but was unreachable, so every moderation action silently failed. The grant
+    is restored column-limited to `(status, reviewed_at)`, so moderation can move a
+    report between states and nothing else. Adds the controlled reason set
+    (`fake`, `incorrect_information`, `no_longer_needed`, `abuse_misuse`, `other`,
+    with the legacy `spam`/`harassment` values kept valid for historical rows) and an
+    `under_review` state, giving the queue open / under review / resolved.
+    `platform_safety_limits` is a single admin-editable row holding every anti-abuse
+    limit — enforced by `BEFORE INSERT`/`BEFORE UPDATE` triggers in the database, so
+    it cannot be bypassed by calling PostgREST directly, and it is tunable at
+    `/admin/settings` without a code change. The guards only fire for signed-in
+    users and fail open if the limits row is missing, so service writes are never
+    rate limited and abuse protection can never be the reason a real emergency is
+    refused. Reporting never touches `blood_requests`: moderation state lives only in
+    `request_reports.status`.
+
+15. `supabase/migrations/0015_campus_blood_drives.sql` — Campus Blood Drive Mode, a
+    **separate planned workflow** from emergency blood requests. Adds
+    `campus_blood_drives` (title, organiser, schedule, venue, locality,
+    instructions, target units, upcoming/ongoing/completed/cancelled, published)
+    and `campus_drive_registrations` (unique per donor+drive, with
+    registered → checked_in → participated state). A drive never creates,
+    edits, closes or alerts on a blood request, and the request lifecycle,
+    ring engine and acceptance model are untouched — there is still no
+    'accepted' request status. `donation_history` gains a nullable `drive_id`
+    + `blood_component` so a drive donation is recorded in the **existing**
+    ledger, which means the existing 0012 cooldown trigger starts the donor's
+    availability interval automatically: one eligibility system, not two. A
+    partial unique index closes the duplicate hole (a `NULL` request_id cannot
+    dedupe itself in SQL). Registration transitions are enforced by a database
+    trigger, and drives gain four in-app notification kinds plus a `drive_id`
+    so each donor gets at most one of each drive event per drive. No SMS,
+    e-mail, WhatsApp, Telegram or other external provider is introduced.
+
 All are idempotent — safe to re-run.
 
 ## Locations & distance (privacy model)
@@ -162,12 +212,42 @@ preview of who would match. Both requester pages refresh themselves through the 
 live signal — window focus/visibility plus a best-effort Realtime INSERT on the caller's own
 `notifications` rows — and stay fully usable when realtime is unavailable.
 
-`/notifications` is the shared in-app notification centre for every role — alert
-received/expiring, another donor already accepted, request fulfilled/cancelled/expired
-(with the accepted donor told specifically), acceptances, closures, ring completion,
-and donation-interval updates — emitted exclusively by SECURITY DEFINER database
-functions (0011 + 0012): idempotent and emitters-only. RaktSetu has no email/SMS/chat
-providers.
+`/notifications` is the ONE shared in-app notification centre for every role — there
+is no per-role variant. It shows the kind, an exact timestamp, the title, a short
+message, and a destination link where one exists; unread rows use the blood-tinted
+glass surface **and** an explicit "Unread" marker, so state is never colour-only.
+Every row has a 44 px-tall **mark as read** control, and the header offers **mark all
+as read** against the exact database unread count (the signed-in shell carries the
+same count as a badge — both are asked of the database, never inferred from a
+rendered list). Read state is a per-row `read_at` on a per-recipient row: marking a
+notification read for one user cannot touch another user's copy.
+
+What generates a notification is deliberately narrow — one stable kind per logical
+event, no notice for every minor row change. Donors: alert received, respond-soon
+(one-shot), another donor already accepted, and the specific fulfilled/cancelled/
+expired outcome (with the accepted donor told specifically), plus eligibility
+updates. Requesters: request created, a donor accepted, rings completed, and the
+closure of their own request. Volunteers: a nearby emergency in their own locality,
+a donor accepting a request they assist, and that request's closure. Admins: the one
+operational event that waits on them — a new abuse report. The same logical event
+never produces a duplicate: retries, repeated scheduler runs, page refreshes, and
+re-transitions are absorbed by a database-level event key (partial unique index plus
+a `BEFORE INSERT` guard), not by hiding rows in the UI.
+
+Routing is role-aware and only ever points at an existing page — the requester's
+`/requests/[id]`, the donor dashboard (deep-linked to the donor's own alert card
+while it is still actionable), `/volunteer/requests/[id]`, or the admin console — so
+no notification-specific detail page exists. Deleted requests take their
+notifications with them (cascade), and a closed or expired reference degrades to the
+role's list page, which keeps working and explains the outcome. Notification text
+carries no contact data and no coordinates: it never reveals a phone number or exact
+location before the existing acceptance flow permits it.
+
+Notifications are emitted exclusively by SECURITY DEFINER database functions
+(0011–0013), revoked from clients — the only thing a user can write is their own
+`read_at`. RaktSetu has no email/SMS/chat providers. Read notifications older than
+90 days are pruned by a bounded daily job that rebuilds the same guarded pg_cron
+schedule the ring engine already uses; unread ones are never deleted.
 
 ## Tech stack
 
@@ -195,10 +275,20 @@ npm run dev
 - `npm run check:rings` — emergency ring-engine checks with a fake clock: ring start,
   10-minute window boundaries, exhaustion, closure/acceptance stops, idempotence, ring
   selection rules, due-at computation, atomic acceptance outcomes, privacy gates,
-  SQL↔TS invariants, and the migration-0012 donor-experience security regression
+  SQL↔TS invariants, the migration-0012 donor-experience security regression
   group (emitter privileges, own-row gates, approximate-distance-only output,
-  notification idempotence, untouched request lifecycle). No database or credentials
-  needed.
+  notification idempotence, untouched request lifecycle), and the migration-0013
+  notification-centre group (TS↔SQL kind parity, database-level duplicate
+  prevention, per-recipient read state with DB-backed unread counts, role-safe
+  routing, notification-text privacy, conservative retention, mobile-safe
+  rendering), and the migration-0014 platform-safety group (report moderation is
+  actually reachable after the 0010 grant defect, reporting never alters the
+  request lifecycle, duplicate reports blocked by a database constraint, and the
+  anti-abuse limits centralised in one configurable row) and the migration-0015
+  campus-drive group (drives never touch the request lifecycle, drive donations
+  reuse the existing ledger and its cooldown, duplicate registrations and
+  donations are database-blocked, and no public drive surface reads donor
+  contact or location). No database or credentials needed.
 - `npm run check` — rule checks, ring-engine checks, then the production build
 - `npm run smoke` — start a local server and hit every route (writes results to
   `/tmp/rs-routes.txt`)

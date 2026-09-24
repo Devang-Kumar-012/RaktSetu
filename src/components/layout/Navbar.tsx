@@ -113,6 +113,9 @@ export function Navbar({
               <ButtonLink href="/profile" variant="ghost" size="md">
                 Profile
               </ButtonLink>
+              <ButtonLink href="/drives" variant="ghost" size="md">
+                Drives
+              </ButtonLink>
               <ButtonLink href={dashboardHref} size="md">
                 Dashboard
               </ButtonLink>

@@ -3,7 +3,12 @@
  * Server actions ALWAYS re-validate — client checks are convenience only.
  */
 
-import { AVAILABILITY_OPTIONS, BLOOD_GROUPS, REGISTER_ROLES } from "@/lib/constants";
+import {
+  AVAILABILITY_OPTIONS,
+  BLOOD_GROUPS,
+  REGISTER_ROLES,
+  REPORT_DETAILS_MAX,
+} from "@/lib/constants";
 
 export function validateFullName(value: string): string | null {
   const name = value.trim();
@@ -141,6 +146,25 @@ export function validateRequestNote(value: string): string | null {
   const note = value.trim();
   if (note.length > REQUEST_NOTE_MAX) {
     return `Note must be ${REQUEST_NOTE_MAX} characters or fewer.`;
+  }
+  return null;
+}
+
+/**
+ * Optional free-text on a request report (migration 0014).
+ *
+ * Intentionally its own validator, mirroring the database's
+ * `char_length(details) <= 500` check, rather than reusing the request-note
+ * rule: they happen to share a ceiling today but describe different fields and
+ * must be free to diverge.
+ *
+ * This text is visible to administrators, so the copy is deliberately brief and
+ * asks for facts only — never medical history or anyone's contact details.
+ */
+export function validateReportDetails(value: string): string | null {
+  const details = value.trim();
+  if (details.length > REPORT_DETAILS_MAX) {
+    return `Details must be ${REPORT_DETAILS_MAX} characters or fewer.`;
   }
   return null;
 }

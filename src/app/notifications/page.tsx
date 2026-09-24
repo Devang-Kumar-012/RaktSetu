@@ -47,7 +47,7 @@ export default async function NotificationsPage() {
       supabase
         .from("notifications")
         .select(
-          "id, user_id, kind, request_id, alert_id, title, body, link, read_at, created_at"
+          "id, user_id, kind, request_id, alert_id, drive_id, title, body, link, read_at, created_at"
         )
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false })

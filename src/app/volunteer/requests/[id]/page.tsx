@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 
-import { requireRolePage } from "@/lib/profile";
+import { requireRolePage, getSessionInfo } from "@/lib/profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/utils";
 import {
@@ -38,6 +38,7 @@ export default async function VolunteerRequestDetailPage({
 
   await requireRolePage("volunteer");
 
+  const session = await getSessionInfo();
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("volunteer_request_detail", {
     p_request_id: id,
@@ -50,6 +51,16 @@ export default async function VolunteerRequestDetailPage({
 
   const request = (data as VolunteerRequestView[] | null)?.[0];
   if (!request) notFound();
+
+  // Own-row RLS: this can only ever reveal whether THIS volunteer already
+  // filed a report on this request, never anyone else's reporting activity.
+  const { data: ownReports } = await supabase
+    .from("request_reports")
+    .select("id")
+    .eq("request_id", request.id)
+    .eq("reporter_id", session.user?.id ?? "")
+    .limit(1);
+  const alreadyReported = (ownReports ?? []).length > 0;
 
   return (
     <>
@@ -129,11 +140,15 @@ export default async function VolunteerRequestDetailPage({
             <CardBody className="pt-6">
               <h3 className="text-lg font-bold text-ink-900">Something wrong with this request?</h3>
               <p className="mt-1 text-base text-ink-600">
-                Report fake or suspicious requests for admin review. You can report a
+                Report a fake, incorrect, or no-longer-needed request for admin review.
+                Reporting never cancels or hides the request, and you can report a
                 request once.
               </p>
-              <div className="mt-4">
-                <RequestReportForm requestId={request.id} />
+              <div className="mt-4 max-w-2xl">
+                <RequestReportForm
+                  requestId={request.id}
+                  alreadyReported={alreadyReported}
+                />
               </div>
             </CardBody>
           </Card>

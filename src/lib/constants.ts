@@ -1,4 +1,6 @@
 /** Shared app constants. */
+import type { ReportStatus } from "@/types";
+
 export const APP_NAME = "RaktSetu";
 export const APP_TAGLINE = "A blood donor network for urgent needs.";
 export const APP_DESCRIPTION =
@@ -167,28 +169,127 @@ export const ASSISTANCE_STATUS_LABELS: Record<string, string> = {
   stopped: "Stopped assisting",
 };
 
-/** Request abuse reports (migration 0010). */
+/**
+ * Request abuse reports (migration 0010, reason set widened by 0014).
+ *
+ * Deliberately small and factual: a reporter is describing something they
+ * observed, not diagnosing anyone. No medical or personal detail is ever
+ * collected, and the optional note stays with the moderation queue.
+ *
+ * `spam` and `harassment` are the legacy 0010 values. They remain valid on
+ * historical rows and are still rendered, but they are no longer offered —
+ * `abuse_misuse` replaces them for new reports.
+ */
 export const REPORT_REASONS = [
   { value: "fake", label: "Fake or suspicious request" },
-  { value: "spam", label: "Spam or repeated posting" },
-  { value: "harassment", label: "Harassment or inappropriate content" },
-  { value: "other", label: "Something else" },
+  { value: "incorrect_information", label: "Incorrect information" },
+  { value: "no_longer_needed", label: "Request no longer needed" },
+  { value: "abuse_misuse", label: "Abuse or misuse" },
+  { value: "other", label: "Other" },
 ] as const;
 
 export const REPORT_REASON_LABELS: Record<string, string> = {
   fake: "Fake / suspicious",
-  spam: "Spam",
-  harassment: "Harassment",
+  incorrect_information: "Incorrect information",
+  no_longer_needed: "No longer needed",
+  abuse_misuse: "Abuse / misuse",
   other: "Other",
+  // Legacy 0010 values — still rendered on historical reports.
+  spam: "Spam (legacy)",
+  harassment: "Harassment (legacy)",
 };
+
+/** Moderation states. `under_review` means an admin has picked the report up;
+ *  `reviewed` and `dismissed` are the two terminal outcomes. */
+export const REPORT_STATUSES = ["open", "under_review", "reviewed", "dismissed"] as const;
 
 export const REPORT_STATUS_LABELS: Record<string, string> = {
   open: "Open",
+  under_review: "Under review",
   reviewed: "Reviewed",
   dismissed: "Dismissed",
 };
 
+/** Terminal moderation states — these rows no longer show review controls. */
+export const RESOLVED_REPORT_STATUSES: ReportStatus[] = ["reviewed", "dismissed"];
+
 export const REPORT_DETAILS_MAX = 500;
+
+/**
+ * Anti-abuse limits (migration 0014).
+ *
+ * The DATABASE is the enforcement point — these bounds only validate what an
+ * admin may save into the single `platform_safety_limits` row, and they mirror
+ * the CHECK constraints there. Defaults are deliberately generous: the aim is
+ * to stop mass spam, never to delay a genuine emergency request.
+ */
+export const SAFETY_LIMITS_DEFAULTS = {
+  maxActiveRequestsPerRequester: 3,
+  minRequestIntervalSeconds: 45,
+  maxRequestsPerHour: 10,
+  maxReportsPerDay: 10,
+  maxAlertResponsesPerMinute: 20,
+} as const;
+
+/** Admin-editable bounds — identical to the migration 0014 CHECK constraints. */
+export const SAFETY_LIMITS_BOUNDS = {
+  activeRequests: { min: 1, max: 20 },
+  requestIntervalSeconds: { min: 0, max: 3600 },
+  requestsPerHour: { min: 1, max: 100 },
+  reportsPerDay: { min: 1, max: 100 },
+  responsesPerMinute: { min: 1, max: 120 },
+} as const;
+
+/** SQLSTATE raised by the 0014 anti-abuse guards, so a limit can be reported
+ *  as a clear, honest message instead of a generic failure. */
+export const SAFETY_LIMIT_SQLSTATE = "RS001";
+
+/** Campus blood drives (migration 0015). A drive's lifecycle is entirely its
+ *  own — it is NOT the blood-request lifecycle, and drives never create or
+ *  change a blood request. */
+export const DRIVE_STATUS_OPTIONS = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "ongoing", label: "Ongoing" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+] as const;
+
+export const DRIVE_STATUS_LABELS: Record<string, string> = {
+  upcoming: "Upcoming",
+  ongoing: "Ongoing",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+export const DRIVE_STATUS_STYLES: Record<string, string> = {
+  upcoming: "bg-blue-50 text-blue-900 border border-blue-200",
+  ongoing: "bg-green-50 text-green-900 border border-green-200",
+  completed: "bg-ink-100 text-ink-600 border border-ink-200",
+  cancelled: "bg-red-50 text-red-900 border border-red-200",
+};
+
+export const DRIVE_REGISTRATION_STATUS_LABELS: Record<string, string> = {
+  registered: "Registered",
+  checked_in: "Checked in",
+  participated: "Participated",
+  cancelled: "Cancelled",
+};
+
+/** Max characters for a drive description / venue-style free text. */
+export const DRIVE_TITLE_MAX = 120;
+export const DRIVE_ORGANIZER_MAX = 160;
+export const DRIVE_DESCRIPTION_MAX = 1000;
+export const DRIVE_REGISTRATION_NOTE_MAX = 200;
+
+/** Target-unit bounds, mirroring the migration 0015 CHECK. */
+export const DRIVE_TARGET_BOUNDS = { min: 1, max: 5000 } as const;
+
+/**
+ * How far ahead the in-app "coming up" reminder looks. Mirrors the pg_cron
+ * call in migration 0015 so the application tick and the scheduled sweep cover
+ * the same window (and stay idempotent via reminder_sent_at).
+ */
+export const DRIVE_REMINDER_WINDOW_HOURS = 48;
 
 /** Platform settings bounds (mirror the database checks in migration 0010). */
 export const SETTINGS_BOUNDS = {

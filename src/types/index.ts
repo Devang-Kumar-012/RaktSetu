@@ -155,9 +155,21 @@ export interface PlatformSettings {
   updated_at: string;
 }
 
-/** Row shape of `request_reports` (migration 0010). */
-export type ReportReason = "fake" | "spam" | "harassment" | "other";
-export type ReportStatus = "open" | "reviewed" | "dismissed";
+/** Row shape of `request_reports` (migration 0010, widened by 0014). */
+/** The five reasons RaktSetu offers. `spam` and `harassment` are the legacy
+ *  0010 values: still valid on historical rows, no longer offered in the UI. */
+export type ReportReason =
+  | "fake"
+  | "incorrect_information"
+  | "no_longer_needed"
+  | "abuse_misuse"
+  | "other"
+  | "spam"
+  | "harassment";
+
+/** Moderation state of a report. NEVER the request's lifecycle status:
+ *  `open -> under_review -> reviewed | dismissed`. */
+export type ReportStatus = "open" | "under_review" | "reviewed" | "dismissed";
 
 export interface RequestReport {
   id: string;
@@ -171,15 +183,77 @@ export interface RequestReport {
   updated_at: string;
 }
 
-/** Row shape of `donation_history` (migration 0010). No medical data. */
+/** Row shape of `donation_history` (migration 0010, extended by 0015). No
+ *  medical data. `drive_id` is set when the donation was collected at a campus
+ *  drive; `request_id` is then null, never both. */
 export interface DonationRecord {
   id: string;
   donor_id: string;
   request_id: string | null;
+  drive_id: string | null;
+  blood_component: BloodComponent | null;
   donated_on: string;
   units: number;
   created_at: string;
   updated_at: string;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Campus blood drives (migration 0015)                                      */
+/* ------------------------------------------------------------------------ */
+
+/** A drive's own lifecycle — deliberately NOT the blood-request lifecycle, and
+ *  never mixed with it. There is still no 'accepted' request status anywhere. */
+export type CampusDriveStatus = "upcoming" | "ongoing" | "completed" | "cancelled";
+
+/** A donor's participation state within one drive. */
+export type DriveRegistrationStatus =
+  | "registered"
+  | "checked_in"
+  | "participated"
+  | "cancelled";
+
+export interface CampusDrive {
+  id: string;
+  title: string;
+  organizer: string;
+  drive_date: string;
+  starts_at: string;
+  ends_at: string;
+  venue: string;
+  locality: string;
+  description: string | null;
+  target_units: number | null;
+  status: CampusDriveStatus;
+  published: boolean;
+  reminder_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A registration row. Exposes a donor uuid + state only — never a phone
+ *  number or location, which stay behind donor_profiles' own-row RLS. */
+export interface DriveRegistration {
+  id: string;
+  drive_id: string;
+  donor_id: string;
+  status: DriveRegistrationStatus;
+  note: string | null;
+  registered_at: string;
+  updated_at: string;
+}
+
+/** Aggregate operational figures for one drive (campus_drive_stats()).
+ *  Counts only — no individual donor is ever represented. */
+export interface CampusDriveStats {
+  registered: number;
+  checked_in: number;
+  participated: number;
+  cancelled: number;
+  units_collected: number;
+  target_units: number | null;
+  /** Blood-group -> registered-donor count. A tally, never a roster. */
+  group_breakdown: Record<string, number> | null;
 }
 
 /** Return shape of admin_platform_overview() (migration 0010). */
@@ -196,9 +270,24 @@ export interface AdminOverview {
   cancelled_requests: number;
   completed_donations: number;
   open_reports: number;
+  under_review_reports: number;
+  resolved_reports: number;
+  reports_last_24h: number;
   active_alerts: number;
   accepted_alerts: number;
   available_donors: number;
+}
+
+/** Singleton row of platform_safety_limits (migration 0014). Every anti-abuse
+ *  limit lives here so none is a magic number inside a trigger. */
+export interface PlatformSafetyLimits {
+  id: number;
+  max_active_requests_per_requester: number;
+  min_request_interval_seconds: number;
+  max_requests_per_hour: number;
+  max_reports_per_day: number;
+  max_alert_responses_per_minute: number;
+  updated_at: string;
 }
 
 /** Return shape of admin_list_alerts() (migration 0010). Admin-only. */
@@ -260,6 +349,10 @@ export interface DonorDonationRow {
   hospital_locality: string | null;
   request_status: BloodRequestStatus | null;
   request_id: string | null;
+  /** 0015: set when this donation was collected at a campus drive. Request
+   *  columns are null for those rows, and vice versa. */
+  drive_id: string | null;
+  drive_title: string | null;
 }
 
 /** Row shape returned by public.reveal_accepted_donors() (migration 0011).
@@ -323,6 +416,8 @@ export type NotificationKind =
   | "rings_exhausted"
   // donor: eligibility / account
   | "eligibility_updated"
+  | "acceptance_confirmed"
+  | "account_status_changed"
   // volunteer: coordination
   | "volunteer_request_nearby"
   | "assisted_request_accepted"
@@ -330,7 +425,12 @@ export type NotificationKind =
   | "assisted_request_cancelled"
   | "assisted_request_expired"
   // admin: operations
-  | "admin_report_received";
+  | "admin_report_received"
+  // 0015: campus blood drives (in-app only)
+  | "drive_registered"
+  | "drive_upcoming_reminder"
+  | "drive_updated"
+  | "drive_completed";
 
 export interface NotificationRow {
   id: number;
@@ -339,6 +439,9 @@ export interface NotificationRow {
 
   request_id: string | null;
   alert_id: number | null;
+  /** 0015: set for campus-drive events, so the same donor gets at most one of
+   *  each drive event per drive rather than one ever. */
+  drive_id: string | null;
   title: string;
   body: string;
   link: string | null;

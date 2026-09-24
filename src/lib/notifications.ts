@@ -32,7 +32,7 @@ export type NotificationViewerRole =
 /** The minimal row shape the resolver needs (keeps it usable offline). */
 export type NotificationLike = Pick<
   NotificationRow,
-  "kind" | "request_id" | "alert_id" | "link"
+  "kind" | "request_id" | "alert_id" | "link" | "drive_id"
 >;
 
 /** Human labels, one per database kind (mirrors notifications_kind_check). */
@@ -52,6 +52,8 @@ export const NOTIFICATION_KIND_LABELS: Record<string, string> = {
   rings_exhausted: "Rings completed",
   // donor: eligibility
   eligibility_updated: "Eligibility updated",
+  acceptance_confirmed: "Acceptance confirmed",
+  account_status_changed: "Account update",
   // volunteer: coordination
   volunteer_request_nearby: "Request near you",
   assisted_request_accepted: "Assisted request — donor found",
@@ -60,6 +62,11 @@ export const NOTIFICATION_KIND_LABELS: Record<string, string> = {
   assisted_request_expired: "Assisted request expired",
   // admin: operations
   admin_report_received: "Report to review",
+  // 0015: campus blood drives (in-app only)
+  drive_registered: "Drive registered",
+  drive_upcoming_reminder: "Drive coming up",
+  drive_updated: "Drive update",
+  drive_completed: "Drive completed",
 };
 
 /** Every kind the database accepts — kept in sync with migration 0013. */
@@ -75,12 +82,19 @@ export const NOTIFICATION_KINDS = [
   "donor_accepted",
   "rings_exhausted",
   "eligibility_updated",
+  "acceptance_confirmed",
+  "account_status_changed",
   "volunteer_request_nearby",
   "assisted_request_accepted",
   "assisted_request_fulfilled",
   "assisted_request_cancelled",
   "assisted_request_expired",
   "admin_report_received",
+  // 0015: campus blood drives (in-app only)
+  "drive_registered",
+  "drive_upcoming_reminder",
+  "drive_updated",
+  "drive_completed",
 ] as const;
 
 export function notificationKindLabel(kind: string): string {
@@ -119,6 +133,17 @@ const DONOR_OPEN_ALERT_KINDS = new Set<string>([
   "alert_expiring",
 ]);
 
+/** 0015: campus-drive kinds. All of them are about ONE drive, so they all
+ *  resolve to that drive's own page. Kept as an explicit set rather than an
+ *  `if (kind.startsWith("drive_"))` so a future kind cannot silently inherit
+ *  a destination it was not designed for. */
+const DRIVE_KINDS = new Set<string>([
+  "drive_registered",
+  "drive_upcoming_reminder",
+  "drive_updated",
+  "drive_completed",
+]);
+
 /**
  * Stored links come from the database (NOT NULL-checked against a path-only
  * regular expression in migration 0011). Re-validated here so a client can
@@ -148,6 +173,23 @@ export function resolveNotificationDestination(
   const alertId = notification.alert_id;
   const kind = notification.kind;
 
+  // Account notices belong to the existing profile page for every role —
+  // they must never fall through to a role dashboard.
+  if (kind === "account_status_changed") {
+    return { href: "/profile", label: "Open profile" };
+  }
+
+  // Campus drives (0015). Every drive event is about one drive, and every role
+  // that can receive one (a donor, or an admin/volunteer managing drives) can
+  // legitimately open that drive. A requester is never a drive recipient, so
+  // that role gets no drive destination rather than a link to an unusable page.
+  if (DRIVE_KINDS.has(kind)) {
+    if (notification.drive_id && role !== "requester") {
+      return { href: `/drives/${notification.drive_id}`, label: "Open drive" };
+    }
+    return role === "admin" ? { href: "/admin/drives", label: "Open drives" } : null;
+  }
+
   if (role === "admin") {
     if (kind === "admin_report_received") {
       return { href: "/admin/reports", label: "Open reports queue" };
@@ -169,6 +211,11 @@ export function resolveNotificationDestination(
   if (role === "donor") {
     if (alertId !== null && DONOR_OPEN_ALERT_KINDS.has(kind)) {
       // Deep link to the donor's own alert card when it is still actionable.
+      return { href: `/dashboard/donor#alert-${alertId}`, label: "Open alerts" };
+    }
+    if (kind === "acceptance_confirmed" && alertId !== null) {
+      // Post-acceptance confirmation: the alert card is closed, but the anchor
+      // still lands the donor on their own accepted record.
       return { href: `/dashboard/donor#alert-${alertId}`, label: "Open alerts" };
     }
     return { href: "/dashboard/donor", label: "Open donor dashboard" };

@@ -10,6 +10,7 @@ import { bloodRequestFieldErrors } from "@/lib/validation";
 import type { BloodComponent, RequestUrgency } from "@/types";
 import { parseCoordInput, roundCoord } from "@/lib/geo";
 import { geocodeHospitalArea } from "@/lib/geocode";
+import { safetyLimitMessage } from "@/lib/safety";
 
 /** Plain-language message when a lifecycle update matched zero rows: the
  *  request was no longer in the expected state (someone or something else
@@ -101,6 +102,12 @@ export async function createBloodRequest(
   });
 
   if (dbError) {
+    // The 0014 anti-abuse guard raises a dedicated SQLSTATE. Its message is a
+    // complete, plain sentence (including "contact the blood bank directly"
+    // for a genuine emergency), so it is shown as-is rather than being hidden
+    // behind a generic failure that would leave a real emergency without help.
+    const limited = safetyLimitMessage(dbError);
+    if (limited) return { ok: false, error: limited };
     console.error("createBloodRequest failed:", dbError.message);
     return { ok: false, error: "Could not create the request. Please try again." };
   }

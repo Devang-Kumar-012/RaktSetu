@@ -10,6 +10,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { RequestActions } from "@/components/requests/RequestActions";
 import { RequestCountdown } from "@/components/requests/RequestCountdown";
+import { RequestReportForm } from "@/components/requests/RequestReportForm";
 import {
   ALERT_RINGS_KM,
   ALERT_WINDOW_MINUTES,
@@ -90,10 +91,21 @@ export default async function RequestDetailsPage({
 
   // Post-acceptance reveal (null once contact_shared_until has passed) and
   // ring-engine progress — both own-request only.
-  const [{ data: revealRows }, { data: ringRows }] = await Promise.all([
-    supabase.rpc("reveal_accepted_donors", { p_request_ids: [request.id] }),
-    supabase.rpc("requester_ring_status", { p_request_ids: [request.id] }),
-  ]);
+  const [{ data: revealRows }, { data: ringRows }, { data: ownReports }] =
+    await Promise.all([
+      supabase.rpc("reveal_accepted_donors", { p_request_ids: [request.id] }),
+      supabase.rpc("requester_ring_status", { p_request_ids: [request.id] }),
+      // Own-row RLS scopes this to the caller's own reports, so it can only
+      // ever say "you already reported this" — never anything about others.
+      supabase
+        .from("request_reports")
+        .select("id")
+        .eq("request_id", request.id)
+        .eq("reporter_id", session.user.id)
+        .limit(1),
+    ]);
+
+  const alreadyReported = (ownReports ?? []).length > 0;
 
   const acceptedDonor = ((revealRows as AcceptedDonor[] | null) ?? [])[0] ?? null;
   const rings = ((ringRows as RequesterRingStatus[] | null) ?? [])
@@ -242,13 +254,12 @@ export default async function RequestDetailsPage({
                     Ring {ring?.ring_index ?? index + 1} · within {km} km
                   </span>
                   <span
-                    className={`rounded-md px-3 py-1 text-sm font-bold ${
-                      live
+                    className={`rounded-md px-3 py-1 text-sm font-bold ${live
                         ? "bg-blood-50 text-blood-700 border border-blood-200"
                         : done
                           ? "bg-green-50 text-green-900 border border-green-200"
                           : "bg-ink-100 text-ink-600 border border-ink-200"
-                    }`}
+                      }`}
                   >
                     {live ? "Live now" : done ? "Completed" : "Not started"}
                   </span>
@@ -338,6 +349,31 @@ export default async function RequestDetailsPage({
           only, between you and a donor who accepted, and only for the response window.
           RaktSetu coordinates; the blood bank screens and decides.
         </Alert>
+
+        {/* Reporting is deliberately last, visually quiet, and available on
+            closed requests too: a request that turned out to be fake is still
+            worth reporting after it ends. It never changes this request's
+            status — a report only ever starts a moderation record. */}
+        <Card className="mt-8">
+          <CardBody className="pt-6">
+            <details className="group">
+              <summary className="cursor-pointer text-base font-semibold text-ink-900 marker:text-ink-400">
+                Something wrong with this request?
+              </summary>
+              <p className="mt-2 max-w-2xl text-base text-ink-600">
+                Tell an administrator if the blood group, units, hospital or urgency look
+                wrong, or if this request is no longer needed. Reporting never cancels or
+                hides a request, and you can report it once.
+              </p>
+              <div className="mt-4 max-w-2xl">
+                <RequestReportForm
+                  requestId={request.id}
+                  alreadyReported={alreadyReported}
+                />
+              </div>
+            </details>
+          </CardBody>
+        </Card>
       </Section>
     </>
   );

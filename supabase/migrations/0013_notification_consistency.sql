@@ -9,19 +9,20 @@
 -- first-acceptance-wins model are UNCHANGED. No matching rule is touched.
 --
 -- Adds:
---   1. Seven new notification kinds — ONE stable kind per logical event, so a
+--   1. Nine new notification kinds — ONE stable kind per logical event, so a
 --      "does this already exist" question always has a single, indexable
 --      answer: request_created, assisted_request_accepted,
 --      assisted_request_fulfilled, assisted_request_cancelled,
 --      assisted_request_expired, volunteer_request_nearby,
---      admin_report_received.
+--      admin_report_received, acceptance_confirmed, account_status_changed.
 --   2. Duplicate prevention as a DATABASE invariant (not a UI trick):
 --      a partial UNIQUE index on the stable event key
 --      (recipient, kind, request_id, alert_id) plus a BEFORE INSERT guard
 --      trigger that silently skips an already-delivered event. Every insert
 --      path is covered — including the 0011 ring-engine closure sweep, which
---      is deliberately NOT redefined here. `eligibility_updated` and
---      `admin_report_received` are intentionally repeatable and excluded.
+--      is deliberately NOT redefined here. `eligibility_updated`,
+--      `admin_report_received` and `account_status_changed` are intentionally
+--      repeatable and excluded.
 --   3. emit_request_created() — the requester's "your request is live"
 --      confirmation, plus a locality-scoped "relevant emergency request"
 --      notice for on-duty volunteers. Neither leaks requester contact data.
@@ -67,7 +68,9 @@ alter table public.notifications
     'assisted_request_accepted', 'assisted_request_fulfilled',
     'assisted_request_cancelled', 'assisted_request_expired',
     'volunteer_request_nearby',
-    'admin_report_received'
+    'admin_report_received',
+    -- 0013: donor confirmation + account state
+    'acceptance_confirmed', 'account_status_changed'
   ));
 
 comment on column public.notifications.kind is
@@ -81,41 +84,102 @@ comment on column public.notifications.kind is
 -- again. The event key below is stable across retries: the recipient, the
 -- event kind, and the referenced request/alert. NULLs are folded to sentinels
 -- so the key behaves identically for events without an alert.
-create unique index if not exists notifications_event_once_uidx
-  on public.notifications (
-    user_id,
-    kind,
-    coalesce(request_id, '00000000-0000-0000-0000-000000000000'::uuid),
-    coalesce(alert_id, 0)
-  )
-  where kind not in ('eligibility_updated', 'admin_report_received');
+--
+-- Intentionally repeatable kinds (no request/alert key, and each already
+-- guarded by an IS DISTINCT FROM trigger so it cannot fire twice for the same
+-- change): eligibility_updated, admin_report_received (one notice per report
+-- row — request_reports is unique per request+reporter), and
+-- account_status_changed.
+--
+-- Wrapped in a DO block on purpose: if an older deployment somehow already
+-- holds duplicate event rows, the index creation fails LOUDLY but the migration
+-- continues (the BEFORE INSERT guard below still prevents new duplicates), so a
+-- migration run never burns down because of historical rows and never deletes
+-- user data to "fix" itself.
+do $$
+begin
+  begin
+    create unique index if not exists notifications_event_once_uidx
+      on public.notifications (
+        user_id,
+        kind,
+        coalesce(request_id, '00000000-0000-0000-0000-000000000000'::uuid),
+        coalesce(alert_id, 0)
+      )
+      where kind not in (
+        'eligibility_updated', 'admin_report_received', 'account_status_changed'
+      );
+  exception when unique_violation then
+    raise notice 'historical duplicate notification event rows found; the event-once index was skipped — remove the duplicates and re-run 0013. New duplicates are still prevented by the BEFORE INSERT guard.';
+  end;
+end $$;
 
 -- The guard trigger is what makes the guarantee hold for EVERY insert path —
 -- including emitters that write to public.notifications directly instead of
 -- going through notify_user() (0011's ring-engine closure sweep, 0012's
--- expiring nudge). Returning NULL from a BEFORE INSERT trigger skips the row
--- without raising, so a duplicate can never poison a ring-engine transaction.
+-- expiring nudge). Legacy 0011 closeout rows are normalised to the same
+-- status-specific kind emitted by the 0013 closeout trigger. The advisory lock
+-- makes the existence check safe when two transactions deliver the same event
+-- concurrently: the second transaction waits, observes the committed row, and
+-- skips its insert instead of raising a unique-violation and failing the ring
+-- engine. Returning NULL from a BEFORE INSERT trigger skips the row without
+-- raising, so a duplicate can never poison a ring-engine transaction.
 create or replace function public.skip_duplicate_notification()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_request_status text;
+  v_event_key      text;
 begin
-  -- Intentionally repeatable kinds: a new donation date, and one notice per
-  -- report row (request_reports is unique per request+reporter, so a retried
-  -- report insert cannot fan out twice).
-  if new.kind in ('eligibility_updated', 'admin_report_received') then
+  -- 0011's ring-engine safety net predates the status-specific closeout
+  -- notifications in 0013. Normalise it before taking the event lock so a
+  -- closure racing the closeout trigger has exactly one stable event identity.
+  if new.kind = 'request_closed' and new.request_id is not null then
+    select r.status into v_request_status
+      from public.blood_requests r
+     where r.id = new.request_id;
+    if v_request_status in ('fulfilled', 'cancelled', 'expired') then
+      new.kind := 'request_' || v_request_status;
+    end if;
+  end if;
+
+  -- Intentionally repeatable kinds: a new donation date, one notice per report
+  -- row (request_reports is unique per request+reporter, so a retried report
+  -- insert cannot fan out twice), and a real account-status change (the
+  -- trigger's own IS DISTINCT FROM guard makes it once per change).
+  if new.kind in (
+    'eligibility_updated', 'admin_report_received', 'account_status_changed'
+  ) then
     return new;
   end if;
+
+  -- A transaction-scoped advisory lock closes the check-then-insert race. The
+  -- key includes the recipient and the stable logical event, so unrelated
+  -- notifications never block one another. hashtextextended is deterministic
+  -- for this transaction and does not require a new schema object.
+  v_event_key := concat_ws(
+    '|', new.user_id::text, new.kind,
+    coalesce(new.request_id::text, ''), coalesce(new.alert_id::text, '')
+  );
+  perform pg_advisory_xact_lock(hashtextextended(v_event_key, 0));
 
   if exists (
     select 1
       from public.notifications n
      where n.user_id = new.user_id
-       and n.kind = new.kind
        and n.request_id is not distinct from new.request_id
        and n.alert_id is not distinct from new.alert_id
+       and (
+         n.kind = new.kind
+         -- Historical rows may still have the legacy request_closed kind.
+         or (
+           new.kind in ('request_fulfilled', 'request_cancelled', 'request_expired')
+           and n.kind = 'request_closed'
+         )
+       )
   ) then
     -- The same logical event was already delivered to this recipient.
     return null;
@@ -474,10 +538,11 @@ create trigger request_reports_emit_admin
 -- Notifications accumulate forever otherwise (small rows, but unbounded). The
 -- rule here is deliberately timid: delete ONLY rows the recipient has already
 -- read and that are older than the retention window, at most p_max_rows at a
--- time. Unread rows, and every request/alert-linked row younger than the
--- window, are never touched — so nothing operationally important can vanish
--- before it has been seen. Callable by an active admin (RPC) or by the engine/
--- service context (pg_cron runs without a session uid).
+-- time — and hold the operationally important kinds (a real account change, an
+-- abuse report, and each request's terminal outcome) for the extended window
+-- instead. Unread rows are never touched, so nothing can vanish before it has
+-- been seen. Callable by an active admin (RPC) or by the engine/service
+-- context (pg_cron runs without a session uid).
 create or replace function public.prune_read_notifications(
   p_retain_days integer default 90,
   p_max_rows    integer default 500
@@ -488,23 +553,43 @@ security definer
 set search_path = public
 as $$
 declare
-  v_days    integer;
-  v_limit   integer;
-  v_deleted integer := 0;
+  v_days           integer;
+  v_important_days integer;
+  v_limit          integer;
+  v_deleted        integer := 0;
 begin
   if auth.uid() is not null and not public.is_current_user_admin() then
     return 0;
   end if;
 
   -- Clamped: a mis-typed call can never wipe recent history.
-  v_days  := least(greatest(coalesce(p_retain_days, 90), 30), 3650);
-  v_limit := least(greatest(coalesce(p_max_rows, 500), 1), 5000);
+  v_days           := least(greatest(coalesce(p_retain_days, 90), 30), 3650);
+  -- Operationally important kinds (a real account change, an abuse report
+  -- still worth auditing, and each request's terminal outcome) are held for
+  -- the longer of 4x the window or one year, clamped to the same ceiling.
+  v_important_days := least(greatest(v_days * 4, 365), 3650);
+  v_limit          := least(greatest(coalesce(p_max_rows, 500), 1), 5000);
 
   with doomed as (
     select n.id
       from public.notifications n
      where n.read_at is not null
        and n.created_at < now() - make_interval(days => v_days)
+       and (
+         -- Routine, already-read items go at the normal window ...
+         n.kind not in (
+           'account_status_changed',
+           'admin_report_received',
+           'request_fulfilled',
+           'request_cancelled',
+           'request_expired',
+           'request_closed',
+           'donor_accepted',
+           'acceptance_confirmed'
+         )
+         -- ... important ones only after the extended window.
+         or n.created_at < now() - make_interval(days => v_important_days)
+       )
      order by n.created_at asc
      limit v_limit
   )
@@ -521,7 +606,7 @@ revoke all on function public.prune_read_notifications(integer, integer) from pu
 grant execute on function public.prune_read_notifications(integer, integer) to authenticated;
 
 comment on function public.prune_read_notifications(integer, integer) is
-  'Conservative notification retention: deletes only READ rows older than the (clamped, min 30 day) retention window, at most p_max_rows per call. Unread rows are never deleted. Admin- or engine-context only.';
+  'Conservative notification retention: deletes only READ rows older than the (clamped, min 30 day) retention window, at most p_max_rows per call; operationally important kinds (account change, abuse report, request closure/acceptance) are held for the longer of 4x the window or 1 year. Unread rows are never deleted. Admin- or engine-context only.';
 
 -- One daily job, using the SAME guarded pg_cron install as 0011/0012 — no new
 -- worker, no new service. Where pg_cron is unavailable nothing is pruned at
@@ -549,6 +634,115 @@ begin
 exception when others then
   raise notice 'notification retention scheduler not installed (%)', sqlerrm;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- 8. emit_acceptance_confirmed() — the accepting donor's own confirmation
+-- ---------------------------------------------------------------------------
+-- An acceptance succeeded: the donor gets a durable in-app record of it (the
+-- dashboard panel is transient), naming the window in which the requester can
+-- see their contact. No requester contact data is copied here — the donor sees
+-- that on their own accepted alert card.
+create or replace function public.emit_acceptance_confirmed()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.blood_requests%rowtype;
+begin
+  if new.response is distinct from 'accepted' then
+    return null;
+  end if;
+
+  select * into r from public.blood_requests where id = new.request_id;
+  if not found then
+    return null;
+  end if;
+
+  perform public.notify_user(
+    new.donor_id,
+    'acceptance_confirmed',
+    'You accepted this request',
+    'Thank you — your acceptance is recorded for the ' || r.blood_group ||
+      ' need at ' || r.hospital_name || ', ' || r.hospital_locality ||
+      '. The requester can see your name and phone' ||
+      case when new.contact_shared_until is not null
+        then ' until ' || to_char(
+               new.contact_shared_until at time zone 'Asia/Kolkata',
+               'DD Mon, HH24:MI'
+             ) || ' IST'
+        else '' end ||
+      '. Coordinate directly — your details are never shared anywhere else.',
+    new.request_id,
+    new.id,
+    '/dashboard/donor'
+  );
+
+  return null;
+end;
+$$;
+
+revoke all on function public.emit_acceptance_confirmed() from public, anon, authenticated;
+
+drop trigger if exists donor_alerts_emit_acceptance_confirmed on public.donor_alerts;
+create trigger donor_alerts_emit_acceptance_confirmed
+  after update of response on public.donor_alerts
+  for each row
+  when (old.response is null and new.response = 'accepted')
+  execute function public.emit_acceptance_confirmed();
+
+-- ---------------------------------------------------------------------------
+-- 9. emit_account_status_changed() — the one relevant account update
+-- ---------------------------------------------------------------------------
+-- Admin account activation/suspension (0010's setUserStatus, RLS-guarded) is
+-- the only account event a user genuinely needs to hear about: it changes
+-- whether they are matched or alerted at all. Fires once per REAL status
+-- change (IS DISTINCT FROM), never on the registration insert.
+create or replace function public.emit_account_status_changed()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.status = 'suspended' then
+    perform public.notify_user(
+      new.id,
+      'account_status_changed',
+      'Your account was suspended',
+      'An administrator suspended your RaktSetu account, so matching and ' ||
+        'alerts are paused. If this looks wrong, reach the team from the ' ||
+        'contact page.',
+      null,
+      null,
+      '/profile'
+    );
+  else
+    perform public.notify_user(
+      new.id,
+      'account_status_changed',
+      'Your account is active again',
+      'An administrator reactivated your RaktSetu account. Matching resumes ' ||
+        'with your own availability and donation interval; the blood bank ' ||
+        'still decides medical eligibility.',
+      null,
+      null,
+      '/profile'
+    );
+  end if;
+  return null;
+end;
+$$;
+
+revoke all on function public.emit_account_status_changed() from public, anon, authenticated;
+
+drop trigger if exists profiles_emit_account_status on public.profiles;
+create trigger profiles_emit_account_status
+  after update of status on public.profiles
+  for each row
+  when (old.status is distinct from new.status)
+  execute function public.emit_account_status_changed();
 
 -- End of migration 0013_notification_consistency.sql.
 

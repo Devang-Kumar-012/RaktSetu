@@ -14,6 +14,15 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/States";
 import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 import { RequestActions } from "@/components/requests/RequestActions";
+import { RequestFilterBar } from "@/components/requests/RequestFilters";
+import { RequestPager } from "@/components/requests/RequestPager";
+import { RequestTable } from "@/components/requests/RequestTable";
+import {
+  PAGE_SIZE,
+  URGENCY_RANK,
+  hasActiveFilters,
+  parseRequestFilters,
+} from "@/lib/request-filters";
 import { RequestCountdown } from "@/components/requests/RequestCountdown";
 import { ALERT_RINGS_KM, ALERT_WINDOW_MINUTES } from "@/lib/constants";
 import type { AcceptedDonor, BloodRequest, RequesterRingStatus } from "@/types";
@@ -24,21 +33,87 @@ export const metadata = { title: "Requester dashboard" };
 // static prerender (which would redirect forever in production).
 export const dynamic = "force-dynamic";
 
-export default async function RequesterDashboardPage() {
+export default async function RequesterDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { user, profile } = await requireRolePage("requester");
   const firstName = profile.full_name.trim().split(" ")[0];
 
+  // History filters come from the URL and are whitelisted centrally; unknown
+  // values fall back to "all" so a crafted query can never widen access.
+  const filters = parseRequestFilters(await searchParams);
+  const filtering = hasActiveFilters(filters);
+
   const supabase = await createSupabaseServerClient();
-  const { data: requests } = await supabase
+
+  // Active requests always stay actionable at the top (existing behaviour):
+  // newest own active rows, bounded, with reveal + ring data attached.
+  const { data: activeRows } = await supabase
     .from("blood_requests")
     .select("*")
     .eq("requester_id", user.id)
+    .eq("status", "active")
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(10);
 
-  const list = (requests as BloodRequest[]) ?? [];
-  const active = list.filter((r) => r.status === "active");
-  const past = list.filter((r) => r.status !== "active");
+  const active = ((activeRows as BloodRequest[]) ?? []).filter(
+    (r) => r.status === "active"
+  );
+
+  // History: database-side filtering + sorting + pagination over the caller's
+  // OWN rows only. The .eq("requester_id") is explicit here (RLS enforces it
+  // too) so history can never expose another requester's rows.
+  let historyQuery = supabase
+    .from("blood_requests")
+    .select("*", { count: "exact" })
+    .eq("requester_id", user.id);
+  if (filters.status !== "all") historyQuery = historyQuery.eq("status", filters.status);
+  if (filters.bloodGroup !== "all") historyQuery = historyQuery.eq("blood_group", filters.bloodGroup);
+  if (filters.component !== "all") historyQuery = historyQuery.eq("blood_component", filters.component);
+  if (filters.urgency !== "all") historyQuery = historyQuery.eq("urgency", filters.urgency);
+  if (filters.from) historyQuery = historyQuery.gte("created_at", `${filters.from}T00:00:00Z`);
+  if (filters.to) historyQuery = historyQuery.lte("created_at", `${filters.to}T23:59:59.999Z`);
+  if (filters.urgency !== "all") historyQuery = historyQuery.eq("urgency", filters.urgency);
+  historyQuery =
+    filters.sort === "required_by"
+      ? historyQuery.order("required_by", { ascending: true }).order("created_at", { ascending: false })
+      : historyQuery.order("created_at", { ascending: false });
+  const from = (filters.page - 1) * PAGE_SIZE;
+  const { data: historyRows, count: historyTotal } = await historyQuery.range(from, from + PAGE_SIZE - 1);
+
+  // "Most urgent first" ranks critical > urgent > routine within the page
+  // (small bounded set — the DB already filtered and paginated it).
+  const historyAll = ((historyRows as BloodRequest[]) ?? []).slice();
+  if (filters.sort === "urgent") {
+    historyAll.sort(
+      (a, b) =>
+        (URGENCY_RANK[a.urgency] ?? 3) - (URGENCY_RANK[b.urgency] ?? 3) ||
+        new Date(a.required_by).getTime() - new Date(b.required_by).getTime()
+    );
+  }
+  const historyCount = historyTotal ?? historyAll.length;
+
+  // Sidebar counts stay honest without loading every row: one bounded
+  // head-count per lifecycle bucket, own rows only.
+  const [{ count: fulfilledCount }, { count: totalCount }] = await Promise.all([
+    supabase
+      .from("blood_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("requester_id", user.id)
+      .eq("status", "fulfilled"),
+    supabase
+      .from("blood_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("requester_id", user.id),
+  ]);
+
+  const list = Array.from(
+    new Map(
+      [...active, ...historyAll].map((r) => [r.id, r])
+    ).values()
+  );
 
   // Post-acceptance reveal + ring-engine progress — both SECURITY DEFINER,
   // own-requests only (migration 0011). Donor contact appears only while the
@@ -59,7 +134,6 @@ export default async function RequesterDashboardPage() {
     }
   }
 
-  // Total donors alerted per request, summed across the rings that ran.
   const alertedByRequest = new Map<string, number>();
   for (const row of (ringRows as RequesterRingStatus[] | null) ?? []) {
     alertedByRequest.set(
@@ -225,14 +299,14 @@ export default async function RequesterDashboardPage() {
                 Fulfilled
               </p>
               <p className="text-2xl font-extrabold text-ink-900">
-                {list.filter((r) => r.status === "fulfilled").length}
+                {fulfilledCount ?? 0}
               </p>
             </div>
             <div>
               <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
                 Total
               </p>
-              <p className="text-2xl font-extrabold text-ink-900">{list.length}</p>
+              <p className="text-2xl font-extrabold text-ink-900">{totalCount ?? active.length}</p>
             </div>
           </div>
           <ButtonLink href="/request-blood">+ New blood request</ButtonLink>
@@ -244,9 +318,9 @@ export default async function RequesterDashboardPage() {
         <div className="mt-6 space-y-6">
           {active.length === 0 ? (
             <EmptyState
-              title={list.length === 0 ? "No requests yet" : "No active requests"}
+              title={(totalCount ?? active.length) === 0 ? "No requests yet" : "No active requests"}
               description={
-                list.length === 0
+                (totalCount ?? active.length) === 0
                   ? "When someone needs blood, create a request and RaktSetu alerts matching donors near that hospital — nearest ring first, widening until someone accepts. Requests you close stay below with their outcome."
                   : "Nothing is being alerted right now. Open a new request the moment blood is needed and matching starts immediately."
               }
@@ -259,23 +333,44 @@ export default async function RequesterDashboardPage() {
           )}
         </div>
 
-        {list.length > 0 && (
-          <>
-            <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
-              Past requests
-            </h2>
-            <div className="mt-6 space-y-6">
-              {past.length === 0 ? (
-                <EmptyState
-                  title="No past requests yet"
-                  description="Fulfilled, expired, and cancelled requests will appear here with what happened — and whether a donor ever accepted."
-                />
-              ) : (
-                past.map((r) => <RequestCard key={r.id} request={r} />)
-              )}
-            </div>
-          </>
-        )}
+        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+          Request history — newest first unless sorted otherwise
+        </h2>
+        <p className="mt-2 max-w-2xl text-base text-ink-600">
+          Every request you created — active, fulfilled, expired, and
+          cancelled — with its blood group, component, units, hospital,
+          urgency, required-by time, status, and when it was created.
+          Filtering happens in the database over your rows only, {PAGE_SIZE}{" "}
+          at a time. Closed requests are read-only; open one to see its
+          outcome.
+        </p>
+        <div className="mt-6">
+          <RequestFilterBar filters={filters} basePath="/dashboard/requester" />
+        </div>
+        <div className="mt-6">
+          <RequestTable
+            rows={historyAll}
+            detailsHref={(id) => `/requests/${id}`}
+            emptyTitle={
+              filtering
+                ? "No requests match these filters"
+                : (totalCount ?? 0) === 0
+                  ? "No request history yet"
+                  : "No requests on this page"
+            }
+            emptyDescription={
+              filtering
+                ? "Try widening the status, blood group, component, urgency, or date range — or clear the filters to see everything."
+                : "When someone needs blood, create a request above. Fulfilled, expired, and cancelled requests stay here with their outcome."
+            }
+          />
+          <RequestPager
+            filters={filters}
+            basePath="/dashboard/requester"
+            total={historyCount}
+            pageSize={PAGE_SIZE}
+          />
+        </div>
 
         <Alert variant="info" title="Your contact details are protected" className="mt-10">
           The phone number on a request is stored privately and is never listed

@@ -23,12 +23,28 @@
  *      an approximate distance leaves the database (never coordinates), the
  *      new notification kinds are guarded/idempotent, availability stays
  *      server-validated, and the request lifecycle is untouched
+ *   13 notification-centre consistency (migration 0013): TS↔SQL parity for
+ *      every notification kind, database-level duplicate prevention on a
+ *      stable event key, per-recipient read state with DB-backed unread
+ *      counts, role-safe routing to existing pages only, privacy of
+ *      notification text, conservative read-only retention, and the
+ *      mobile-safe shared rendering of the centre
+ *   14 request search/filter/history (prompt 24): requester history and admin
+ *      oversight share one filter/table/pager model with database-side
+ *      filtering, sorting, and pagination; requester rows stay own-row gated,
+ *      admin stays role-gated, closed requests stay read-only, and no new
+ *      database/search service is introduced
+ *   15 platform safety (prompt 25): request reporting reaches real moderation
+ *      (the 0010 UPDATE grant defect that made every review fail), reporting
+ *      never touches the request lifecycle, duplicate reports are stopped by a
+ *      database constraint, and the anti-abuse limits live in one configurable
+ *      row enforced in the database rather than as UI-only checks
  *
  * The DATABASE is the production executor (expand_alert_rings() +
  * mark_alert_responded()); src/lib/alert-rings.ts mirrors its decision rules
  * — the same TS-mirrors-SQL pattern check-rules.ts uses for compatibility.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,6 +73,14 @@ import {
   ALERT_WINDOW_MINUTES,
   REQUEST_STATUS_LABELS,
 } from "../src/lib/constants";
+import {
+  NOTIFICATION_KINDS,
+  NOTIFICATION_KIND_LABELS,
+  countUnreadNotifications,
+  notificationKindLabel,
+  resolveNotificationDestination,
+} from "../src/lib/notifications";
+import type { NotificationLike } from "../src/lib/notifications";
 
 let pass = 0;
 const failures: string[] = [];
@@ -99,6 +123,108 @@ const srcDonorControl = readFileSync(
 const srcTypes = readFileSync(join(ROOT, "src/types/index.ts"), "utf8");
 const srcEngine = readFileSync(join(ROOT, "src/lib/alert-rings.ts"), "utf8");
 const smoke = readFileSync(join(ROOT, "scripts/smoke-test.sh"), "utf8");
+// --- notification centre (migration 0013) ---------------------------------
+const sql0013 = readFileSync(
+  join(ROOT, "supabase/migrations/0013_notification_consistency.sql"),
+  "utf8"
+);
+const srcNotifServer = readFileSync(
+  join(ROOT, "src/lib/notifications-server.ts"),
+  "utf8"
+);
+const srcNotifActions = readFileSync(
+  join(ROOT, "src/lib/actions/notifications.ts"),
+  "utf8"
+);
+const srcNotifLive = readFileSync(
+  join(ROOT, "src/components/notifications/NotificationsLive.tsx"),
+  "utf8"
+);
+const srcNotifItem = readFileSync(
+  join(ROOT, "src/components/notifications/NotificationItem.tsx"),
+  "utf8"
+);
+const srcNotifPage = readFileSync(
+  join(ROOT, "src/app/notifications/page.tsx"),
+  "utf8"
+);
+const srcLayout = readFileSync(join(ROOT, "src/app/layout.tsx"), "utf8");
+const srcNavbar = readFileSync(
+  join(ROOT, "src/components/layout/Navbar.tsx"),
+  "utf8"
+);
+// --- request search/filter/history (prompt 24) ---------------------------------
+const srcRequestFilters = readFileSync(
+  join(ROOT, "src/lib/request-filters.ts"),
+  "utf8"
+);
+const srcFilterBar = readFileSync(
+  join(ROOT, "src/components/requests/RequestFilters.tsx"),
+  "utf8"
+);
+const srcRequestTable = readFileSync(
+  join(ROOT, "src/components/requests/RequestTable.tsx"),
+  "utf8"
+);
+const srcRequestPager = readFileSync(
+  join(ROOT, "src/components/requests/RequestPager.tsx"),
+  "utf8"
+);
+const srcRequesterHistory = readFileSync(
+  join(ROOT, "src/app/dashboard/requester/page.tsx"),
+  "utf8"
+);
+const srcAdminRequests = readFileSync(
+  join(ROOT, "src/app/admin/requests/page.tsx"),
+  "utf8"
+);
+const srcRequestActions = readFileSync(
+  join(ROOT, "src/components/requests/RequestActions.tsx"),
+  "utf8"
+);
+const sql0010 = readFileSync(
+  join(ROOT, "supabase/migrations/0010_admin_platform.sql"),
+  "utf8"
+);
+const sql0014 = readFileSync(
+  join(ROOT, "supabase/migrations/0014_platform_safety.sql"),
+  "utf8"
+);
+const srcSafety = readFileSync(join(ROOT, "src/lib/safety.ts"), "utf8");
+const srcAdminActions = readFileSync(join(ROOT, "src/lib/actions/admin.ts"), "utf8");
+const srcAdminReports = readFileSync(
+  join(ROOT, "src/app/admin/reports/page.tsx"),
+  "utf8"
+);
+const srcReportForm = readFileSync(
+  join(ROOT, "src/components/requests/RequestReportForm.tsx"),
+  "utf8"
+);
+const srcSafetyForm = readFileSync(
+  join(ROOT, "src/components/admin/AdminSafetyLimitsForm.tsx"),
+  "utf8"
+);
+const sql0015 = readFileSync(
+  join(ROOT, "supabase/migrations/0015_campus_blood_drives.sql"),
+  "utf8"
+);
+const srcDrivesActions = readFileSync(join(ROOT, "src/lib/actions/drives.ts"), "utf8");
+const srcDrivesList = readFileSync(join(ROOT, "src/app/drives/page.tsx"), "utf8");
+const srcDriveDetail = readFileSync(join(ROOT, "src/app/drives/[id]/page.tsx"), "utf8");
+const srcAdminDrives = readFileSync(join(ROOT, "src/app/admin/drives/page.tsx"), "utf8");
+const srcAdminDriveDetail = readFileSync(
+  join(ROOT, "src/app/admin/drives/[id]/page.tsx"),
+  "utf8"
+);
+const srcDriveRoster = readFileSync(
+  join(ROOT, "src/components/admin/AdminDriveRoster.tsx"),
+  "utf8"
+);
+const srcDonorDashboard = readFileSync(
+  join(ROOT, "src/app/dashboard/donor/page.tsx"),
+  "utf8"
+);
+const srcNotifResolver = readFileSync(join(ROOT, "src/lib/notifications.ts"), "utf8");
 
 const config = defaultRingConfig();
 const MIN = 60_000;
@@ -151,13 +277,13 @@ check("1. first configured ring is 3 km", config.ringsKm[0], 3);
 check(
   "1. SQL engine exists and reads platform_settings rings (no hard-coded list)",
   sql0011.includes("create or replace function public.expand_alert_rings()") &&
-    sql0011.includes("public.alert_rings_km()"),
+  sql0011.includes("public.alert_rings_km()"),
   true
 );
 check(
   "1. engine authenticates itself with the transaction-local GUC",
   sql0011.includes("set_config('raktsetu.engine', 'on', true)") &&
-    sql0011.includes("current_setting('raktsetu.engine', true) = 'on'"),
+  sql0011.includes("current_setting('raktsetu.engine', true) = 'on'"),
   true
 );
 
@@ -176,8 +302,8 @@ check(
 check(
   "2. SQL gives each ring alert_window_minutes() (default 10 = constants)",
   sql0011.includes("make_interval(mins => v_window)") &&
-    sql0011.includes("coalesce(public.alert_window_minutes(), 10)") &&
-    ALERT_WINDOW_MINUTES === 10,
+  sql0011.includes("coalesce(public.alert_window_minutes(), 10)") &&
+  ALERT_WINDOW_MINUTES === 10,
   true
 );
 // --- 3. exhaustion: the process stops after the final ring's window -------
@@ -202,7 +328,7 @@ check(
 check(
   "3. SQL stops after ring index reaches the final configured ring",
   sql0011.includes("v_progress.ring_index >= v_total") &&
-    sql0011.includes("outcome = 'rings_exhausted'"),
+  sql0011.includes("outcome = 'rings_exhausted'"),
   true
 );
 
@@ -222,8 +348,8 @@ check(
 check(
   "4. SQL sweeps closed requests (expiry helper + non-active filter)",
   sql0011.includes("perform public.expire_stale_requests()") &&
-    sql0011.includes("r.status <> 'active'") &&
-    sql0011.includes("'request_closed'"),
+  sql0011.includes("r.status <> 'active'") &&
+  sql0011.includes("'request_closed'"),
   true
 );
 
@@ -243,7 +369,7 @@ check(
 check(
   "5. SQL retires straggler alerts once a winner exists",
   sql0011.includes("w.response = 'accepted'") &&
-    sql0011.includes("set status = 'expired'"),
+  sql0011.includes("set status = 'expired'"),
   true
 );
 
@@ -272,13 +398,13 @@ check(
 check(
   "6. SQL idempotency: PK (request_id, ring_index) + ON CONFLICT DO NOTHING",
   sql0011.includes("primary key (request_id, ring_index)") &&
-    sql0011.includes("on conflict (request_id, ring_index) do nothing"),
+  sql0011.includes("on conflict (request_id, ring_index) do nothing"),
   true
 );
 check(
   "6. SQL concurrency: FOR UPDATE SKIP LOCKED + finished-row guard",
   sql0011.includes("for update skip locked") &&
-    sql0011.includes("p.finished_at is not null"),
+  sql0011.includes("p.finished_at is not null"),
   true
 );
 // --- 7. ring selection: already-alerted, eligibility, distance, fallback ---
@@ -355,20 +481,20 @@ check(
 check(
   "7. SQL: fresh match per ring minus already-alerted, UNIQUE (request, donor) blocks duplicates",
   sql0011.includes("match_donors_for_request(v_request.id, v_radius, 50) m") &&
-    sql0011.includes("a.donor_id = m.user_id") &&
-    sql0011.includes("on conflict (request_id, donor_id) do nothing"),
+  sql0011.includes("a.donor_id = m.user_id") &&
+  sql0011.includes("on conflict (request_id, donor_id) do nothing"),
   true
 );
 check(
   "7. SQL match: radius excludes unprovable distance; closest first, stable tie-break",
   sql0011.includes("c.dist is not null and c.dist <= v_radius") &&
-    sql0011.includes("order by c.dist asc nulls last, c.user_id asc"),
+  sql0011.includes("order by c.dist asc nulls last, c.user_id asc"),
   true
 );
 check(
   "7. UNIQUE (request_id, donor_id) exists in migration 0008",
   sql0008.includes("(request_id, donor_id)") ||
-    sql0008.includes("(donor_id, request_id)"),
+  sql0008.includes("(donor_id, request_id)"),
   true
 );
 check(
@@ -396,7 +522,7 @@ check(
 check(
   "8. offset default 120 mirrored in SQL",
   ALERT_DUE_AT_OFFSET_MINUTES === 120 &&
-    sql0011.includes("coalesce(public.alert_due_at_offset_minutes(), 120)"),
+  sql0011.includes("coalesce(public.alert_due_at_offset_minutes(), 120)"),
   true
 );
 const dueNeedle = "when v_request.required_by - make_interval(mins => v_offset) <= now()";
@@ -559,15 +685,15 @@ const markBody = sql0011.slice(
 check(
   "9. SQL locks BOTH request and alert rows (request first)",
   (markBody.match(/for update/g) ?? []).length >= 2 &&
-    markBody.indexOf("from public.blood_requests") < markBody.indexOf("from public.donor_alerts"),
+  markBody.indexOf("from public.blood_requests") < markBody.indexOf("from public.donor_alerts"),
   true
 );
 check(
   "9. SQL check order: winner → status → due → eligibility",
   markBody.indexOf("w.response = 'accepted'") !== -1 &&
-    markBody.indexOf("w.response = 'accepted'") < markBody.indexOf("v_alert.status not in") &&
-    markBody.indexOf("v_alert.status not in") < markBody.indexOf("v_alert.due_at <= now()") &&
-    markBody.indexOf("v_alert.due_at <= now()") < markBody.indexOf("donor_directory d"),
+  markBody.indexOf("w.response = 'accepted'") < markBody.indexOf("v_alert.status not in") &&
+  markBody.indexOf("v_alert.status not in") < markBody.indexOf("v_alert.due_at <= now()") &&
+  markBody.indexOf("v_alert.due_at <= now()") < markBody.indexOf("donor_directory d"),
   true
 );
 // --- 10. privacy: nothing but a winning acceptance opens contact -----------
@@ -599,16 +725,16 @@ check(
 check(
   "10. reveal_accepted_donors: requester-only, post-acceptance, time-boxed, anon-revoked",
   sql0011.includes("r.requester_id = auth.uid()") &&
-    sql0011.includes("a.contact_shared_until > now()") &&
-    sql0011.includes(
-      "revoke all on function public.reveal_accepted_donors(uuid[]) from public, anon"
-    ),
+  sql0011.includes("a.contact_shared_until > now()") &&
+  sql0011.includes(
+    "revoke all on function public.reveal_accepted_donors(uuid[]) from public, anon"
+  ),
   true
 );
 check(
   "10. donor queue shows requester contact only inside the caller's own accepted alert",
   sql0011.includes("case when a.response = 'accepted' and a.contact_shared_until > now()") &&
-    sql0011.includes("where a.donor_id = auth.uid()"),
+  sql0011.includes("where a.donor_id = auth.uid()"),
   true
 );
 check(
@@ -616,8 +742,8 @@ check(
   sql0011.includes(
     "revoke insert, update, delete on table public.notifications from authenticated"
   ) &&
-    sql0011.includes("using (auth.uid() = user_id)") &&
-    sql0011.includes("No INSERT/DELETE policy on purpose"),
+  sql0011.includes("using (auth.uid() = user_id)") &&
+  sql0011.includes("No INSERT/DELETE policy on purpose"),
   true
 );
 // --- 11. SQL ↔ TS parity: one behaviour, two mirrors -----------------------
@@ -647,13 +773,13 @@ check(
 check(
   "11. NO 'accepted' request status was introduced (lifecycle unchanged)",
   JSON.stringify(Object.keys(REQUEST_STATUS_LABELS).sort()) ===
-    JSON.stringify(["active", "cancelled", "expired", "fulfilled"]),
+  JSON.stringify(["active", "cancelled", "expired", "fulfilled"]),
   true
 );
 check(
   "11. ring defaults: constants 3,7,15 == SQL engine fallback array[3, 7, 15]",
   ALERT_RINGS_KM.join(", ") === "3, 7, 15" &&
-    sql0011.includes("alert_rings_km(), array[3, 7, 15]"),
+  sql0011.includes("alert_rings_km(), array[3, 7, 15]"),
   true
 );
 check(
@@ -664,9 +790,9 @@ check(
 check(
   "11. window/offset defaults: constants == SQL fallbacks",
   ALERT_WINDOW_MINUTES === 10 &&
-    ALERT_DUE_AT_OFFSET_MINUTES === 120 &&
-    sql0011.includes("coalesce(public.alert_window_minutes(), 10)") &&
-    sql0011.includes("coalesce(public.alert_due_at_offset_minutes(), 120)"),
+  ALERT_DUE_AT_OFFSET_MINUTES === 120 &&
+  sql0011.includes("coalesce(public.alert_window_minutes(), 10)") &&
+  sql0011.includes("coalesce(public.alert_due_at_offset_minutes(), 120)"),
   true
 );
 check(
@@ -722,7 +848,7 @@ const NOTIFIER_FNS_0012 = [
 check(
   "12. 0012 exists and never alters the request lifecycle (no 'accepted' status)",
   sql0012.includes("-- End of migration 0012_donor_experience.sql.") &&
-    !sql0012.includes("alter table public.blood_requests"),
+  !sql0012.includes("alter table public.blood_requests"),
   true
 );
 check(
@@ -735,11 +861,11 @@ check(
 check(
   "12. donor queue: own-row gate intact; only an approximate distance — never coordinates",
   donorQueueAt !== -1 &&
-    donorQueueBody.includes("where a.donor_id = auth.uid()") &&
-    sql0012.includes("approx_distance_km") &&
-    sql0012.includes("public.haversine_km(") &&
-    !donorQueueHead.includes("latitude") &&
-    !donorQueueHead.includes("longitude"),
+  donorQueueBody.includes("where a.donor_id = auth.uid()") &&
+  sql0012.includes("approx_distance_km") &&
+  sql0012.includes("public.haversine_km(") &&
+  !donorQueueHead.includes("latitude") &&
+  !donorQueueHead.includes("longitude"),
   true
 );
 check(
@@ -778,27 +904,27 @@ check(
   sql0012.includes(
     "old.status in ('queued', 'sent', 'opened') and new.status = 'expired'"
   ) &&
-    sql0012.includes("r.status <> 'active'") &&
-    sql0012.includes("w.response = 'accepted'") &&
-    sql0012.includes("'already_accepted'"),
+  sql0012.includes("r.status <> 'active'") &&
+  sql0012.includes("w.response = 'accepted'") &&
+  sql0012.includes("'already_accepted'"),
   true
 );
 check(
   "12. request close-out: one-shot active→terminal guard, retires open alerts, specific kinds",
   sql0012.includes("old.status = 'active'") &&
-    sql0012.includes("new.status in ('fulfilled', 'cancelled', 'expired')") &&
-    sql0012.includes("'request_' || new.status") &&
-    sql0012.includes("d.status in ('queued', 'sent', 'opened')"),
+  sql0012.includes("new.status in ('fulfilled', 'cancelled', 'expired')") &&
+  sql0012.includes("'request_' || new.status") &&
+  sql0012.includes("d.status in ('queued', 'sent', 'opened')"),
   true
 );
 check(
   "12. expiring nudge: single-shot guard, open-only, never past due; 15 min mirrored in SQL and TS",
   ALERT_EXPIRING_NOTICE_MINUTES === 15 &&
-    sql0012.includes("make_interval(mins => 15)") &&
-    sql0012.includes("a.expiring_notified_at is null") &&
-    sql0012.includes("a.due_at > now()") &&
-    sql0012.includes("for update of a skip locked") &&
-    srcRingEngine.includes("emit_alert_expiring"),
+  sql0012.includes("make_interval(mins => 15)") &&
+  sql0012.includes("a.expiring_notified_at is null") &&
+  sql0012.includes("a.due_at > now()") &&
+  sql0012.includes("for update of a skip locked") &&
+  srcRingEngine.includes("emit_alert_expiring"),
   true
 );
 check(
@@ -806,38 +932,38 @@ check(
   sql0012.includes(
     "old.last_donation_date is distinct from new.last_donation_date"
   ) &&
-    sql0012.includes("'eligibility_updated'") &&
-    sql0012.includes("public.donation_interval_days()"),
+  sql0012.includes("'eligibility_updated'") &&
+  sql0012.includes("public.donation_interval_days()"),
   true
 );
 check(
   "12. admin-recorded donations sync last_donation_date + donation_count (cooldown starts)",
   sql0012.includes("after insert on public.donation_history") &&
-    sql0012.includes("select count(*)::int from public.donation_history") &&
-    sql0012.includes("last_donation_date < new.donated_on"),
+  sql0012.includes("select count(*)::int from public.donation_history") &&
+  sql0012.includes("last_donation_date < new.donated_on"),
   true
 );
 check(
   "12. donation history: donor-own only, role-checked, never requester contact",
   donorHistoryBody.includes("h.donor_id = auth.uid()") &&
-    donorHistoryBody.includes("p.role = 'donor'") &&
-    !donorHistoryBody.includes("contact_phone") &&
-    !donorHistoryBody.includes("contact_name"),
+  donorHistoryBody.includes("p.role = 'donor'") &&
+  !donorHistoryBody.includes("contact_phone") &&
+  !donorHistoryBody.includes("contact_name"),
   true
 );
 check(
   "12. dashboard availability still flows through the validated server action",
   srcDonorAction.includes("validateAvailability") &&
-    srcDonorControl.includes("updateDonorProfile") &&
-    srcDonorControl.includes('name="availability"'),
+  srcDonorControl.includes("updateDonorProfile") &&
+  srcDonorControl.includes('name="availability"'),
   true
 );
 check(
   "12. donor alert UI responds only via respondToAlert (no direct RPC) and renders no coordinates",
   srcDonorCard.includes("respondToAlert") &&
-    !srcDonorCard.includes("supabase.rpc") &&
-    !srcDonorCard.includes("latitude") &&
-    !srcDonorCard.includes("longitude"),
+  !srcDonorCard.includes("supabase.rpc") &&
+  !srcDonorCard.includes("latitude") &&
+  !srcDonorCard.includes("longitude"),
   true
 );
 check(
@@ -848,8 +974,923 @@ check(
   true
 );
 
-// --- report ----------------------------------------------------------------
+// --- 13. notification centre & event consistency (migration 0013) ----------
+// The authoritative kind list is the LAST migration to (re)define the check
+// constraint, because every widening re-states the complete set. 0015 re-adds
+// it with the campus-drive kinds, so reading 0013 alone would report TS↔SQL as
+// out of parity the moment a drive kind is added.
+const kindBlockMarker = "add constraint notifications_kind_check check (kind in (";
+const kindSources = [sql0013, sql0015].filter((s) => s.includes(kindBlockMarker));
+const lastKindSource = kindSources[kindSources.length - 1] ?? "";
+const kindBlockAt = lastKindSource.indexOf(kindBlockMarker);
+const kindBlock = lastKindSource.slice(
+  kindBlockAt,
+  lastKindSource.indexOf("));", kindBlockAt)
+);
+const sqlKinds = [...kindBlock.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+check(
+  "13. TS and SQL agree on every notification kind (one kind per logical event)",
+  kindSources.length > 0 &&
+    kindBlockAt !== -1 &&
+  JSON.stringify([...sqlKinds].sort()) ===
+  JSON.stringify([...NOTIFICATION_KINDS].sort()),
+  true
+);
+check(
+  "13. every kind has a human label and an unknown kind degrades safely",
+  NOTIFICATION_KINDS.every(
+    (kind) => typeof NOTIFICATION_KIND_LABELS[kind] === "string"
+  ) && notificationKindLabel("brand_new_kind") === "Update",
+  true
+);
+check(
+  "13. the NotificationKind union lists every kind the database accepts",
+  NOTIFICATION_KINDS.every((kind) => srcTypes.includes(`"${kind}"`)),
+  true
+);
+
+// Duplicate prevention must live in the database (a retried action, a second
+// scheduler run, a page refresh, or a re-transition must not double-notify).
+check(
+  "13. duplicates are prevented in SQL by a stable event key, not by the UI",
+  sql0013.includes("create unique index if not exists notifications_event_once_uidx") &&
+  sql0013.includes(
+    "coalesce(request_id, '00000000-0000-0000-0000-000000000000'::uuid)"
+  ) &&
+  sql0013.includes("coalesce(alert_id, 0)") &&
+  sql0013.includes("before insert on public.notifications") &&
+  sql0013.includes("return null;"),
+  true
+);
+check(
+  "13. only the intentionally repeatable kinds are exempt from the event key",
+  sql0013.includes("where kind not in (") &&
+  sql0013.includes("'eligibility_updated'") &&
+  sql0013.includes("'admin_report_received'") &&
+  sql0013.includes("'account_status_changed'") &&
+  sql0013.includes("if new.kind in ("),
+  true
+);
+check(
+  "13. the guard covers every insert path, including the 0011 closure sweep",
+  sql0013.includes("for each row execute function public.skip_duplicate_notification()") &&
+  (sql0011.match(/insert into public\.notifications/g) ?? []).length >= 2 &&
+  !sql0013.includes("create or replace function public.expand_alert_rings"),
+  true
+);
+check(
+  "13. the list rendering never filters duplicates client-side",
+  !srcNotifLive.includes("new Set(") && !srcNotifItem.includes("new Set("),
+  true
+);
+
+// Read state is per recipient, and unread counts are database facts.
+check(
+  "13. the unread count is an exact database count for this recipient",
+  srcNotifServer.includes('count: "exact"') &&
+  srcNotifServer.includes('head: true') &&
+  srcNotifServer.includes('.eq("user_id", userId)') &&
+  srcNotifServer.includes('.is("read_at", null)') &&
+  srcNotifPage.includes("getUnreadNotificationCount"),
+  true
+);
+check(
+  "13. the rendered list can never under-report unread state",
+  srcNotifPage.includes("Math.max(") &&
+  countUnreadNotifications([
+    { read_at: null },
+    { read_at: "2026-09-23T10:00:00.000Z" },
+    { read_at: null },
+  ]) === 2,
+  true
+);
+check(
+  "13. marking read is own-row only — another user's copy is untouched",
+  srcNotifActions.includes('.eq("id", notificationId)') &&
+  srcNotifActions.includes('.eq("user_id", session.user.id)') &&
+  srcNotifActions.includes('.is("read_at", null)') &&
+  srcNotifActions.includes("markNotificationRead") &&
+  srcNotifActions.includes("markAllNotificationsRead") &&
+  sql0011.includes("using (auth.uid() = user_id)"),
+  true
+);
+
+
+// Notification routing: only existing, role-appropriate pages.
+const NREQ = "11111111-1111-1111-1111-111111111111";
+function notif(
+  kind: NotificationLike["kind"],
+  requestId: string | null = null,
+  alertId: number | null = null,
+  link: string | null = null,
+  driveId: string | null = null
+): NotificationLike {
+  return { kind, request_id: requestId, alert_id: alertId, link, drive_id: driveId };
+}
+check(
+  "13. requester notifications open the existing request details page",
+  resolveNotificationDestination(notif("donor_accepted", NREQ), "requester"),
+  { href: `/requests/${NREQ}`, label: "Open request" }
+);
+check(
+  "13. donor alert notifications deep-link to that donor's own alert card",
+  resolveNotificationDestination(notif("alert_received", NREQ, 7), "donor"),
+  { href: "/dashboard/donor#alert-7", label: "Open alerts" }
+);
+check(
+  "13. a closed alert never anchors a card that is no longer rendered",
+  resolveNotificationDestination(notif("request_fulfilled", NREQ, 7), "donor"),
+  { href: "/dashboard/donor", label: "Open donor dashboard" }
+);
+check(
+  "13. volunteer notifications open the existing volunteer request page",
+  resolveNotificationDestination(notif("assisted_request_fulfilled", NREQ), "volunteer"),
+  { href: `/volunteer/requests/${NREQ}`, label: "Open request" }
+);
+check(
+  "13. admin notifications open the existing admin console pages",
+  [
+    resolveNotificationDestination(notif("admin_report_received", NREQ), "admin"),
+    resolveNotificationDestination(notif("alert_received", NREQ, 9), "admin"),
+    resolveNotificationDestination(notif("request_expired", NREQ), "admin"),
+  ],
+  [
+    { href: "/admin/reports", label: "Open reports queue" },
+    { href: "/admin/alerts", label: "Open alert monitor" },
+    { href: "/admin/requests", label: "Open requests" },
+  ]
+);
+check(
+  "13. no destination is invented when the viewer cannot read the page",
+  [
+    resolveNotificationDestination(notif("request_created", NREQ), "donor"),
+    resolveNotificationDestination(notif("alert_received", NREQ, 3), "requester"),
+    resolveNotificationDestination(notif("eligibility_updated"), "volunteer"),
+  ],
+  [{ href: "/dashboard/donor", label: "Open donor dashboard" }, null, null]
+);
+check(
+  "13. only internal, shape-validated stored links are ever followed",
+  [
+    resolveNotificationDestination(
+      notif("eligibility_updated", null, null, "https://evil.example/x"),
+      null
+    ),
+    resolveNotificationDestination(
+      notif("eligibility_updated", null, null, "/notifications"),
+      null
+    ),
+  ],
+  [null, { href: "/notifications", label: "Open" }]
+);
+check(
+  "13. no notification-specific detail route was invented",
+  !existsSync(join(ROOT, "src/app/notifications/[id]")) &&
+  existsSync(join(ROOT, "src/components/notifications/NotificationsLive.tsx")),
+  true
+);
+
+// Privacy: notification text carries no contact data or coordinates.
+check(
+  "13. no emitter copies private contact data, coordinates, or free-text notes",
+  !/contact_phone|contact_name/.test(sql0013) &&
+  !/latitude|longitude/.test(sql0013) &&
+  !sql0013.includes("new.details") &&
+  sql0013.includes("new.hospital_locality"),
+  true
+);
+
+// Cleanup: conservative, bounded, unread-safe, no new infrastructure.
+check(
+  "13. retention deletes read rows only, bounded and clamped, never unread",
+  sql0013.includes("where n.read_at is not null") &&
+  sql0013.includes("and n.created_at < now() - make_interval(days => v_days)") &&
+  sql0013.includes("limit v_limit") &&
+  sql0013.includes("least(greatest(coalesce(p_retain_days, 90), 30), 3650)") &&
+  sql0013.includes("not public.is_current_user_admin()") &&
+  !/delete from public\.notifications[\s\S]{0,240}read_at is null/.test(sql0013),
+  true
+);
+check(
+  "13. retention reuses the already-installed scheduler (no new infrastructure)",
+  sql0013.includes("'raktsetu-notifications-prune'") &&
+  sql0013.includes("to_regnamespace('cron') is not null") &&
+  sql0013.includes("cron.schedule("),
+  true
+);
+check(
+  "13. retention actually holds the operationally important kinds for longer",
+  sql0013.includes("v_important_days := least(greatest(v_days * 4, 365), 3650)") &&
+    sql0013.includes(
+      "or n.created_at < now() - make_interval(days => v_important_days)"
+    ) &&
+    sql0013.includes("'admin_report_received'") &&
+    sql0013.includes("'account_status_changed'"),
+  true
+);
+
+// A PL/pgSQL variable that is assigned but never DECLARED is a compile error:
+// the whole migration would fail to apply, silently taking every 0013 emitter,
+// index, RLS policy and retention job with it. No TypeScript check can see
+// this, so assert it structurally for every function the migration creates.
+{
+  const undeclaredAssignments: string[] = [];
+  const fnBlocks = [
+    ...sql0013.matchAll(
+      /create or replace function\s+public\.(\w+)[\s\S]*?\bas\s+\$\$([\s\S]*?)\$\$;/g
+    ),
+  ];
+  for (const match of fnBlocks) {
+    const fn = match[1] ?? "unknown";
+    const body = match[2] ?? "";
+    const declaredAt = body.indexOf("declare");
+    const beginAt = body.indexOf("\nbegin", declaredAt === -1 ? 0 : declaredAt);
+    // Text before DECLARE is the signature, not the executable body.
+    const declaredBlock =
+      declaredAt === -1 ? "" : body.slice(declaredAt, beginAt === -1 ? undefined : beginAt);
+    const execBlock = beginAt === -1 ? body : body.slice(beginAt);
+    const declared = new Set(
+      [
+        ...declaredBlock.matchAll(
+          /^\s*(\w+)\s+(?:integer|bigint|text|uuid|boolean|timestamptz|jsonb|record|int)\b/gm
+        ),
+      ].map((d) => d[1])
+    );
+    const assigned = new Set([
+      ...[...execBlock.matchAll(/\b(v_\w+)\s*:=/g)].map((a) => a[1]),
+      ...[...execBlock.matchAll(/\binto\s+((?:v_\w+\s*,\s*)*v_\w+)/gi)].flatMap((a) =>
+        (a[1] ?? "")
+          .split(",")
+          .map((name) => name.trim())
+      ),
+    ]);
+    for (const name of assigned) {
+      if (!declared.has(name)) undeclaredAssignments.push(`${fn}:${name}`);
+    }
+  }
+  check(
+    "13. every 0013 function declares each local variable it assigns (migration applies cleanly)",
+    fnBlocks.length > 0 && undeclaredAssignments.length === 0,
+    true
+  );
+  if (undeclaredAssignments.length > 0) {
+    console.error(
+      `      undeclared PL/pgSQL variables: ${undeclaredAssignments.join(", ")}`
+    );
+  }
+}
+
+
+// Event mapping: every required event has exactly one emitter.
+check(
+  "13. every required donor/requester/volunteer/admin event has an emitter",
+  [
+    sql0011.includes("after insert on public.donor_alerts") &&
+    sql0011.includes("'alert_received'"),
+    sql0011.includes("'donor_accepted'"),
+    sql0012.includes("'already_accepted'"),
+    sql0012.includes("'alert_expiring'"),
+    sql0012.includes("'request_' || new.status"),
+    sql0012.includes("'eligibility_updated'"),
+    sql0013.includes("'request_created'") &&
+    sql0013.includes("'/requests/' || new.id::text"),
+    sql0013.includes("'request_' || new.status") &&
+    sql0013.includes("new.requester_id"),
+    sql0013.includes("'volunteer_request_nearby'"),
+    sql0013.includes("'assisted_request_accepted'"),
+    sql0013.includes("'assisted_request_' || new.status"),
+    sql0013.includes("'admin_report_received'"),
+    sql0013.includes("'acceptance_confirmed'") &&
+    sql0013.includes("'/dashboard/donor'"),
+    sql0013.includes("'account_status_changed'") &&
+    sql0013.includes("'/profile'"),
+  ].every(Boolean),
+  true
+);
+const NOTIFIER_FNS_0013 = [
+  "skip_duplicate_notification",
+  "emit_request_created",
+  "emit_request_closeout",
+  "emit_assisted_request_accepted",
+  "emit_admin_report_received",
+  "emit_acceptance_confirmed",
+  "emit_account_status_changed",
+  "prune_read_notifications",
+];
+check(
+  "13. every 0013 function is SECURITY DEFINER, pinned, and revoked from clients",
+  NOTIFIER_FNS_0013.every((fn) => {
+    const at = sql0013.indexOf(`create or replace function public.${fn}`);
+    if (at === -1) return false;
+    const seg = sql0013.slice(at, sql0013.indexOf("$$;", at));
+    return (
+      seg.includes("security definer") &&
+      seg.includes("set search_path = public") &&
+      sql0013.includes(`revoke all on function public.${fn}`)
+    );
+  }) &&
+  !sql0013.includes("grant insert on table public.notifications") &&
+  !sql0013.includes("grant update on table public.notifications"),
+  true
+);
+check(
+  "13. 0013 never alters the lifecycle, the ring engine, or the acceptance model",
+  sql0013.includes("-- End of migration 0013_notification_consistency.sql.") &&
+  !sql0013.includes("alter table public.blood_requests") &&
+  !sql0013.includes("create or replace function public.mark_alert_responded") &&
+  !sql0013.includes("create or replace function public.expand_alert_rings") &&
+  !sql0013.includes("drop function"),
+  true
+);
+
+// Mobile UX: readable, tappable, wrapping, no decorative bloat.
+check(
+  "13. the centre is mobile-usable: 44px tap targets, wrapping text, real times",
+  srcNotifItem.includes("min-h-11") &&
+  srcNotifItem.includes("break-words") &&
+  srcNotifItem.includes("flex-wrap") &&
+  srcNotifItem.includes("dateTime={item.created_at}") &&
+  srcNotifLive.includes("flex-wrap"),
+  true
+);
+check(
+  "13. unread rows are marked by more than colour and can be read individually",
+  srcNotifItem.includes("Unread") &&
+  srcNotifItem.includes("Mark as read") &&
+  srcNotifLive.includes("Mark all as read") &&
+  srcNotifItem.includes('unread ? "glass-blood" : "glass"'),
+  true
+);
+check(
+  "13. one shared centre for every role, with a DB-backed shell badge",
+  srcNotifPage.includes("role={session.profile?.role ?? null}") &&
+  srcNavbar.includes('href="/notifications"') &&
+  srcNavbar.includes("UnreadBadge") &&
+  srcLayout.includes("getUnreadNotificationCount"),
+  true
+);
+check(
+  "13. a destination link is rendered only when one exists",
+  srcNotifItem.includes("destination && (") &&
+  srcNotifItem.includes("destination.href"),
+  true
+);
+
+// --- 14 · request search, filtering & history --------------------------------
+// One shared model, two role-gated surfaces: requester history owns its rows,
+// admin oversight stays behind the existing admin gate. Closed rows are
+// read-only; lifecycle mutations live only in lib/actions/requests.ts.
+check(
+  "14. requester history is database-filtered over own rows only",
+  srcRequesterHistory.includes('.eq("requester_id", user.id)') &&
+  srcRequesterHistory.includes("parseRequestFilters(await searchParams)") &&
+  srcRequesterHistory.includes('.eq("status", filters.status)') &&
+  srcRequesterHistory.includes('.eq("blood_group", filters.bloodGroup)') &&
+  srcRequesterHistory.includes('.eq("blood_component", filters.component)') &&
+  srcRequesterHistory.includes('.eq("urgency", filters.urgency)') &&
+  srcRequesterHistory.includes('.gte("created_at"') &&
+  srcRequesterHistory.includes('.lte("created_at"') &&
+  srcRequesterHistory.includes(".range(from, from + PAGE_SIZE - 1)"),
+  true
+);
+check(
+  "14. admin oversight is role-gated with bounded database queries",
+  srcAdminRequests.includes('requireRolePage("admin")') &&
+  srcAdminRequests.includes('parseRequestFilters(await searchParams, { allowSearch: true })') &&
+  srcAdminRequests.includes('.eq("status", filters.status)') &&
+  srcAdminRequests.includes('.eq("blood_group", filters.bloodGroup)') &&
+  srcAdminRequests.includes('.eq("blood_component", filters.component)') &&
+  srcAdminRequests.includes('.eq("urgency", filters.urgency)') &&
+  srcAdminRequests.includes('.gte("created_at"') &&
+  srcAdminRequests.includes('.lte("created_at"') &&
+  srcAdminRequests.includes("hospital_name.ilike.") &&
+  srcAdminRequests.includes("hospital_locality.ilike.") &&
+  srcAdminRequests.includes(".range(from, from + PAGE_SIZE - 1)"),
+  true
+);
+check(
+  "14. requester history exposes the full model + all required filters and sorts",
+  srcRequestTable.includes("formatDateTime(r.required_by)") &&
+  srcRequestTable.includes("formatDateTime(r.created_at)") &&
+  srcRequestTable.includes("BLOOD_COMPONENT_LABELS") &&
+  srcRequestTable.includes("REQUEST_STATUS_LABELS") &&
+  srcRequestTable.includes("URGENCY_LABELS") &&
+  srcRequestFilters.includes('"active"') &&
+  srcRequestFilters.includes('"fulfilled"') &&
+  srcRequestFilters.includes('"expired"') &&
+  srcRequestFilters.includes('"cancelled"') &&
+  srcRequestFilters.includes('"newest"') &&
+  srcRequestFilters.includes('"required_by"') &&
+  srcRequestFilters.includes('"urgent"'),
+  true
+);
+check(
+  "14. tables link to existing detail pages; closed rows render no lifecycle actions",
+  srcRequesterHistory.includes("detailsHref={(id) => `/requests/${id}`}") &&
+  srcRequesterHistory.includes("RequestTable") &&
+  srcRequestTable.includes("detailsHref") &&
+  !srcRequestTable.includes("cancelBloodRequest") &&
+  !srcRequestTable.includes("fulfillBloodRequest") &&
+  srcRequestActions.includes("cancelBloodRequest") &&
+  srcRequestActions.includes("fulfillBloodRequest"),
+  true
+);
+check(
+  "14. filters are whitelisted, paginated, and never client-filtered",
+  srcRequestFilters.includes("Unknown values fall back") &&
+  srcFilterBar.includes('method="get"') &&
+  srcRequestPager.includes("filtersToSearchParams") &&
+  !srcRequestTable.includes(".filter(") &&
+  !srcFilterBar.includes("useState"),
+  true
+);
+check(
+  "14. history UX: truncated long names, missing-note copy, and real empty states",
+  srcRequestTable.includes("truncate") &&
+  srcRequestTable.includes("No note added") &&
+  srcRequestTable.includes("emptyTitle") &&
+  srcRequesterHistory.includes("No requests match these filters") &&
+  srcRequesterHistory.includes("No request history yet") &&
+  srcAdminRequests.includes("No requests match these filters"),
+  true
+);
+check(
+  "14. no second request-management system: no new table, service, or lifecycle writes",
+  !srcRequestFilters.includes("create table") &&
+  !srcRequestFilters.includes("update(") &&
+  !srcRequestTable.includes("cancelBloodRequest") &&
+  !srcAdminRequests.includes("cancelBloodRequest") &&
+  !srcAdminRequests.includes("fulfillBloodRequest") &&
+  !srcAdminRequests.includes("supabase.rpc("),
+  true
+);
+
+// --- 15. platform safety: reporting, moderation and abuse controls ----------
+// The 0010 grant defect this guards against is subtle and total: 0010 revoked
+// UPDATE on request_reports and never granted it back, so the "Admins can review
+// reports" policy existed but was unreachable and ALL moderation silently
+// failed. The grant is now restored, and this check fails if it is ever
+// removed again without an admin-scoped replacement.
+check(
+  "15. report moderation is actually reachable (0010 revoked UPDATE and never re-granted it)",
+  sql0010.includes("revoke update, delete on table public.request_reports from authenticated") &&
+    sql0014.includes(
+      "grant update (status, reviewed_at) on table public.request_reports to authenticated"
+    ) &&
+    sql0014.includes("revoke delete on table public.request_reports from authenticated"),
+  true
+);
+check(
+  "15. moderation stays admin-only: role from the DB profile, never a form field",
+  srcAdminActions.includes('session.profile.role !== "admin"') &&
+    srcAdminActions.includes("export async function reviewReport") &&
+    !srcAdminActions.includes('formData.get("role")') &&
+    srcAdminReports.includes('await requireRolePage("admin")'),
+  true
+);
+check(
+  "15. a user can only ever read or change their OWN reports",
+  sql0010.includes("using (reporter_id = auth.uid())") &&
+    srcAdminActions.includes('.eq("reporter_id", session.user.id)') &&
+    !srcAdminActions.includes(".delete()"),
+  true
+);
+
+// Reporting must never touch the request lifecycle. This is the single most
+// important requester-protection invariant: a report is a moderation record,
+// NOT a punishment, and must not cancel, hide, or edit a blood request.
+check(
+  "15. reporting never alters the request lifecycle (no blood_requests write on the report path)",
+  !/update\s+public\.blood_requests/i.test(sql0014) &&
+    !srcAdminActions.includes('from("blood_requests")') &&
+    !srcReportForm.includes('from("blood_requests")') &&
+    !srcAdminReports.includes('from("blood_requests").update'),
+  true
+);
+check(
+  "15. report lifecycle is separate: only the report's own status may change",
+  sql0014.includes("request_reports_status_check") &&
+    sql0014.includes("'under_review'") &&
+    srcAdminActions.includes('REVIEW_ACTIONS = ["under_review", "reviewed", "dismissed"]') &&
+    srcAdminActions.includes(".update({ status: action })"),
+  true
+);
+check(
+  "15. duplicate reports are blocked by a database constraint, not hidden in the UI",
+  sql0010.includes("constraint request_reports_unique unique (request_id, reporter_id)") &&
+    srcAdminActions.includes("UNIQUE_VIOLATION") &&
+    srcAdminActions.includes("You have already reported this request"),
+  true
+);
+check(
+  "15. the controlled reason set matches TS <-> SQL, legacy values still valid",
+  [
+    "fake",
+    "incorrect_information",
+    "no_longer_needed",
+    "abuse_misuse",
+    "other",
+  ].every((r) => sql0014.includes(`'${r}'`)) &&
+    srcTypes.includes('"incorrect_information"') &&
+    srcTypes.includes('"no_longer_needed"') &&
+    // legacy values must NOT be dropped or historical reports break
+    sql0014.includes("'spam'") &&
+    sql0014.includes("'harassment'"),
+  true
+);
+
+// Limits must be centralised and configurable, not magic numbers in triggers.
+check(
+  "15. every anti-abuse limit lives in one configurable row, not a trigger literal",
+  sql0014.includes("create table if not exists public.platform_safety_limits") &&
+    [
+      "max_active_requests_per_requester",
+      "min_request_interval_seconds",
+      "max_requests_per_hour",
+      "max_reports_per_day",
+      "max_alert_responses_per_minute",
+    ].every((c) => sql0014.includes(c)) &&
+    srcSafetyForm.includes("updateSafetyLimits") &&
+    sql0014.includes('"Admins can update safety limits"'),
+  true
+);
+// The guards must be reachable from the database (not just the UI) and must
+// never refuse a non-user write or a genuine emergency by default.
+check(
+  "15. abuse guards are database-enforced, generous, and skip non-user writes",
+  sql0014.includes("before insert on public.blood_requests") &&
+    sql0014.includes("before insert on public.request_reports") &&
+    sql0014.includes("before update of response on public.donor_alerts") &&
+    (sql0014.match(/if auth\.uid\(\) is null then\s*\n\s*return new;/g) ?? []).length >= 3 &&
+    // fail open if the limits row is missing: abuse protection must never be
+    // the reason a real emergency is refused
+    (sql0014.match(/if not found then\s*\n\s*return new;/g) ?? []).length >= 3 &&
+    sql0014.includes("errcode = 'RS001'"),
+  true
+);
+check(
+  "15. a limit is reported honestly instead of a generic failure",
+  srcSafety.includes("isSafetyLimitError") &&
+    srcSafety.includes("safetyLimitMessage") &&
+    srcAdminActions.includes("safetyLimitMessage(dbError)") &&
+    readFileSync(join(ROOT, "src/lib/actions/requests.ts"), "utf8").includes(
+      "safetyLimitMessage(dbError)"
+    ),
+  true
+);
+// The report UI must be reachable, restrained, and must not out-shout the
+// emergency actions it sits next to.
+check(
+  "15. report action is reachable from request views and never styled as an emergency",
+  existsSync(join(ROOT, "src/components/requests/RequestReportForm.tsx")) &&
+    readFileSync(join(ROOT, "src/app/requests/[id]/page.tsx"), "utf8").includes(
+      "<RequestReportForm"
+    ) &&
+    srcReportForm.includes('variant="secondary"') &&
+    srcReportForm.includes("required") &&
+    !srcReportForm.includes('variant="danger"'),
+  true
+);
+check(
+  "15. admin moderation filters and inspects the request without a second dashboard",
+  srcAdminReports.includes("requireRolePage") &&
+    srcAdminReports.includes("under_review") &&
+    srcAdminReports.includes("AdminReportControls") &&
+    !existsSync(join(ROOT, "src/app/admin/moderation")) &&
+    srcAdminReports.includes(".limit(PAGE_SIZE)"),
+  true
+);
+
+// The 0014 donor-response guard is a BEFORE UPDATE OF `response` trigger. The
+// engine's BULK cleanups (closure sweep, post-acceptance retire, idempotency
+// safety net) must keep setting `status` only. If one of them ever also assigned
+// `response`, that engine/scheduler write would start passing through the
+// anti-abuse guard and could abort a real acceptance or the expiry sweep
+// mid-transaction — a genuine emergency regression.
+//
+// The one place `response` MUST be assigned is the single-alert response write
+// (`where id = p_alert_id`), which is the donor's own accept/decline. So the
+// invariant is: `response` is allowed ONLY in a single-alert write.
+{
+  const statements = [
+    ...sql0011.matchAll(
+      /update\s+public\.donor_alerts\s+(?:a\s+)?set\s+([\s\S]{0,400}?)\s+where\s+([\s\S]{0,200}?);/gi
+    ),
+  ].map((m) => ({ set: m[1] ?? "", where: m[2] ?? "" }));
+  const assignsResponse = (s: string) => /\bresponse\s*=/i.test(s);
+  const isSingleAlert = (w: string) => /\bid\s*=\s*p_alert_id\b/.test(w);
+  check(
+    "15. only a single-alert donor response may assign `response` (the anti-abuse guard cannot abort an acceptance or sweep)",
+    statements.length > 0 &&
+      statements
+        .filter((s) => assignsResponse(s.set))
+        .every((s) => isSingleAlert(s.where)),
+    true
+  );
+  // The guard must only ever be reachable from a genuine donor response, which
+  // is what makes a generous limit harmless.
+  check(
+    "15. the donor-response guard is scoped to `update of response` only",
+    sql0014.includes("before update of response on public.donor_alerts") &&
+    sql0014.includes("if new.response is not distinct from old.response then"),
+    true
+  );
+}
+
+// Several of the checks below look for words like "phone", "donor_profiles",
+// "accepted" or external provider names. Those words legitimately appear in the
+// COMMENTS that state those things are never exposed — so a naive substring
+// search would fail on the very documentation proving the property. These
+// assertions therefore run against comment-stripped sources, which is also the
+// only way a "this must never happen" check can be trusted.
+const stripSqlComments = (s: string) => s.replace(/--[^\n]*/g, "");
+const stripTsComments = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/[^\n]*$/gm, "");
+const sql0015Code = stripSqlComments(sql0015);
+const drivesListCode = stripTsComments(srcDrivesList);
+const driveDetailCode = stripTsComments(srcDriveDetail);
+const rosterCode = stripTsComments(srcDriveRoster);
+
+// --- 16. campus blood drives (prompt 26) ------------------------------------
+const NDRIVE = "22222222-2222-2222-2222-222222222222";
+
+// The single most important invariant: a campus drive is a SEPARATE planned
+// workflow. Nothing in the drive path may create, edit, close or alert on a
+// blood request, and the request lifecycle must stay exactly as it was.
+check(
+  "16. drives never touch the emergency request lifecycle, matching or alerts",
+  !/insert\s+into\s+public\.blood_requests/i.test(sql0015) &&
+    !/update\s+public\.blood_requests/i.test(sql0015) &&
+    !/delete\s+from\s+public\.blood_requests/i.test(sql0015) &&
+    !/expand_alert_rings|mark_alert_responded/.test(sql0015) &&
+    !srcDrivesActions.includes("createBloodRequest") &&
+    !srcDrivesActions.includes("cancelBloodRequest") &&
+    !srcDrivesActions.includes("fulfillBloodRequest") &&
+    !srcDrivesActions.includes('from("blood_requests")'),
+  true
+);
+check(
+  "16. a drive has its own status vocabulary and never an 'accepted' request status",
+  sql0015.includes("'upcoming', 'ongoing', 'completed', 'cancelled'") &&
+    !sql0015Code.includes("'accepted'") &&
+    srcTypes.includes(
+      'type CampusDriveStatus = "upcoming" | "ongoing" | "completed" | "cancelled"'
+    ),
+  true
+);
+
+// Drive donations must reuse the EXISTING ledger so the existing 0012 cooldown
+// trigger fires. A parallel table would be a second eligibility system.
+check(
+  "16. drive donations reuse donation_history (existing cooldown, no second eligibility system)",
+  sql0015.includes("add column if not exists drive_id uuid") &&
+    sql0015.includes("references public.campus_blood_drives (id) on delete set null") &&
+    sql0015.includes("donation_history_occasion_check") &&
+    srcDrivesActions.includes('from("donation_history").insert') &&
+    srcDrivesActions.includes("request_id: null") &&
+    srcDrivesActions.includes("drive_id: driveId") &&
+    !sql0015.includes("create table if not exists public.campus_donations"),
+  true
+);
+// The 0010 UNIQUE(donor_id, request_id, donated_on) enforces NOTHING for a
+// drive donation, because NULL never equals NULL in SQL. The partial index is
+// what actually prevents a duplicate drive donation.
+check(
+  "16. duplicate drive donations are blocked in the database (a NULL request_id cannot dedupe itself)",
+  sql0015.includes("donation_history_drive_once_uidx") &&
+    sql0015.includes("on public.donation_history (donor_id, drive_id)") &&
+    sql0015.includes("where drive_id is not null") &&
+    srcDrivesActions.includes("UNIQUE_VIOLATION") &&
+    srcDrivesActions.includes("already recorded for this donor at this drive"),
+  true
+);
+check(
+  "16. duplicate registration is impossible per (drive, donor)",
+  sql0015.includes("constraint campus_drive_registrations_unique unique (drive_id, donor_id)") &&
+    srcDrivesActions.includes("UNIQUE_VIOLATION") &&
+    srcDrivesActions.includes("already registered for this drive"),
+  true
+);
+
+// Authorization: role from the DB profile, and volunteers may check in but may
+// NOT record a donation (which has a real effect on matching availability).
+check(
+  "16. drive permissions are role-checked server-side, with donations admin-only",
+  srcDrivesActions.includes('session.profile.role !== "admin"') &&
+    srcDrivesActions.includes("requireDriveCoordinator") &&
+    srcDrivesActions.includes('session.profile.role !== "volunteer"') &&
+    (srcDrivesActions.match(
+      /export async function recordDriveDonation[\s\S]{0,400}?requireDriveAdmin\(\)/
+    ) ?? []).length === 1 &&
+    (srcDrivesActions.match(
+      /export async function setDriveAttendance[\s\S]{0,400}?requireDriveCoordinator\(\)/
+    ) ?? []).length === 1,
+  true
+);
+check(
+  "16. a donor can only ever write their own registration",
+  sql0015.includes("donor_id = auth.uid()") &&
+    // The donor path takes the id from the SESSION. Only the coordinator
+    // (admin/volunteer check-in) path may read a donor id from the form, and
+    // that action is separately gated above.
+    (srcDrivesActions.match(
+      /export async function registerForDrive[\s\S]{0,4000}?donor_id: session\.user\.id/
+    ) ?? []).length === 1 &&
+    (srcDrivesActions.match(
+      /export async function registerForDrive[\s\S]{0,4000}?formData\.get\("donorId"\)/
+    ) ?? []).length === 0,
+  true
+);
+
+// Privacy: the public drive surface must not expose donor contact or location,
+// and must never render the roster.
+check(
+  "16. no public drive surface reads donor contact, location or the roster",
+  // What matters is what is READ, not what the copy says. Donor phone and
+  // location live in donor_profiles behind their own-row RLS, so the real
+  // invariant is: a public drive page never touches that table, never selects a
+  // private column, and reads registrations only for the viewing donor.
+  !drivesListCode.includes('from("donor_profiles")') &&
+    !driveDetailCode.includes('from("donor_profiles")') &&
+    // Inspect the actual .select() FIELD LISTS rather than raw source: a
+    // quoted-string regex over JSX spans attributes and matches ordinary prose.
+    ![
+      ...drivesListCode.matchAll(/\.select\(\s*"([^"]*)"/g),
+      ...driveDetailCode.matchAll(/\.select\(\s*"([^"]*)"/g),
+    ]
+      .map((m) => m[1] ?? "")
+      .some((fields) => /\b(phone|email|latitude|longitude)\b/.test(fields)) &&
+    // the registration read is always scoped to the viewing donor
+    srcDriveDetail.includes('.eq("donor_id", session.user.id)') &&
+    srcDonorDashboard.includes('.eq("donor_id", user.id)') &&
+    srcDrivesList.includes('.eq("donor_id", session.user.id)'),
+  true
+);
+check(
+  "16. the roster shows a donor reference and state only — no private fields",
+  !/donor_profiles|phone|email/.test(rosterCode) &&
+    !rosterCode.includes('from("donor_profiles")') &&
+    srcAdminDriveDetail.includes("AdminDriveRoster") &&
+    srcAdminDriveDetail.includes("campus_drive_stats"),
+  true
+);
+check(
+  "16. aggregate stats are count-only and admin/volunteer-gated in SQL",
+  sql0015.includes("create or replace function public.campus_drive_stats") &&
+    sql0015.includes("count(*)::int") &&
+    sql0015.includes("p.role = 'admin' or p.role = 'volunteer'") &&
+    sql0015.includes("jsonb_object_agg"),
+  true
+);
+check(
+  "16. published drives are the only ones donors can read (RLS, not a UI check)",
+  sql0015.includes("using (published or public.is_current_user_admin())") &&
+    srcDrivesList.includes('.eq("published", true)') &&
+    srcAdminDrives.includes('await requireRolePage("admin")') &&
+    srcAdminDriveDetail.includes('await requireRolePage("admin")'),
+  true
+);
+// No external notification provider, and drive notifications dedupe per drive.
+check(
+  "16. drive notifications are in-app only, and dedupe per (recipient, drive)",
+  !/twilio|sendgrid|mailgun|smtp|whatsapp|telegram/i.test(sql0015Code) &&
+    sql0015.includes("add column if not exists drive_id uuid") &&
+    sql0015.includes("coalesce(new.drive_id::text, '')") &&
+    sql0015.includes("n.drive_id is not distinct from new.drive_id") &&
+    sql0015.includes("reminder_sent_at") &&
+    srcNotifResolver.includes('"drive_registered"') &&
+    srcNotifResolver.includes('"drive_upcoming_reminder"') &&
+    srcNotifResolver.includes('"drive_updated"') &&
+    srcNotifResolver.includes('"drive_completed"'),
+  true
+);
+// A function revoked from `authenticated` cannot be called by RPC, so the
+// application tick would fail and reminders would only ever depend on pg_cron —
+// silently breaking the documented no-pg_cron fallback. 0012 sets the precedent:
+// revoke, then grant execute to authenticated.
+check(
+  "16. the reminder sweep is executable by the app tick (revoke then grant, like 0012)",
+  sql0015.includes("grant execute on function public.emit_drive_reminders(integer) to authenticated") &&
+    srcDrivesActions.includes('supabase.rpc("emit_drive_reminders"') &&
+    sql0012.includes(
+      "grant execute on function public.emit_alert_expiring() to authenticated"
+    ),
+  true
+);
+check(
+  "16. drive notifications route to the drive page, never to a request page",
+  resolveNotificationDestination(notif("drive_registered", null, null, null, NDRIVE), "donor"),
+  { href: `/drives/${NDRIVE}`, label: "Open drive" }
+);
+check(
+  "16. a requester is never routed to a drive page (they are not drive recipients)",
+  resolveNotificationDestination(notif("drive_updated", null, null, null, NDRIVE), "requester"),
+  null
+);
+check(
+  "16. admin gets a drives entry inside the EXISTING admin console, not a new dashboard",
+  readFileSync(join(ROOT, "src/app/admin/layout.tsx"), "utf8").includes(
+    'href: "/admin/drives"'
+  ) && existsSync(join(ROOT, "src/app/drives/[id]/page.tsx")),
+  true
+);
+check(
+  "16. drives are integrated into the donor dashboard and notification centre",
+  srcDonorDashboard.includes("<DriveCard") &&
+    srcDonorDashboard.includes('href="/drives"') &&
+    readFileSync(join(ROOT, "src/app/notifications/page.tsx"), "utf8").includes("drive_id"),
+  true
+);
+
+// Registration transitions are server-controlled, so the permissive volunteer
+// UPDATE grant cannot be used to fabricate attendance or rewrite history.
+check(
+  "16. registration state transitions are enforced in the database, not the UI",
+  sql0015.includes("enforce_drive_registration_transition") &&
+    sql0015.includes("old.status in ('participated', 'cancelled')") &&
+    srcDrivesActions.includes("driveRuleMessage"),
+  true
+);
+
+// The settle flag is what lets a drive actually reach a terminal state. Without
+// it, completing or cancelling a drive would raise RS002 against its own
+// system-driven roster update — the feature would be impossible to finish.
+check(
+  "16. completing/cancelling a drive can settle its own roster (no RS002 deadlock)",
+  sql0015.includes("current_setting('raktsetu.drive_settle', true) = '1'") &&
+    (sql0015.match(/set_config\('raktsetu\.drive_settle', '1', true\)/g) ?? []).length >= 2,
+  true
+);
+check(
+  "16. a client can never set the settle flag (transaction-local, server-set only)",
+  !srcDrivesActions.includes("raktsetu.drive_settle") &&
+    !srcAdminDriveDetail.includes("raktsetu.drive_settle") &&
+    !srcDriveRoster.includes("raktsetu.drive_settle"),
+  true
+);
+// Trigger ORDER inside emit_drive_completed is load-bearing. The notification
+// loop filters on `status in ('registered','checked_in')`, so if anything settles
+// the roster to 'participated' first, the acknowledgement loop matches nothing
+// and completing a drive silently sends ZERO notifications. That is exactly
+// what happened when the settle was a separate BEFORE UPDATE trigger.
+{
+  const completion = sql0015.slice(
+    sql0015.indexOf("create or replace function public.emit_drive_completed")
+  );
+  const notifyAt = completion.indexOf("'drive_completed'");
+  const settleAt = completion.indexOf("set status = 'participated'");
+  check(
+    "16. completion notifications are emitted BEFORE the roster is settled (zero-ack bug)",
+    notifyAt !== -1 && settleAt !== -1 && notifyAt < settleAt,
+    true
+  );
+  check(
+    "16. no separate BEFORE trigger can pre-empt the completion acknowledgement",
+    !/create trigger campus_blood_drives_settle_registrations[\s\S]{0,120}before update/.test(
+      sql0015
+    ) &&
+      sql0015.includes("drop trigger if exists campus_blood_drives_settle_registrations") &&
+      sql0015.includes("drop function if exists public.settle_drive_registrations_on_completion()"),
+    true
+  );
+  // One status change must not produce two overlapping notices.
+  check(
+    "16. completing a drive does not ALSO fire the 'details changed' notice",
+    sql0015.includes(
+      "if new.status = 'completed' and old.status is distinct from 'completed' then\n    return null;"
+    ),
+    true
+  );
+  // Nothing may amend a recorded donation; a donation is an immutable ledger row.
+  check(
+    "16. no UPDATE grant is added to the donation ledger",
+    !/grant update[^\n]*on table public\.donation_history/i.test(sql0015) &&
+      !/grant insert[^\n]*on table public\.donation_history/i.test(sql0015),
+    true
+  );
+  // notify_user is drop-and-recreate because adding a parameter would otherwise
+  // leave two overloads and make every existing 7-argument emitter call
+  // ambiguous at runtime — which would break the ring engine. The drop must
+  // match the ONLY existing definition's exact signature.
+  check(
+    "16. notify_user is replaced, not overloaded (an ambiguous 7-arg call would break the ring engine)",
+    sql0015.includes(
+      "drop function if exists public.notify_user(uuid, text, text, text, uuid, bigint, text);"
+    ) &&
+      sql0011.includes("create or replace function public.notify_user(") &&
+      sql0011.includes("p_alert_id   bigint default null") &&
+      // the recreated helper must be revoked again, or it would be callable by
+      // every client (a freshly created function gets DEFAULT EXECUTE to PUBLIC)
+      sql0015.includes(
+        "revoke all on function public.notify_user(uuid, text, text, text, uuid, bigint, text, uuid)"
+      ) &&
+      sql0015.includes("p_drive_id   uuid   default null"),
+    true
+  );
+}
+
 if (failures.length > 0) {
+
   console.error(`\n✗ ${failures.length} ring check(s) failed:`);
   for (const f of failures) console.error(`  - ${f}`);
   console.error(`\n${pass} passed, ${failures.length} failed`);

@@ -1,128 +1,125 @@
+import { requireRolePage } from "@/lib/profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { PageHeader, Section } from "@/components/layout/PageHeader";
-import { formatDateTime } from "@/lib/utils";
 import {
-  BLOOD_COMPONENT_LABELS,
-  REQUEST_STATUS_LABELS,
-  REQUEST_STATUS_STYLES,
-  URGENCY_LABELS,
-} from "@/lib/constants";
+  PAGE_SIZE,
+  URGENCY_RANK,
+  hasActiveFilters,
+  parseRequestFilters,
+} from "@/lib/request-filters";
+import { PageHeader, Section } from "@/components/layout/PageHeader";
+import { RequestFilterBar } from "@/components/requests/RequestFilters";
+import { RequestPager } from "@/components/requests/RequestPager";
+import { RequestTable } from "@/components/requests/RequestTable";
 import type { BloodRequest } from "@/types";
 
 export const metadata = { title: "Requests — admin" };
 
+export const dynamic = "force-dynamic";
+
 /**
  * Full request oversight. blood_requests has an admin SELECT policy (0004);
  * lifecycle rules and expiry are untouched — this view only reads.
+ *
+ * Practical search/filtering with bounded, database-side queries: status,
+ * blood group, component, urgency, created-date range, and a hospital /
+ * locality keyword — paginated one page at a time so a large history never
+ * lands in the browser at once.
  */
-export default async function AdminRequestsPage() {
+export default async function AdminRequestsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const filters = parseRequestFilters(await searchParams, { allowSearch: true });
+  const filtering = hasActiveFilters(filters, { allowSearch: true });
+
+  // Server-side admin gate FIRST: layout already requires admin, but this
+  // explicit check keeps the data boundary obvious and testable.
+  await requireRolePage("admin");
+
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  let query = supabase
     .from("blood_requests")
     .select(
-      "id, blood_group, blood_component, units, hospital_name, hospital_locality, urgency, required_by, status, requester_id, created_at"
-    )
-    .order("created_at", { ascending: false })
-    .limit(100);
+      "id, blood_group, blood_component, units, hospital_name, hospital_locality, urgency, required_by, note, status, requester_id, created_at",
+      { count: "exact" }
+    );
+  if (filters.status !== "all") query = query.eq("status", filters.status);
+  if (filters.bloodGroup !== "all") query = query.eq("blood_group", filters.bloodGroup);
+  if (filters.component !== "all") query = query.eq("blood_component", filters.component);
+  if (filters.urgency !== "all") query = query.eq("urgency", filters.urgency);
+  if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00Z`);
+  if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59.999Z`);
+  // Keyword search stays bound to two hospital text columns. Commas would
+  // split PostgREST `or` conditions, so they become spaces; other wildcard
+  // characters are stripped before the ilike match.
+  if (filters.q) {
+    const safe = filters.q.replace(/[%_,()\\"]/g, "").replace(/,/g, " ").trim().slice(0, 80);
+    if (safe.trim()) {
+      const like = `%${safe.trim()}%`;
+      query = query.or(
+        `hospital_name.ilike.${like},hospital_locality.ilike.${like}`
+      );
+    }
+  }
+  // DB ordering stays on two stable timestamp columns (created_at and
+  // required_by both have DB indexes) so every page is deterministic; the
+  // "most urgent first" emergency rank (critical > urgent > routine) is
+  // applied in memory over this bounded page, where it is easy to scan.
+  query =
+    filters.sort === "required_by" || filters.sort === "urgent"
+      ? query.order("required_by", { ascending: true }).order("created_at", { ascending: false })
+      : query.order("created_at", { ascending: false });
+  const from = (filters.page - 1) * PAGE_SIZE;
+  const { data, count } = await query.range(from, from + PAGE_SIZE - 1);
 
-  const requests = (data as BloodRequest[] | null) ?? [];
-  const active = requests.filter((r) => r.status === "active");
-  const past = requests.filter((r) => r.status !== "active");
-
-  function Row({ r }: { r: BloodRequest }) {
-    return (
-      <tr className="border-b border-ink-100">
-        <td className="px-4 py-4 font-mono text-sm text-ink-600">{r.id.slice(0, 8)}…</td>
-        <td className="px-4 py-4 font-extrabold text-blood-700">{r.blood_group}</td>
-        <td className="px-4 py-4 text-ink-600">
-          {BLOOD_COMPONENT_LABELS[r.blood_component]} · {r.units}
-        </td>
-        <td className="px-4 py-4 text-ink-900">
-          {r.hospital_name}
-          <span className="text-ink-600"> — {r.hospital_locality}</span>
-        </td>
-        <td className="px-4 py-4 text-ink-600">{URGENCY_LABELS[r.urgency]}</td>
-        <td className="px-4 py-4 text-sm text-ink-600">{formatDateTime(r.required_by)}</td>
-        <td className="px-4 py-4 font-mono text-sm text-ink-600">
-          {r.requester_id.slice(0, 8)}…
-        </td>
-        <td className="px-4 py-4">
-          <span
-            className={`rounded-md px-3 py-1 text-sm font-bold ${REQUEST_STATUS_STYLES[r.status]}`}
-          >
-            {REQUEST_STATUS_LABELS[r.status]}
-          </span>
-        </td>
-        <td className="px-4 py-4 text-sm text-ink-600">{formatDateTime(r.created_at)}</td>
-      </tr>
+  const requests = ((data as BloodRequest[] | null) ?? []).slice();
+  // "Most urgent first" ranks critical > urgent > routine, then the earliest
+  // deadline, within this bounded page (DB ordering is text-based, so the
+  // final emergency rank happens here over at most PAGE_SIZE rows).
+  if (filters.sort === "urgent") {
+    requests.sort(
+      (a, b) =>
+        (URGENCY_RANK[a.urgency] ?? 3) - (URGENCY_RANK[b.urgency] ?? 3) ||
+        new Date(a.required_by).getTime() - new Date(b.required_by).getTime()
     );
   }
-
-  const header = (
-    <thead>
-      <tr className="border-b border-ink-200">
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">ID</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Group</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Component</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Hospital</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Urgency</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Required by</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Requester</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Status</th>
-        <th className="px-4 py-3 text-sm font-bold uppercase tracking-widest text-ink-400">Created</th>
-      </tr>
-    </thead>
-  );
+  const total = count ?? requests.length;
+  const activeOnPage = requests.filter((r) => r.status === "active").length;
 
   return (
     <>
       <PageHeader
         eyebrow="Admin · Requests"
         title="Blood request oversight"
-        description={`${active.length} active · ${past.length} historical. Lifecycle rules are unchanged — admins observe here, the requester always owns fulfill/cancel.`}
+        description={`${total} ${total === 1 ? "request" : "requests"} in scope · ${activeOnPage} active on this page. Database-filtered and paginated — lifecycle rules are unchanged, the requester always owns fulfill/cancel.`}
       />
       <Section>
-        <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
-          Active requests ({active.length})
-        </h2>
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse text-left">
-            {header}
-            <tbody>
-              {active.map((r) => (
-                <Row key={r.id} r={r} />
-              ))}
-              {active.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-6 text-ink-600">
-                    No active requests.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <RequestFilterBar filters={filters} basePath="/admin/requests" allowSearch />
+        <div className="mt-6">
+          <RequestTable
+            rows={requests}
+            showRequester
+            emptyTitle={filtering ? "No requests match these filters" : "No requests yet"}
+            emptyDescription={
+              filtering
+                ? "Try widening the status, blood group, component, urgency, date range, or hospital keyword — or clear the filters."
+                : "Blood requests created by requesters will appear here for oversight."
+            }
+          />
+          <RequestPager
+            filters={filters}
+            basePath="/admin/requests"
+            total={total}
+            pageSize={PAGE_SIZE}
+            allowSearch
+          />
         </div>
-
-        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
-          Historical requests ({past.length})
-        </h2>
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse text-left">
-            {header}
-            <tbody>
-              {past.map((r) => (
-                <Row key={r.id} r={r} />
-              ))}
-              {past.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-6 text-ink-600">
-                    No historical requests.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <p className="mt-8 max-w-2xl text-base text-ink-600">
+          Read-only oversight: fulfill and cancel stay with the owning requester
+          through the existing request actions. Urgency (critical first) and the
+          required-by time stay visible in every row so emergencies scan fast.
+        </p>
       </Section>
     </>
   );

@@ -43,7 +43,16 @@ export default async function AdminOverviewPage() {
     { label: "Expired", value: overview.expired_requests },
     { label: "Cancelled", value: overview.cancelled_requests },
     { label: "Completed donations", value: overview.completed_donations },
+  ];
+
+  // Moderation queue, straight from the database. These count REPORTS, not
+  // requests: a reported request keeps its own lifecycle and is never hidden
+  // or cancelled because someone reported it.
+  const reportStats: { label: string; value: number }[] = [
     { label: "Open reports", value: overview.open_reports },
+    { label: "Under review", value: overview.under_review_reports },
+    { label: "Resolved", value: overview.resolved_reports },
+    { label: "Filed in the last 24h", value: overview.reports_last_24h },
   ];
 
   const alertStats: { label: string; value: number }[] = [
@@ -87,18 +96,21 @@ export default async function AdminOverviewPage() {
           <div className="space-y-6">
             <StatList title="Requests & donations" stats={requestStats} />
             <StatList title="Alerts & donors" stats={alertStats} />
+            <StatList title="Report moderation" stats={reportStats} />
           </div>
         </div>
 
         {overview.open_reports > 0 && (
           <Alert variant="warning" title={`${overview.open_reports} open report(s)`} className="mt-8">
-            Review them in the Reports section.
+            Review them in the Reports section. A reported request keeps its own
+            lifecycle — reporting never cancels or hides it.
           </Alert>
         )}
 
         <div className="mt-10 flex flex-wrap gap-4">
           <ButtonLink href="/admin/users" variant="secondary">Manage users</ButtonLink>
           <ButtonLink href="/admin/requests" variant="secondary">View requests</ButtonLink>
+          <ButtonLink href="/admin/reports" variant="secondary">Review reports</ButtonLink>
           <ButtonLink href="/admin/alerts" variant="secondary">View alerts</ButtonLink>
           <ButtonLink href="/admin/settings" variant="secondary">Platform settings</ButtonLink>
         </div>

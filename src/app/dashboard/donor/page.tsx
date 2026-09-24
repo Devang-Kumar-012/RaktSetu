@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/States";
 import { DonorAlertCard } from "@/components/alerts/DonorAlertCard";
 import { AvailabilityControl } from "@/components/donor/AvailabilityControl";
 import { DonorStatusBadges } from "@/components/donor/DonorStatusBadges";
+import { DriveCard } from "@/components/drives/DriveCard";
 import { RingStatusStrip } from "@/components/donor/RingStatusStrip";
 import { isAlertActionable } from "@/lib/alert-rings";
 import type { AlertState } from "@/lib/alert-rings";
@@ -20,7 +21,13 @@ import {
 import { getDonorEligibility } from "@/lib/eligibility";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/utils";
-import type { DonorAlertRow, DonorDonationRow, DonorProfile } from "@/types";
+import type {
+  CampusDrive,
+  DonorAlertRow,
+  DonorDonationRow,
+  DonorProfile,
+  DriveRegistration,
+} from "@/types";
 
 export const metadata = { title: "Donor dashboard" };
 
@@ -70,9 +77,9 @@ export default async function DonorDashboardPage() {
       actionable,
       minutesLeft: actionable
         ? Math.max(
-            0,
-            Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
-          )
+          0,
+          Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
+        )
         : null,
     };
   });
@@ -87,6 +94,31 @@ export default async function DonorDashboardPage() {
   });
   const donationHistory = (historyRows as DonorDonationRow[] | null) ?? [];
   const eligibility = getDonorEligibility(donorProfile);
+
+  // Campus drives (migration 0015). Published drives are readable by any
+  // signed-in user; the viewer's OWN registrations are what RLS will return,
+  // so this can never show anyone else's participation.
+  const [driveResult, ownDrivesResult] = await Promise.all([
+    supabase
+      .from("campus_blood_drives")
+      .select(
+        "id, title, organizer, drive_date, starts_at, ends_at, venue, locality, description, target_units, status, published, reminder_sent_at, created_at, updated_at"
+      )
+      .eq("published", true)
+      .in("status", ["upcoming", "ongoing"])
+      .order("starts_at", { ascending: true })
+      .limit(4),
+    supabase
+      .from("campus_drive_registrations")
+      .select("drive_id, status")
+      .eq("donor_id", user.id),
+  ]);
+  const upcomingDrives = (driveResult.data as CampusDrive[] | null) ?? [];
+  const myDriveStatuses = new Map<string, DriveRegistration["status"]>(
+    ((ownDrivesResult.data ?? []) as { drive_id: string; status: DriveRegistration["status"] }[]).map(
+      (r) => [r.drive_id, r.status]
+    )
+  );
 
   return (
     <>
@@ -113,6 +145,47 @@ export default async function DonorDashboardPage() {
             </div>
           </>
         )}
+
+        {/* Campus drives (migration 0015) — deliberately a separate section
+            from emergency alerts below. A planned drive is not an emergency,
+            and nothing here changes matching or an alert. */}
+        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+          Campus blood drives
+        </h2>
+        <p className="mt-2 max-w-3xl text-base text-ink-600">
+          Planned donation camps run by colleges and organisations. Register your
+          interest, then turn up — or skip one and wait for a nearby emergency
+          alert instead. Registering for a drive does not affect your emergency
+          availability.
+        </p>
+        <div className="mt-6">
+          {upcomingDrives.length === 0 ? (
+            <EmptyState
+              title="No open drives right now"
+              description="Campus drives appear here once an administrator publishes them. You will get an in-app notification when one is announced."
+              action={
+                <ButtonLink href="/drives" variant="secondary">
+                  See all campus drives
+                </ButtonLink>
+              }
+            />
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2">
+              {upcomingDrives.slice(0, 4).map((drive) => (
+                <DriveCard
+                  key={drive.id}
+                  drive={drive}
+                  registrationStatus={myDriveStatuses.get(drive.id) ?? null}
+                />
+              ))}
+            </div>
+          )}
+          <div className="mt-6">
+            <ButtonLink href="/drives" variant="secondary">
+              All campus blood drives
+            </ButtonLink>
+          </div>
+        </div>
 
         <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
           Emergency alerts
@@ -225,7 +298,7 @@ export default async function DonorDashboardPage() {
           ) : (
             donationHistory.map((row) => (
               <div
-                key={`${row.donation_date}-${row.request_id ?? "none"}`}
+                key={`${row.donation_date}-${row.request_id ?? row.drive_id ?? "none"}`}
                 className="rounded-lg border border-ink-200 bg-white px-5 py-4 shadow-sm"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -244,15 +317,28 @@ export default async function DonorDashboardPage() {
                         : "border-ink-200 bg-ink-100 text-ink-600"
                     )}
                   >
+                    {/* A campus drive is its own kind of occasion, not a blood
+                        request — so it gets its own label rather than being
+                        shown as "not linked to a request". */}
                     {row.request_status
                       ? REQUEST_STATUS_LABELS[row.request_status]
-                      : "Not linked to a request"}
+                      : row.drive_id
+                        ? "Campus drive"
+                        : "Not linked to a request"}
                   </span>
                 </div>
                 {row.hospital_name && (
                   <p className="mt-1 text-base text-ink-600">
                     {row.hospital_name}
                     {row.hospital_locality && ` — ${row.hospital_locality}`}
+                  </p>
+                )}
+                {row.drive_title && row.drive_id && (
+                  <p className="mt-1 text-base text-ink-600">
+                    {row.drive_title} ·{" "}
+                    <a href={`/drives/${row.drive_id}`} className="underline">
+                      View drive
+                    </a>
                   </p>
                 )}
               </div>

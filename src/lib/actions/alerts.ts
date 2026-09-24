@@ -15,6 +15,7 @@ import type { ProfileActionState } from "@/lib/actions/action-state";
 import { getSessionInfo } from "@/lib/profile";
 import { tickAlertRings } from "@/lib/ring-engine";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safetyLimitMessage } from "@/lib/safety";
 
 /** Maps mark_alert_responded() outcome codes to donor-facing messages. */
 const OUTCOME_MESSAGES: Record<string, string> = {
@@ -67,6 +68,11 @@ export async function respondToAlert(
   });
 
   if (error) {
+    // The 0014 anti-abuse guard raises a dedicated SQLSTATE. Its message is a
+    // complete sentence, so it is surfaced rather than flattened into a generic
+    // failure — the same treatment the request and report actions get.
+    const limited = safetyLimitMessage(error);
+    if (limited) return { ok: false, error: limited };
     return { ok: false, error: "Could not record your response. Please try again." };
   }
 
