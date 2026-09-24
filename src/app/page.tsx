@@ -3,6 +3,9 @@ import { HowItWorksSection } from "@/components/home/HowItWorksSection";
 import { EmergencyAlertSection } from "@/components/home/EmergencyAlertSection";
 import { TrustSection } from "@/components/home/TrustSection";
 import { DonorSection } from "@/components/home/DonorSection";
+import { RequesterSection } from "@/components/home/RequesterSection";
+import { VolunteerSection } from "@/components/home/VolunteerSection";
+import { CampusDrivesSection } from "@/components/home/CampusDrivesSection";
 import { EmergencyCtaSection } from "@/components/home/EmergencyCtaSection";
 import { APP_NAME } from "@/lib/constants";
 
@@ -19,6 +22,9 @@ export default function HomePage() {
       <EmergencyAlertSection />
       <TrustSection />
       <DonorSection />
+      <RequesterSection />
+      <VolunteerSection />
+      <CampusDrivesSection />
       <EmergencyCtaSection />
     </>
   );

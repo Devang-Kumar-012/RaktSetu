@@ -14,6 +14,15 @@ export function validateFullName(value: string): string | null {
   const name = value.trim();
   if (name.length < 2) return "Please enter your full name.";
   if (name.length > 80) return "Name must be 80 characters or fewer.";
+  // Control characters are rejected for two reasons. A newline renders as a
+  // broken two-line name in the navbar, dashboards and admin user lists, and a
+  // NUL byte is rejected outright by PostgreSQL — accepting it here would let
+  // the form submit and then surface a raw database error to the user.
+  // validateHospitalName enforces the same rule for the same reason.
+  // eslint-disable-next-line no-control-regex
+  if (/[\n\r\t\u0000-\u001f\u007f]/.test(name)) {
+    return "Name must be a single line.";
+  }
   return null;
 }
 

@@ -151,6 +151,33 @@ Run these in the Supabase SQL editor (Dashboard → SQL Editor), in order:
       states in its own body that it is an application-level tracking mechanism
       and not medical advice. No external notification provider.
 
+17. `supabase/migrations/0017_lifecycle_hardening.sql` — two invariants found by the
+    Prompt 28 end-to-end integration audit, both of which were real defects:
+    - **A request could be marked "fulfilled" with no donor having ever
+      accepted it.** The existing closeout emitter (0012) already assumed
+      otherwise — it notifies "the winning donor … *if there is one*" — so the
+      unguarded case was reachable but never intended. It is a genuinely bad
+      state: the request claims blood was secured while nobody agreed, which is
+      indistinguishable from a lost donor and unauditable afterwards. Now a
+      `BEFORE UPDATE OF status` trigger requires an `donor_alerts.response =
+      'accepted'` row, raising `RS003` with a message the requester sees (with
+      the cancel path named as the alternative). Enforced in the database, so
+      direct PostgREST calls cannot bypass it. **Deliberately not applied to
+      `cancelled` or `expired`**: cancellation must always remain possible even
+      after an acceptance, and expiry must never be blocked or a past-deadline
+      request would stay active and keep alerting donors. Admins may still record
+      a true fulfilment directly, reusing the authority they already hold over
+      `donation_history`. No status value was added — acceptance remains a
+      donor-alert relationship, never a lifecycle state.
+    - **Notification preferences could permanently fail to save.** Migration 0016
+      revoked `INSERT` from `authenticated` and granted only `SELECT` plus a
+      column-limited `UPDATE`, while the action performs an UPSERT, and 0016's
+      backfill covered only profiles that existed at that time. Any user who
+      registered later had no row, so their first save would fail with no way to
+      recover from the UI. Fixed in two layers: a trigger creates the row on
+      every new profile, and an own-row `INSERT` policy is the backstop. `DELETE`
+      stays revoked in every layer.
+
 All are idempotent — safe to re-run.
 
 ## Locations & distance (privacy model)

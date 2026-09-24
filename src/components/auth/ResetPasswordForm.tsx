@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -66,10 +66,9 @@ export function ResetPasswordForm() {
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       {error && <Alert variant="error">{error}</Alert>}
 
-      <Input
+      <PasswordInput
         label="New password"
         name="password"
-        type="password"
         autoComplete="new-password"
         placeholder="At least 8 characters"
         value={password}
@@ -78,10 +77,9 @@ export function ResetPasswordForm() {
         required
       />
 
-      <Input
+      <PasswordInput
         label="Confirm new password"
         name="confirmPassword"
-        type="password"
         autoComplete="new-password"
         placeholder="Type the same password again"
         value={confirmPassword}

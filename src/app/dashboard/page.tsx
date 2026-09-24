@@ -35,8 +35,14 @@ export default async function DashboardPage() {
     redirect("/login?next=%2Fdashboard");
   }
 
-  // Send every user straight to the dashboard for their role.
+  // A suspended account is not sent to its role dashboard. The role guard on
+  // that page would catch it, but redirecting here gives one clear message
+  // instead of a redirect chain, and matches the rule in requireRolePage.
   if (profile) {
+    if (profile.status !== "active") {
+      redirect("/account-suspended");
+    }
+    // Send every user straight to the dashboard for their role.
     redirect(`/dashboard/${profile.role}`);
   }
 

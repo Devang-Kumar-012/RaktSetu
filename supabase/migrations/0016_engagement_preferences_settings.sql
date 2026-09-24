@@ -671,4 +671,3 @@ exception when others then
 end $$;
 
 -- End of migration 0016_engagement_preferences_settings.sql.
-

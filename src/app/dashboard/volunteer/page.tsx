@@ -8,6 +8,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/States";
 import { VolunteerRequestCard } from "@/components/volunteer/VolunteerRequestCard";
+import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 import type { VolunteerProfile, VolunteerRequestView } from "@/types";
 
 export const metadata = { title: "Volunteer dashboard" };
@@ -42,6 +43,11 @@ export default async function VolunteerDashboardPage() {
 
   return (
     <>
+      {/* Assisted-request state changes underneath the volunteer (acceptances,
+          cancellation, fulfilment, expiry) arrive as this volunteer's own
+          notifications, so the same shared live channel keeps this list current. */}
+      <LiveRefresh />
+
       <PageHeader
         eyebrow="Volunteer dashboard"
         title={`Hi, ${firstName}`}

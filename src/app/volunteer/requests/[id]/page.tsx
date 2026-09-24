@@ -10,6 +10,7 @@ import {
   URGENCY_LABELS,
 } from "@/lib/constants";
 import { PageHeader, Section } from "@/components/layout/PageHeader";
+import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 import { RequestReportForm } from "@/components/requests/RequestReportForm";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
@@ -64,6 +65,9 @@ export default async function VolunteerRequestDetailPage({
 
   return (
     <>
+      {/* The assisted request can close underneath the volunteer mid-view; the
+          shared live channel keeps the coordination panel from going stale. */}
+      <LiveRefresh />
       <PageHeader
         eyebrow="Volunteer · Request details"
         title={`${request.blood_group} · ${request.hospital_name}`}

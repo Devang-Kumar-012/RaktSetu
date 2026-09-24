@@ -76,7 +76,7 @@ export function Navbar({
     );
 
   return (
-    <header className="sticky top-0 z-50 glass-bar border-b border-ink-200">
+    <header className="sticky top-0 z-50 glass-bar">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Brand />
 

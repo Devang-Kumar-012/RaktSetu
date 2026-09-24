@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "check:rules": "tsx scripts/check-rules.ts",
     "check:rings": "tsx scripts/check-rings.ts",
-    "check": "npm run check:rules && npm run check:rings && npm run build",
+    "check:invariants": "tsx scripts/check-invariants.ts",
+    "check": "npm run check:rules && npm run check:rings && npm run check:invariants && npm run build",
     "smoke": "sh scripts/smoke-test.sh"
   },
   "dependencies": {

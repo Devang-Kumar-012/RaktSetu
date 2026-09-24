@@ -62,6 +62,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   }
 );
 
+// PasswordInput intentionally lives in ./PasswordInput.tsx.
+//
+// It needs useState, so it must be a Client Component — but Input, Select and
+// Textarea are used by SERVER components (e.g. /contact renders <Input>). If
+// this module were marked "use client" to host the toggle, every server
+// component importing a plain <Input> would fail to build. Keeping the
+// interactive control in its own client module lets the rest of the form
+// primitives stay server-renderable.
+export { PasswordInput } from "./PasswordInput";
+export type { PasswordInputProps } from "./PasswordInput";
+
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   hint?: string;

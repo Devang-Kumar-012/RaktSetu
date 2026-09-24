@@ -97,9 +97,9 @@ export default async function AdminReportsPage({
   const requestIds = [...new Set(reports.map((r) => r.request_id))];
   const { data: requestRows } = requestIds.length
     ? await supabase
-        .from("blood_requests")
-        .select("id, blood_group, units, hospital_name, hospital_locality, urgency, status, created_at")
-        .in("id", requestIds)
+      .from("blood_requests")
+      .select("id, blood_group, units, hospital_name, hospital_locality, urgency, status, created_at")
+      .in("id", requestIds)
     : { data: [] as unknown[] };
   const requestById = new Map(
     ((requestRows ?? []) as {
@@ -291,10 +291,9 @@ export default async function AdminReportsPage({
                         </dt>
                         <dd className="mt-1">
                           <span
-                            className={`rounded-md px-2 py-1 text-xs font-bold ${
-                              REQUEST_STATUS_STYLES[request.status] ??
+                            className={`rounded-md px-2 py-1 text-xs font-bold ${REQUEST_STATUS_STYLES[request.status] ??
                               "bg-ink-100 text-ink-600"
-                            }`}
+                              }`}
                           >
                             {REQUEST_STATUS_LABELS[request.status] ?? request.status}
                           </span>

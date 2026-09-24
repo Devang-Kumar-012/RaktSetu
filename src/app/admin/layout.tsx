@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { requireRolePage } from "@/lib/profile";
 import { PageHeader, Section } from "@/components/layout/PageHeader";
+import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 
 export const metadata: Metadata = { title: "Administration" };
 
@@ -36,6 +37,15 @@ export default async function AdminLayout({
 
   return (
     <>
+      {/* One live channel for the whole admin console (overview, users, requests,
+          alerts, reports, settings, drives). Mounted here rather than per page so
+          there is a SINGLE subscription for all eight routes, and so a moderation
+          or account-status event refreshes whichever view the admin is actually
+          looking at. Deliberately not extended to non-operational analytics: the
+          notification stream already carries the events worth reacting to, and
+          turning every query into a subscription would be wasteful. */}
+      <LiveRefresh />
+
       <PageHeader
         eyebrow="Administration"
         title="Admin console"

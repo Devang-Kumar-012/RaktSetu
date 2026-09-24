@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Input, PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { REGISTER_ROLES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
@@ -16,7 +16,7 @@ import { isValidEmail } from "@/lib/utils";
 
 type Phase = "form" | "check-email";
 
-export function RegisterForm() {
+export function RegisterForm({ initialRole }: { initialRole?: string }) {
   const router = useRouter();
   const configured = isSupabaseConfigured();
 
@@ -24,7 +24,16 @@ export function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState<string>("donor");
+  // A preselected role may only ever be one of the three public roles. Matching
+  // against REGISTER_ROLES (rather than assigning the param directly) means
+  // ?role=admin — or any other tampered value — is ignored and falls back to the
+  // default. The user can still change it, and the database signup trigger
+  // rejects anything outside these three regardless.
+  const [role, setRole] = useState<string>(
+    initialRole && REGISTER_ROLES.some((r) => r.value === initialRole)
+      ? initialRole
+      : "donor"
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
@@ -163,10 +172,9 @@ export function RegisterForm() {
         </div>
       </div>
 
-      <Input
+      <PasswordInput
         label="Password"
         name="password"
-        type="password"
         autoComplete="new-password"
         placeholder="At least 8 characters"
         hint="Use 8+ characters. A passphrase is easiest to remember."
@@ -176,10 +184,9 @@ export function RegisterForm() {
         required
       />
 
-      <Input
+      <PasswordInput
         label="Confirm password"
         name="confirmPassword"
-        type="password"
         autoComplete="new-password"
         placeholder="Type the same password again"
         value={confirmPassword}

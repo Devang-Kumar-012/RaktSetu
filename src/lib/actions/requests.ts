@@ -192,6 +192,12 @@ export async function fulfillBloodRequest(
     .select("id");
 
   if (dbError) {
+    // 0017: a fulfilment with no accepted donor raises RS003 with a full
+    // sentence. Surface it rather than flattening it into "Could not update",
+    // because the requester needs to know WHY and what to do instead (cancel).
+    if (dbError.code === "RS003" && typeof dbError.message === "string") {
+      return { ok: false, error: dbError.message };
+    }
     console.error("fulfillBloodRequest failed:", dbError.message);
     return { ok: false, error: "Could not update the request. Please try again." };
   }

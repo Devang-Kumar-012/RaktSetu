@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Input, PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { isSupabaseConfigured } from "@/lib/env";
 import { isValidEmail } from "@/lib/utils";
@@ -92,10 +92,9 @@ export function LoginForm({
         required
       />
 
-      <Input
+      <PasswordInput
         label="Password"
         name="password"
-        type="password"
         autoComplete="current-password"
         placeholder="Your password"
         value={password}

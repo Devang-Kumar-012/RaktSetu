@@ -122,12 +122,38 @@ body {
 }
 
 /* Sticky navbar bar — slightly more opaque so nav text stays crisp over
-   scrolling content. The bottom border colour stays utility-driven. */
+   scrolling content. Owns its own hairline border, like every other glass
+   surface, so the bar is self-contained and identical on every route. */
 .glass-bar {
   background-color: rgba(255, 255, 255, 0.8);
+  border-bottom: 1px solid rgba(28, 26, 23, 0.08);
   box-shadow: var(--glass-shadow-bar);
   backdrop-filter: var(--glass-blur-bar);
   -webkit-backdrop-filter: var(--glass-blur-bar);
+}
+
+/* Form-heavy panel (login, register, password reset, profile settings).
+   Same language as .glass, but a step more opaque and a touch more blurred:
+   a panel full of labels, hints and inputs needs MORE contrast than a summary
+   card, not less. Blur radius stays modest so it never smears. */
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(28, 26, 23, 0.09);
+  box-shadow:
+    0 1px 2px rgba(28, 26, 23, 0.05),
+    0 24px 56px -28px rgba(28, 26, 23, 0.42);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+/* Background wash for the authentication routes. Gives the auth panel
+   something to refract so the glass reads as glass rather than a pale box.
+   Two very soft tints only — no blobs, no glow, no decoration. */
+.auth-wash {
+  background-color: var(--color-ink-50);
+  background-image:
+    radial-gradient(900px 520px at 12% -10%, rgba(116, 29, 29, 0.14), transparent 60%),
+    radial-gradient(760px 460px at 96% 104%, rgba(227, 75, 75, 0.1), transparent 58%);
 }
 
 /* Hero backdrop: blood/emergency-themed wash so the glass hero surfaces have
@@ -161,5 +187,9 @@ body {
 
   .glass-bar {
     background-color: rgba(255, 255, 255, 0.98);
+  }
+
+  .glass-panel {
+    background-color: rgba(255, 255, 255, 0.99);
   }
 }

@@ -55,12 +55,12 @@ export default async function DrivesPage() {
     // second belt, not the boundary — RLS is.
     const ownQuery = isDonor
       ? supabase
-          .from("campus_drive_registrations")
-          .select("drive_id, status")
-          .eq("donor_id", session.user.id)
+        .from("campus_drive_registrations")
+        .select("drive_id, status")
+        .eq("donor_id", session.user.id)
       : Promise.resolve({
-          data: [] as { drive_id: string; status: DriveRegistration["status"] }[],
-        });
+        data: [] as { drive_id: string; status: DriveRegistration["status"] }[],
+      });
 
     const [driveResult, ownResult] = await Promise.all([driveQuery, ownQuery]);
     drives = (driveResult.data as CampusDrive[] | null) ?? [];
@@ -92,6 +92,21 @@ export default async function DrivesPage() {
           </Alert>
         ) : (
           <div className="space-y-10">
+            {/* One glass summary band, then ordinary surfaces below it. The
+                rhythm (glass → normal → glass) is deliberate: glass marks the
+                areas that matter, it does not become the whole page. */}
+            <div className="glass rounded-lg p-6 sm:p-8">
+              <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
+                Campus blood drives
+              </h2>
+              <p className="mt-2 max-w-2xl text-base text-ink-700">
+                Planned donation drives run by colleges and organisations. Register
+                your interest, see the venue and timings, and track what you
+                attended. Everything here is in-app — we never send you to a
+                third-party ticketing site.
+              </p>
+            </div>
+
             <div>
               <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
                 Open and upcoming

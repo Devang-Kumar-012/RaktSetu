@@ -255,10 +255,10 @@ export default async function RequestDetailsPage({
                   </span>
                   <span
                     className={`rounded-md px-3 py-1 text-sm font-bold ${live
-                        ? "bg-blood-50 text-blood-700 border border-blood-200"
-                        : done
-                          ? "bg-green-50 text-green-900 border border-green-200"
-                          : "bg-ink-100 text-ink-600 border border-ink-200"
+                      ? "bg-blood-50 text-blood-700 border border-blood-200"
+                      : done
+                        ? "bg-green-50 text-green-900 border border-green-200"
+                        : "bg-ink-100 text-ink-600 border border-ink-200"
                       }`}
                   >
                     {live ? "Live now" : done ? "Completed" : "Not started"}

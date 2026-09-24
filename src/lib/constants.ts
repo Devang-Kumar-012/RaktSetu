@@ -2,9 +2,11 @@
 import type { ReportStatus } from "@/types";
 
 export const APP_NAME = "RaktSetu";
-export const APP_TAGLINE = "A blood donor network for urgent needs.";
+// Used as the <title> suffix, so it states what the product IS rather than
+// marketing it. Deliberately contains no promise of availability or outcomes.
+export const APP_TAGLINE = "Real-Time Blood Donation Coordination Platform";
 export const APP_DESCRIPTION =
-  "RaktSetu is a live blood-donor network. When blood is urgently needed, it reaches willing donors nearby — and the patient never has to operate the app themselves.";
+  "RaktSetu coordinates compatible nearby blood donors when an urgent request comes in. It alerts willing donors in expanding distance rings, coordinates a valid acceptance, and keeps donor contact details private until then. It does not screen donors, replace hospitals or blood banks, or guarantee blood availability — final medical decisions stay with qualified professionals.";
 
 export const BLOOD_GROUPS = [
   "A+",

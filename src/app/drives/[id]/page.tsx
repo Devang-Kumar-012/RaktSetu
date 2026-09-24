@@ -102,7 +102,7 @@ export default async function DriveDetailPage({
 
           {/* Facts first, action second — a drive page must never crowd out the
               emergency route, which stays one tap below. */}
-          <Card>
+          <Card glass>
             <CardBody className="pt-6">
               <h2 className="text-xl font-bold tracking-tight text-ink-900">
                 Drive details
@@ -145,7 +145,7 @@ export default async function DriveDetailPage({
             </CardBody>
           </Card>
 
-          <Card>
+          <Card glass>
             <CardBody className="pt-6">
               <h2 className="text-xl font-bold tracking-tight text-ink-900">
                 Your registration

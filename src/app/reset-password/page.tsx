@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 
+import { AuthShell } from "@/components/auth/AuthShell";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
-import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
-import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
 import { getSessionInfo } from "@/lib/profile";
 
@@ -21,31 +20,26 @@ export default async function ResetPasswordPage() {
   const hasRecoverySession = Boolean(user);
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Account recovery"
-        title="Set a new password"
-        description="Choose a strong password you do not use anywhere else."
-      />
-      <Section className="max-w-xl">
-        {!configured ? (
-          <Alert variant="warning" title="Authentication is not configured yet">
-            The Supabase project URL and anon key are missing from this deployment.
-          </Alert>
-        ) : !hasRecoverySession ? (
-          <Alert variant="error" title="This reset link is not valid anymore">
-            Reset links expire and work only once. Request a fresh one — it takes a
-            minute.
-            <div className="mt-4">
-              <ButtonLink href="/forgot-password">Request a new reset link</ButtonLink>
-            </div>
-          </Alert>
-        ) : (
-          <Card className="p-6 sm:p-8">
-            <ResetPasswordForm />
-          </Card>
-        )}
-      </Section>
-    </>
+    <AuthShell
+      eyebrow="Account recovery"
+      title="Set a new password"
+      description="Choose a strong password you do not use anywhere else."
+    >
+      {!configured ? (
+        <Alert variant="warning" title="Authentication is not configured yet">
+          The Supabase project URL and anon key are missing from this deployment.
+        </Alert>
+      ) : !hasRecoverySession ? (
+        <Alert variant="error" title="This reset link is not valid anymore">
+          Reset links expire and work only once. Request a fresh one — it takes a
+          minute.
+          <div className="mt-4">
+            <ButtonLink href="/forgot-password">Request a new reset link</ButtonLink>
+          </div>
+        </Alert>
+      ) : (
+        <ResetPasswordForm />
+      )}
+    </AuthShell>
   );
 }

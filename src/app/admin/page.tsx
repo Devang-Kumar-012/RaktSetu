@@ -61,6 +61,13 @@ export default async function AdminOverviewPage() {
     { label: "Available, eligible donors", value: overview.available_donors },
   ];
 
+  const isPlatformEmpty = [
+    ...userStats,
+    ...requestStats,
+    ...alertStats,
+    ...reportStats,
+  ].every((s) => s.value === 0);
+
   function StatList({
     title,
     stats,
@@ -105,6 +112,29 @@ export default async function AdminOverviewPage() {
             Review them in the Reports section. A reported request keeps its own
             lifecycle — reporting never cancels or hides it.
           </Alert>
+        )}
+
+        {/* A fresh deployment is genuinely all zeros. Showing an unexplained wall
+            of 0s reads as a broken dashboard, so say so plainly — and say what
+            will populate it. Nothing is seeded, estimated or fabricated. */}
+        {isPlatformEmpty && (
+          <div className="mt-8 rounded-lg border border-dashed border-ink-200 bg-ink-50 p-6">
+            <h2 className="text-lg font-bold text-ink-900">No activity yet</h2>
+            <p className="mt-2 text-base leading-relaxed text-ink-600">
+              These figures come straight from the database and nothing has been
+              recorded yet. They fill in as soon as the first account registers
+              and the first blood request is created — no data is pre-populated
+              or estimated to make the dashboard look busier.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <ButtonLink href="/admin/users" variant="secondary">
+                Manage users
+              </ButtonLink>
+              <ButtonLink href="/admin/settings" variant="secondary">
+                Platform settings
+              </ButtonLink>
+            </div>
+          </div>
         )}
 
         <div className="mt-10 flex flex-wrap gap-4">

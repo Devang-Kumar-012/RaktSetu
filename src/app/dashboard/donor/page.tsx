@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/States";
 import { DonorAlertCard } from "@/components/alerts/DonorAlertCard";
+import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 import { tickDonorReminders } from "@/lib/actions/notifications";
 import { AvailabilityControl } from "@/components/donor/AvailabilityControl";
 import { DonorStatusBadges, DonorRecognitionCard } from "@/components/donor/DonorStatusBadges";
@@ -132,6 +133,13 @@ export default async function DonorDashboardPage() {
 
   return (
     <>
+      {/* Live channel for the donor's own operational state. Without it a donor
+          could be left staring at an alert that another donor already won, or at
+          one whose request was cancelled, until they reloaded by hand. The
+          server still rejects any stale action — this only keeps the screen
+          honest. One subscription, shared with the notification centre. */}
+      <LiveRefresh />
+
       <PageHeader
         eyebrow="Donor dashboard"
         title={`Hi, ${firstName}`}
