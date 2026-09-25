@@ -4,11 +4,11 @@ import { useState, type FormEvent } from "react";
 import { useActionState } from "react";
 
 import { createBloodRequest } from "@/lib/actions/requests";
+import { lookupAreaCandidates } from "@/lib/actions/location";
 import {
   initialLocationLookupState,
-  lookupAreaCandidates,
   type LocationLookupState,
-} from "@/lib/actions/location";
+} from "@/lib/actions/location-state";
 import { initialProfileActionState } from "@/lib/actions/action-state";
 import { BLOOD_GROUPS, BLOOD_COMPONENTS, URGENCY_OPTIONS, MIN_UNITS, MAX_UNITS, REQUEST_NOTE_MAX } from "@/lib/constants";
 import { bloodRequestFieldErrors, type BloodRequestFieldInput } from "@/lib/validation";

@@ -67,9 +67,16 @@ export function Navbar({
       ? `Notifications, ${unreadNotifications} unread`
       : "Notifications";
 
+  // Every navbar item shares one base, so the main nav, the account cluster and
+  // the highlighted Dashboard all have identical typography, padding and
+  // focus treatment. This is what previously made the bar look assembled from
+  // unrelated parts (ButtonLink renders px-5 py-2.5; these were px-3 py-2).
+  const navLinkBase =
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-base font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blood-700";
+
   const navLinkClass = (href: string) =>
     cn(
-      "rounded-md px-3 py-2 text-base font-semibold transition-colors",
+      navLinkBase,
       pathname === href
         ? "text-blood-700 bg-blood-50"
         : "text-ink-800 hover:text-blood-700 hover:bg-ink-100"
@@ -77,10 +84,24 @@ export function Navbar({
 
   return (
     <header className="sticky top-0 z-50 glass-bar">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Brand />
+      {/*
+        ONE horizontal bar, three vertically-centred zones:
+          [brand] [main nav] .......... [account cluster]
 
-        <nav aria-label="Main navigation" className="hidden items-center gap-1 md:flex">
+        `xl` is deliberate. The account cluster carries five controls plus a
+        greeting, so a single row overflows at tablet widths; below `xl` it
+        collapses to the existing hamburger panel instead of squashing.
+      */}
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:px-6">
+        <div className="shrink-0">
+          <Brand />
+        </div>
+
+        {/* Main navigation, grouped. */}
+        <nav
+          aria-label="Main navigation"
+          className="hidden shrink-0 items-center gap-0.5 xl:flex"
+        >
           {MAIN_NAV_ITEMS.map((item) => (
             <Link key={item.href} href={item.href} className={navLinkClass(item.href)}>
               {item.label}
@@ -88,47 +109,72 @@ export function Navbar({
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        {/* Account cluster, grouped and pushed right. */}
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {authed ? (
             <>
+              {/* Identity, not a link: an initial chip plus the name. */}
               {firstName && (
-                <span className="text-base font-semibold text-ink-600">
-                  Hi, {firstName}
+                <span className="mr-1 hidden items-center gap-2 pr-2 lg:flex">
+                  <span
+                    aria-hidden
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blood-700 text-xs font-bold text-white"
+                  >
+                    {firstName.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="whitespace-nowrap text-sm font-semibold text-ink-700">
+                    Hi, {firstName}
+                  </span>
                 </span>
               )}
-              <span className="relative inline-flex items-center">
-                <ButtonLink
-                  href="/notifications"
-                  variant="ghost"
-                  size="md"
-                  aria-label={notificationsLabel}
-                >
-                  Notifications
-                </ButtonLink>
-                <UnreadBadge
-                  count={unreadNotifications}
-                  className="pointer-events-none absolute -right-1 -top-1"
-                />
-              </span>
-              <ButtonLink href="/profile" variant="ghost" size="md">
+
+              <Link
+                href="/notifications"
+                aria-label={notificationsLabel}
+                className={navLinkClass("/notifications")}
+              >
+                Notifications
+                <UnreadBadge count={unreadNotifications} />
+              </Link>
+
+              <Link href="/profile" className={navLinkClass("/profile")}>
                 Profile
-              </ButtonLink>
-              <ButtonLink href="/drives" variant="ghost" size="md">
+              </Link>
+              <Link href="/drives" className={navLinkClass("/drives")}>
                 Drives
-              </ButtonLink>
-              <ButtonLink href={dashboardHref} size="md">
+              </Link>
+
+              {/* Dashboard may stand out, but as a nav link — not a full
+                  primary button, which is what unbalances the bar. */}
+              <Link
+                href={dashboardHref}
+                className={cn(
+                  navLinkBase,
+                  "ml-1 border-l border-ink-200 pl-3",
+                  pathname.startsWith("/dashboard")
+                    ? "bg-blood-700 text-white hover:bg-blood-800"
+                    : "text-blood-700 hover:bg-blood-50"
+                )}
+              >
                 Dashboard
-              </ButtonLink>
-              <LogoutButton />
+              </Link>
+
+              <LogoutButton
+                variant="ghost"
+                className="ml-1 whitespace-nowrap px-3 text-base text-ink-700 hover:bg-ink-100 hover:text-ink-900"
+              />
             </>
           ) : (
             <>
-              <ButtonLink href="/login" variant="ghost" size="md">
+              <Link href="/login" className={navLinkClass("/login")}>
                 Log in
-              </ButtonLink>
-              <ButtonLink href="/register" size="md">
+              </Link>
+              <Link
+                href="/register"
+                className="ml-1 inline-flex items-center rounded-md bg-blood-700 px-4 py-2 text-base font-semibold text-white transition-colors hover:bg-blood-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blood-700"
+              >
                 Create account
-              </ButtonLink>
+              </Link>
             </>
           )}
         </div>
@@ -138,7 +184,7 @@ export function Navbar({
           aria-expanded={open}
           aria-label="Toggle navigation menu"
           onClick={() => setOpen((v) => !v)}
-          className="flex h-11 w-11 items-center justify-center rounded-md text-ink-800 hover:bg-ink-100 md:hidden"
+          className="ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-800 hover:bg-ink-100 xl:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
             {open ? (
@@ -151,7 +197,7 @@ export function Navbar({
       </div>
 
       {open && (
-        <div className="border-t border-ink-200 px-4 pb-6 pt-2 md:hidden">
+        <div className="border-t border-ink-200 px-4 pb-6 pt-2 xl:hidden">
           <nav aria-label="Mobile navigation" className="flex flex-col gap-1">
             {MAIN_NAV_ITEMS.map((item) => (
               <Link

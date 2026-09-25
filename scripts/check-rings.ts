@@ -1384,11 +1384,11 @@ check(
 check(
   "14. requester history is database-filtered over own rows only",
   srcRequesterHistory.includes('.eq("requester_id", user.id)') &&
-    // Filters are parsed from the URL and whitelisted centrally. The page is now
-    // a client component (the data lives in localStorage), so it reads
-    // location.search rather than a server `searchParams` prop.
-    srcRequesterHistory.includes("parseRequestFilters(params)") &&
-    srcRequesterHistory.includes("new URLSearchParams(") &&
+  // Filters are parsed from the URL and whitelisted centrally. The page is now
+  // a client component (the data lives in localStorage), so it reads
+  // location.search rather than a server `searchParams` prop.
+  srcRequesterHistory.includes("parseRequestFilters(params)") &&
+  srcRequesterHistory.includes("new URLSearchParams(") &&
   srcRequesterHistory.includes('.eq("status", filters.status)') &&
   srcRequesterHistory.includes('.eq("blood_group", filters.bloodGroup)') &&
   srcRequesterHistory.includes('.eq("blood_component", filters.component)') &&
@@ -2567,15 +2567,15 @@ check(
   // This is the exact failure that shipped: every auth screen rendering
   // "Authentication is not configured" on a deployment without credentials.
   !existsSync(join(ROOT, "src/components/auth/AuthNotConfigured.tsx")) &&
-    !/Authentication is not configured|is not configured yet/i.test(
-      // Scoped to src/ on purpose: the checkers themselves quote the phrase
-      // when asserting it is absent, and matching their own source would make
-      // this check unsatisfiable.
-      walk(join(ROOT, "src"))
-        .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
-        .map((f) => stripJsComments(readFileSync(f, "utf8")))
-        .join("\n")
-    ),
+  !/Authentication is not configured|is not configured yet/i.test(
+    // Scoped to src/ on purpose: the checkers themselves quote the phrase
+    // when asserting it is absent, and matching their own source would make
+    // this check unsatisfiable.
+    walk(join(ROOT, "src"))
+      .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+      .map((f) => stripJsComments(readFileSync(f, "utf8")))
+      .join("\n")
+  ),
   true
 );
 check(
@@ -2594,12 +2594,12 @@ check(
   readFileSync(join(ROOT, "src/lib/supabase/client.ts"), "utf8").includes(
     "createLocalClient"
   ) &&
-    readFileSync(join(ROOT, "src/lib/supabase/server.ts"), "utf8").includes(
-      "createLocalClient"
-    ) &&
-    existsSync(join(ROOT, "src/lib/local/store.ts")) &&
-    existsSync(join(ROOT, "src/lib/local/engine.ts")) &&
-    existsSync(join(ROOT, "src/lib/local/adapter.ts")),
+  readFileSync(join(ROOT, "src/lib/supabase/server.ts"), "utf8").includes(
+    "createLocalClient"
+  ) &&
+  existsSync(join(ROOT, "src/lib/local/store.ts")) &&
+  existsSync(join(ROOT, "src/lib/local/engine.ts")) &&
+  existsSync(join(ROOT, "src/lib/local/adapter.ts")),
   true
 );
 check(
@@ -2768,12 +2768,12 @@ check(
   // Nothing to authenticate, nothing to rate-limit, nothing to leak. The
   // endpoint existed only to invoke database functions that no longer exist.
   !existsSync(join(ROOT, "src/app/api/cron/tick/route.ts")) &&
-    !existsSync(join(ROOT, "src/app/api")) &&
-    !/CRON_SECRET/.test(
-      walk(join(ROOT, "src"))
-        .map((f) => readFileSync(f, "utf8"))
-        .join("\n"),
-    ),
+  !existsSync(join(ROOT, "src/app/api")) &&
+  !/CRON_SECRET/.test(
+    walk(join(ROOT, "src"))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n"),
+  ),
   true
 );
 check(
@@ -2782,16 +2782,16 @@ check(
   // created_at / required_by, so a closed tab cannot freeze the search and a
   // late visit catches up rather than replaying.
   localEngine.includes("Date.now()") &&
-    localEngine.includes("RING_WINDOW_MINUTES") &&
-    /required_by/.test(localEngine) &&
-    // no scheduling primitive anywhere in the engine
-    !/setInterval|setTimeout|cron/i.test(localEngine),
+  localEngine.includes("RING_WINDOW_MINUTES") &&
+  /required_by/.test(localEngine) &&
+  // no scheduling primitive anywhere in the engine
+  !/setInterval|setTimeout|cron/i.test(localEngine),
   true
 );
 check(
   "22. the rings remain 3 km -> 7 km -> 15 km with a 10-minute window",
   localEngine.includes("RING_KM = [3, 7, 15]") &&
-    localEngine.includes("RING_WINDOW_MINUTES = 10"),
+  localEngine.includes("RING_WINDOW_MINUTES = 10"),
   true
 );
 check(
@@ -2810,8 +2810,8 @@ check(
   // Closing a request must retire its open alerts, or a donor would keep seeing
   // an actionable card for a request nobody can act on.
   localEngine.includes("closeProcessForRequest") &&
-    /status = "expired"/.test(localEngine) &&
-    /request_closed/.test(localEngine),
+  /status = "expired"/.test(localEngine) &&
+  /request_closed/.test(localEngine),
   true
 );
 check(

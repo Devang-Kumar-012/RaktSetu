@@ -108,9 +108,9 @@ async function loadDonorDashboard(
         actionable,
         minutesLeft: actionable
           ? Math.max(
-              0,
-              Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
-            )
+            0,
+            Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
+          )
           : null,
       };
     }

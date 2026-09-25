@@ -11,7 +11,7 @@
  * it is not a reimplementation of the rules.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Repo root, resolved from this script's own location. */
@@ -1296,6 +1296,87 @@ check("the client seam supports the calls the app makes", adapterChecks);
     );
   });
   void PENDING;
+
+  // A "use server" module may ONLY export async functions. Any other export
+  // becomes a server-reference proxy in the client bundle, so a Client
+  // Component importing that value gets a proxy instead of the real thing.
+  // That shipped a crash: the request form and donor profile form both pulled
+  // `initialLocationLookupState` out of the location action module, and
+  // /request-blood fell through to the global error boundary.
+  check("no 'use server' module exports a non-function value", () => {
+    const offenders: string[] = [];
+    const actionsDir = join(ROOT, "src/lib/actions");
+    for (const name of readdirSync(actionsDir)) {
+      if (!name.endsWith(".ts") || name === "action-state.ts") continue;
+      const src = readFileSync(join(actionsDir, name), "utf8");
+      if (!/^\s*["']use server["']/.test(src)) continue;
+      for (const m of src.matchAll(/^export (const|let|var|class)\s+\w+/gm)) {
+        offenders.push(`src/lib/actions/${name}: ${m[0].trim()}`);
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      `a "use server" module may only export async functions: ${offenders.join("; ")}`
+    );
+  });
+
+  // And the reverse guard: a Client Component must not import a value (only
+  // actions) from a "use server" module.
+  check("no client component imports a value from a 'use server' module", () => {
+    const actionExports = new Map<string, Set<string>>();
+    const actionsDir = join(ROOT, "src/lib/actions");
+    for (const name of readdirSync(actionsDir)) {
+      if (!name.endsWith(".ts")) continue;
+      const src = readFileSync(join(actionsDir, name), "utf8");
+      if (!/^\s*["']use server["']/.test(src)) continue;
+      const values = new Set<string>();
+      for (const m of src.matchAll(/^export (const|let|var|class)\s+(\w+)/gm)) {
+        values.add(m[2]);
+      }
+      actionExports.set(name, values);
+    }
+
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!/\.tsx?$/.test(entry.name)) continue;
+        const src = readFileSync(full, "utf8");
+        if (!/^\s*["']use client["']/.test(src)) continue;
+        for (const [mod, values] of actionExports) {
+          if (values.size === 0) continue;
+          const re = new RegExp(
+            `import\\s*\\{([^}]*)\\}\\s*from\\s*"@/lib/actions/${mod.replace(
+              ".ts",
+              ""
+            )}"`,
+            "gs" // `s` for multi-line import lists, `g` because matchAll requires it
+          );
+          for (const m of src.matchAll(re)) {
+            for (const raw of m[1].split(",")) {
+              const ident = raw.trim().split(/\s+as\s+/)[0].trim();
+              if (ident && values.has(ident)) {
+                offenders.push(
+                  `${full.replace(ROOT + "/", "")}: ${ident} from ${mod}`
+                );
+              }
+            }
+          }
+        }
+      }
+    };
+    walk(join(ROOT, "src"));
+    assert.deepEqual(
+      offenders,
+      [],
+      `client components must take only actions from a "use server" module: ${offenders.join("; ")}`
+    );
+  });
 
   // The client guard must redirect out of every non-ready state, so a page can
   // never sit on a spinner forever.

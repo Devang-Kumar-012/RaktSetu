@@ -285,8 +285,7 @@ for (const [donor, recipients] of Object.entries(WHOLE_DONOR_TO_RECIPIENTS)) {
   for (const r of ALL_GROUPS) {
     const shouldMatch = recipients.includes(r);
     eq(
-      `whole blood: ${donor} donor → ${r} recipient is ${
-        shouldMatch ? "compatible" : "incompatible"
+      `whole blood: ${donor} donor → ${r} recipient is ${shouldMatch ? "compatible" : "incompatible"
       }`,
       isBloodCompatible(donor, r, "whole_blood"),
       shouldMatch,
@@ -296,8 +295,8 @@ for (const [donor, recipients] of Object.entries(WHOLE_DONOR_TO_RECIPIENTS)) {
 ok(
   "compatibility rejects an unknown blood group rather than defaulting to true",
   !isBloodCompatible("C+", "O-", "whole_blood") &&
-    !isBloodCompatible("", "O-", "whole_blood") &&
-    !isBloodCompatible("O", "O-", "whole_blood"),
+  !isBloodCompatible("", "O-", "whole_blood") &&
+  !isBloodCompatible("O", "O-", "whole_blood"),
 );
 ok(
   "compatibility rejects an unknown component rather than defaulting to true",
@@ -657,7 +656,7 @@ eq(
   ok(
     "free-text search is only parsed when the caller allows it",
     parseRequestFilters({ q: "hospital" }).q === "" &&
-      parseRequestFilters({ q: "hospital" }, { allowSearch: true }).q === "hospital",
+    parseRequestFilters({ q: "hospital" }, { allowSearch: true }).q === "hospital",
   );
 
   const valid = parseRequestFilters({ status: "active", component: "platelets" });
@@ -736,13 +735,13 @@ eq(
   ok(
     "the eligibility disclaimer states that screening is not the app's decision",
     /blood bank|medical|screen/i.test(ELIGIBILITY_DISCLAIMER) &&
-      !/you are (medically )?eligible|guaranteed? (safe|eligible)/i.test(ELIGIBILITY_DISCLAIMER),
+    !/you are (medically )?eligible|guaranteed? (safe|eligible)/i.test(ELIGIBILITY_DISCLAIMER),
   );
   ok(
     "the disclaimer states the interval is a filter, not a medical decision",
     /never decides medical eligibility/i.test(ELIGIBILITY_DISCLAIMER) &&
-      /blood bank/i.test(ELIGIBILITY_DISCLAIMER) &&
-      /filter only/i.test(ELIGIBILITY_DISCLAIMER),
+    /blood bank/i.test(ELIGIBILITY_DISCLAIMER) &&
+    /filter only/i.test(ELIGIBILITY_DISCLAIMER),
   );
   ok(
     "the disclaimer makes no eligibility or safety guarantee",
@@ -891,7 +890,7 @@ eq(
   ok(
     "no user-facing 'not configured' screen remains",
     !existsSync(join(ROOT, "src/components/auth/AuthNotConfigured.tsx")) &&
-      !/Authentication is not configured|is not configured yet/i.test(ALL_SRC),
+    !/Authentication is not configured|is not configured yet/i.test(ALL_SRC),
   );
   ok(
     "no auth form branches on a configuration flag",
@@ -943,19 +942,19 @@ eq(
     ok(
       "the server session reader exists and reads cookies",
       cookieSrc.includes('from "next/headers"') &&
-        cookieSrc.includes("export async function readServerSession"),
+      cookieSrc.includes("export async function readServerSession"),
     );
     ok(
       "getSessionInfo reads the cookie, never the browser-only store",
       // Reading the local adapter here is the bug: it always answers "nobody"
       // on the server, which is what produced the loop.
       profileSrc.includes("readServerSession()") &&
-        !/getSessionInfo[\s\S]{0,600}createSupabaseServerClient/.test(profileSrc),
+      !/getSessionInfo[\s\S]{0,600}createSupabaseServerClient/.test(profileSrc),
     );
     ok(
       "the server and the middleware read the SAME session cookie",
       cookieSrc.includes('SESSION_COOKIE = "raktsetu.session"') &&
-        middlewareSrc.includes('cookies.get("raktsetu.session")'),
+      middlewareSrc.includes('cookies.get("raktsetu.session")'),
     );
     ok(
       "the routing cookie carries no credential material",
@@ -976,7 +975,7 @@ eq(
       // Without this the page and the middleware can disagree again — the
       // exact class of bug that produced the loop.
       /parsed\.id !== sessionId/.test(cookieSrc) &&
-        cookieSrc.includes("return { user: null, profile: null };"),
+      cookieSrc.includes("return { user: null, profile: null };"),
     );
     ok(
       "auth initialisation always terminates (no unguarded await path)",
@@ -990,7 +989,7 @@ eq(
   ok(
     "netlify.toml contains no secret-like assignment",
     !/eyJ[A-Za-z0-9_-]{10,}/.test(netlify) && // JWT-shaped anon/service key
-      !/service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(netlify),
+    !/service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(netlify),
   );
   ok("netlify.toml builds with the project build command", netlify.includes('command = "npm run build"'));
   ok("netlify.toml publishes the Next.js output", netlify.includes('publish = ".next"'));
@@ -1014,12 +1013,12 @@ eq(
   ok(
     "middleware guards on the local session cookie, not a remote session",
     middleware.includes("raktsetu.session") &&
-      !/isSupabaseConfigured/.test(middleware),
+    !/isSupabaseConfigured/.test(middleware),
   );
   ok(
     "middleware redirects an unauthenticated visitor away from protected routes",
     /isProtected && !signedIn/.test(middleware) &&
-      middleware.includes('"/login"'),
+    middleware.includes('"/login"'),
   );
 
   // Every private prefix must be guarded at the edge as well as in the page.

@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { initialProfileActionState } from "@/lib/actions/action-state";
 import { updateDonorProfile } from "@/lib/actions/donor";
+import { lookupAreaCandidates } from "@/lib/actions/location";
 import {
   initialLocationLookupState,
-  lookupAreaCandidates,
   type LocationLookupState,
-} from "@/lib/actions/location";
+} from "@/lib/actions/location-state";
 import { DONATION_INTERVAL_LABEL } from "@/lib/donation-config";
 import { AVAILABILITY_OPTIONS, BLOOD_GROUPS } from "@/lib/constants";
 import { cn } from "@/lib/cn";

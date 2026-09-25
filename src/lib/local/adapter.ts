@@ -752,7 +752,7 @@ export function createLocalClient(): LocalClient {
       const channel: LocalChannel = {
         on: () => channel,
         subscribe: () => channel,
-        unsubscribe: () => {},
+        unsubscribe: () => { },
       };
       return channel;
     },

@@ -6,17 +6,16 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionInfo } from "@/lib/profile";
 import { lookupLocalities, type GeocodeCandidate } from "@/lib/geocode";
 import type { ProfileActionState } from "@/lib/actions/action-state";
+import type { LocationLookupState } from "@/lib/actions/location-state";
 
-/** Lookup action state — extends the shared shape with area candidates. */
-export interface LocationLookupState extends ProfileActionState {
-  candidates: GeocodeCandidate[];
-}
-
-export const initialLocationLookupState: LocationLookupState = {
-  ok: false,
-  error: null,
-  candidates: [],
-};
+/*
+ * `LocationLookupState` and `initialLocationLookupState` deliberately do NOT
+ * live here. A "use server" module may only export async functions: any other
+ * export is replaced in the client bundle by a server-reference proxy, so a
+ * Client Component importing that object received a proxy rather than the
+ * value and `/request-blood` crashed into the global error boundary. They now
+ * live in @/lib/actions/location-state.
+ */
 
 /**
  * Looks up approximate area candidates. The query comes from an explicit
