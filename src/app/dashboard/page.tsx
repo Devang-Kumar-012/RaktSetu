@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
 import { PageHeader, Section } from "@/components/layout/PageHeader";
-import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Alert } from "@/components/ui/Alert";
 import { getSessionInfo } from "@/lib/profile";
 
@@ -10,22 +9,7 @@ import { getSessionInfo } from "@/lib/profile";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { configured, user, profile } = await getSessionInfo();
-
-  if (!configured) {
-    return (
-      <>
-        <PageHeader
-          eyebrow="Your account"
-          title="Dashboard"
-          description="One place for your requests, donor alerts, and activity."
-        />
-        <Section className="max-w-xl">
-          <AuthNotConfigured action="loading your dashboard" />
-        </Section>
-      </>
-    );
-  }
+  const { user, profile } = await getSessionInfo();
 
   if (!user) {
     // Middleware normally catches this; second line of defence.
@@ -43,7 +27,9 @@ export default async function DashboardPage() {
     redirect(`/dashboard/${profile.role}`);
   }
 
-  // Authenticated but no profile row yet (migration not applied, or brand-new account).
+  // Signed in, but the profile row is missing. With the local store a profile
+  // is created at signup, so this is only reachable if local data was edited by
+  // hand — say so plainly instead of blaming a database migration.
   return (
     <>
       <PageHeader
@@ -52,10 +38,9 @@ export default async function DashboardPage() {
         description="One place for your requests, donor alerts, and activity."
       />
       <Section className="max-w-xl">
-        <Alert variant="warning" title="Profile is still being set up">
-          Your account exists, but its profile row has not been created yet. If this
-          message stays, the database migrations (0001_profiles.sql and
-          0002_role_profiles.sql) may not have been applied to the Supabase project yet.
+        <Alert variant="warning" title="Your profile could not be loaded">
+          Your account is signed in, but its profile could not be read. Signing out
+          and back in usually fixes this.
         </Alert>
       </Section>
     </>

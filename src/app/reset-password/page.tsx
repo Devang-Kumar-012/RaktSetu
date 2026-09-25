@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { AuthShell } from "@/components/auth/AuthShell";
-import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
@@ -14,7 +13,7 @@ export const metadata: Metadata = { title: "Set a new password" };
 export const dynamic = "force-dynamic";
 
 export default async function ResetPasswordPage() {
-  const { configured, user } = await getSessionInfo();
+  const { user } = await getSessionInfo();
 
   // A valid recovery session is required to change the password.
   // If the link is missing, expired, or already used, say so plainly.
@@ -26,9 +25,7 @@ export default async function ResetPasswordPage() {
       title="Set a new password"
       description="Choose a strong password you do not use anywhere else."
     >
-      {!configured ? (
-        <AuthNotConfigured action="resetting your password" />
-      ) : !hasRecoverySession ? (
+      {!hasRecoverySession ? (
         <Alert variant="error" title="This reset link is not valid anymore">
           Reset links expire and work only once. Request a fresh one — it takes a
           minute.

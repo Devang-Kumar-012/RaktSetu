@@ -5,13 +5,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Button } from "@/components/ui/Button";
 import { Input, PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { REGISTER_ROLES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isValidEmail } from "@/lib/utils";
 
@@ -19,7 +17,6 @@ type Phase = "form" | "check-email";
 
 export function RegisterForm({ initialRole }: { initialRole?: string }) {
   const router = useRouter();
-  const configured = isSupabaseConfigured();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -94,10 +91,6 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
       setError(friendlyAuthError(err));
       setLoading(false);
     }
-  }
-
-  if (!configured) {
-    return <AuthNotConfigured action="creating an account" />;
   }
 
   if (phase === "check-email") {

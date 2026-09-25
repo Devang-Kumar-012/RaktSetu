@@ -4,17 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Button } from "@/components/ui/Button";
 import { PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
-import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 /** Sets a new password after the reset link (user has a recovery session). */
 export function ResetPasswordForm() {
   const router = useRouter();
-  const configured = isSupabaseConfigured();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -52,10 +49,6 @@ export function ResetPasswordForm() {
       setError(friendlyAuthError(err));
       setLoading(false);
     }
-  }
-
-  if (!configured) {
-    return <AuthNotConfigured action="setting a new password" />;
   }
 
   return (

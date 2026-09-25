@@ -2536,14 +2536,67 @@ check(
   !/error\.stack/.test(globalError),
   true
 );
+/** Recursively lists every .ts/.tsx file under a directory. */
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walk(full));
+    else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) out.push(full);
+  }
+  return out;
+}
+
 check(
-  "20. no service-role key can reach the client",
-  // env.ts is imported by BOTH server and browser code, so it must not even
-  // name a service-role variable.
-  !/SERVICE_ROLE|service_role/i.test(envSrc) &&
-  !/SERVICE_ROLE|service_role/i.test(liveRefreshSrc) &&
-  envSrc.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
-  envSrc.includes("intentionally only uses the anon key"),
+  "20. no credential of any kind is read, embedded or exposed",
+  // Stronger than the previous "no service-role key" check: with no backend at
+  // all there is no environment variable to read, so ANY credential-shaped
+  // reference in shared code is now a defect.
+  !/SERVICE_ROLE|service_role|SUPABASE_ANON|SUPABASE_URL|CRON_SECRET/i.test(
+    envSrc + liveRefreshSrc
+  ) &&
+    !/process\.env\./.test(envSrc) &&
+    !/NEXT_PUBLIC_[A-Z0-9_]+\s*=/.test(envSrc),
+  true
+);
+check(
+  "20. the not-configured blocker can never come back",
+  // This is the exact failure that shipped: every auth screen rendering
+  // "Authentication is not configured" on a deployment without credentials.
+  !existsSync(join(ROOT, "src/components/auth/AuthNotConfigured.tsx")) &&
+    !/Authentication is not configured|is not configured yet/i.test(
+      // Scoped to src/ on purpose: the checkers themselves quote the phrase
+      // when asserting it is absent, and matching their own source would make
+      // this check unsatisfiable.
+      walk(join(ROOT, "src"))
+        .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+        .map((f) => stripJsComments(readFileSync(f, "utf8")))
+        .join("\n")
+    ),
+  true
+);
+check(
+  "20. the data layer has no Supabase dependency left",
+  // The packages were removed from package.json; an import surviving in source
+  // would break the build for anyone who installs fresh.
+  walk(join(ROOT, "src"))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .every((f) => !readFileSync(f, "utf8").includes("@supabase")),
+  true
+);
+check(
+  "20. the local data layer is the single source of truth",
+  // Both client entry points must resolve to the local adapter, or some pages
+  // would still be waiting on a backend that no longer exists.
+  readFileSync(join(ROOT, "src/lib/supabase/client.ts"), "utf8").includes(
+    "createLocalClient"
+  ) &&
+    readFileSync(join(ROOT, "src/lib/supabase/server.ts"), "utf8").includes(
+      "createLocalClient"
+    ) &&
+    existsSync(join(ROOT, "src/lib/local/store.ts")) &&
+    existsSync(join(ROOT, "src/lib/local/engine.ts")) &&
+    existsSync(join(ROOT, "src/lib/local/adapter.ts")),
   true
 );
 check(

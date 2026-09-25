@@ -1,8 +1,6 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { APP_NAME } from "@/lib/constants";
-import { getSupabaseAnonKey, getSupabaseUrl, isSupabaseConfigured } from "@/lib/env";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
@@ -18,65 +16,42 @@ const PROTECTED_PREFIXES = [
   "/request-blood",
 ];
 
-const AUTH_PAGES = ["/login", "/register"];
+const AUTH_PAGES = ["/login", "/register", "/signup", "/signin", "/create-account"];
 
 /**
- * Refreshes the Supabase auth session on every request (so sessions stay
- * alive after refresh), guards protected routes, and bounces
- * already-authenticated users away from login/register.
+ * Route guard.
+ *
+ * Authentication now lives in the visitor's own browser, so this reads the
+ * plain `raktsetu.session` cookie the local auth layer writes. It authorises
+ * nothing on its own — every page still re-checks the profile and the role, and
+ * the cookie is readable by design so a role can never be smuggled through it.
  */
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const response = NextResponse.next({ request });
   response.headers.set("x-raktsetu-app", APP_NAME);
 
-  if (!isSupabaseConfigured()) {
-    // Supabase not configured yet — allow everything, protect nothing.
-    return response;
-  }
-
-  let responseWithCookies = response;
-  const supabase = createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        responseWithCookies = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          responseWithCookies.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  // getUser() validates the token with the server — safer than getSession().
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const { pathname, search } = request.nextUrl;
+  const signedIn = Boolean(request.cookies.get("raktsetu.session")?.value);
 
   const isProtected = PROTECTED_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-  if (isProtected && !user) {
+  if (isProtected && !signedIn) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = `next=${encodeURIComponent(`${pathname}${search}`)}`;
     return NextResponse.redirect(url);
   }
 
-  if (AUTH_PAGES.includes(pathname) && user) {
+  if (AUTH_PAGES.includes(pathname) && signedIn) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
     return NextResponse.redirect(url);
   }
 
-  // Propagate refreshed auth cookies on ordinary responses.
-  return responseWithCookies;
+  return response;
 }
 
 export const config = {

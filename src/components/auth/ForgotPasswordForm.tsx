@@ -3,11 +3,9 @@
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
-import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isValidEmail } from "@/lib/utils";
 
@@ -16,7 +14,6 @@ import { isValidEmail } from "@/lib/utils";
  * this page never reveals whether an email is registered.
  */
 export function ForgotPasswordForm() {
-  const configured = isSupabaseConfigured();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -51,10 +48,6 @@ export function ForgotPasswordForm() {
     } finally {
       setLoading(false);
     }
-  }
-
-  if (!configured) {
-    return <AuthNotConfigured action="resetting your password" />;
   }
 
   if (sent) {

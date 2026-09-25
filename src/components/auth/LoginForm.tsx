@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { AuthNotConfigured } from "@/components/auth/AuthNotConfigured";
 import { Button } from "@/components/ui/Button";
 import { Input, PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
-import { isSupabaseConfigured } from "@/lib/env";
 import { isValidEmail } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -21,7 +19,6 @@ export function LoginForm({
   authError?: boolean;
 }) {
   const router = useRouter();
-  const configured = isSupabaseConfigured();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -66,10 +63,6 @@ export function LoginForm({
       setError(friendlyAuthError(err));
       setLoading(false);
     }
-  }
-
-  if (!configured) {
-    return <AuthNotConfigured action="logging in" />;
   }
 
   return (

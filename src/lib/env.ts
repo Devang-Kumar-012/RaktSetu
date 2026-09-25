@@ -1,45 +1,35 @@
 /**
- * Environment variable handling.
+ * App configuration.
  *
- * Public (browser-exposed) variables are validated on first access.
- * Any Supabase service-role key must NEVER be referenced here or in
- * client code — this application intentionally only uses the anon key.
+ * RaktSetu is self-contained: the data layer runs in the visitor's own browser
+ * (see src/lib/local), so there are no Supabase variables, no API keys and no
+ * environment setup of any kind. The helpers below are retained only so
+ * existing call sites keep compiling, and they never gate the app.
+ *
+ * The "configured" checks deliberately always report true. Leaving them
+ * variable-driven is what previously made every auth screen render
+ * "Authentication is not configured" on a deployment without credentials.
  */
 
-const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+/** Always true: the app has no external dependency to be unconfigured about. */
+export function isSupabaseConfigured(): boolean {
+  return true;
+}
 
 /**
- * True when Supabase environment variables are configured.
- * The app renders in a limited "not configured" state when false,
- * instead of crashing at import time.
+ * @deprecated No backend is contacted. Kept so legacy call sites compile.
+ * Returns an inert placeholder rather than a real endpoint.
  */
-export function isSupabaseConfigured(): boolean {
-  return Boolean(rawUrl && rawAnonKey);
-}
-
-function requireEnv(name: string, value: string | undefined): string {
-  if (!value) {
-    throw new Error(
-      `Missing environment variable: ${name}. ` +
-      `Copy .env.example to .env.local and set it.`
-    );
-  }
-  return value;
-}
-
-/** Validated Supabase project URL. Throws when missing/invalid. */
 export function getSupabaseUrl(): string {
-  const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL", rawUrl);
-  if (!/^https?:\/\//.test(url)) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL.");
-  }
-  return url.replace(/\/+$/, "");
+  return "http://localhost";
 }
 
-/** Validated Supabase anon key. Throws when missing. */
+/**
+ * @deprecated No backend is contacted. Kept so legacy call sites compile.
+ * Returns an inert placeholder; it authenticates nothing.
+ */
 export function getSupabaseAnonKey(): string {
-  return requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", rawAnonKey);
+  return "local-only-no-backend";
 }
 
 /** App-wide metadata. */

@@ -1,30 +1,16 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
-
-import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
-
 /**
- * Supabase client for Server Components, Server Actions, and Route Handlers.
- * Reads the auth cookies set by the browser client. Uses the anon key only —
- * requests run with the signed-in user's permissions under RLS.
+ * Server-side data client for Server Components, Server Actions and handlers.
+ *
+ * Previously a Supabase SSR client that threw when the Supabase variables were
+ * absent, which is what blocked authentication on deployment. It is now the
+ * local adapter: no credentials, no backend, no configuration step.
+ *
+ * Kept async and under the same name so every existing call site — server
+ * actions, pages, route handlers — works untouched.
  */
-export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();
+import { createLocalClient, type LocalClient } from "@/lib/local/adapter";
 
-  return createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
-      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
-        } catch {
-          // Called from a Server Component — middleware handles session refresh.
-        }
-      },
-    },
-  });
+export async function createSupabaseServerClient(): Promise<LocalClient> {
+  return createLocalClient();
 }
+

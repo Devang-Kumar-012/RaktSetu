@@ -879,57 +879,45 @@ eq(
   const envSrc = readFileSync(join(ROOT, "src/lib/env.ts"), "utf8");
   const netlify = readFileSync(join(ROOT, "netlify.toml"), "utf8");
   const envExample = readFileSync(join(ROOT, ".env.example"), "utf8");
-  const notConfigured = readFileSync(
-    join(ROOT, "src/components/auth/AuthNotConfigured.tsx"),
-    "utf8",
-  );
   const middleware = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
   const callback = readFileSync(join(ROOT, "src/app/auth/callback/route.ts"), "utf8");
 
-  // The configuration state must be reported in terms of the two PUBLIC
-  // variables only. A service-role reference in client-reachable code would
-  // be a credential leak.
+  // The app is self-contained, so there is no configuration state to report
+  // and no secret to name. Any of these returning to a user-facing file is the
+  // regression that shipped before.
+  const ALL_SRC = walk(join(ROOT, "src"))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .map((f) => stripJsComments(readFileSync(f, "utf8")))
+    .join("\n");
   ok(
-    "env handling references only the public URL and anon key",
-    envSrc.includes("NEXT_PUBLIC_SUPABASE_URL") &&
-      envSrc.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
-      !/SERVICE_ROLE|service_role|DATABASE_PASSWORD|POSTGRES_PASSWORD/i.test(envSrc),
+    "no user-facing 'not configured' screen remains",
+    !existsSync(join(ROOT, "src/components/auth/AuthNotConfigured.tsx")) &&
+      !/Authentication is not configured|is not configured yet/i.test(ALL_SRC),
   );
   ok(
-    "the not-configured message names both public variables",
-    notConfigured.includes("NEXT_PUBLIC_SUPABASE_URL") &&
-      notConfigured.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    "no auth form branches on a configuration flag",
+    [
+      "src/components/auth/LoginForm.tsx",
+      "src/components/auth/RegisterForm.tsx",
+      "src/components/auth/ForgotPasswordForm.tsx",
+      "src/components/auth/ResetPasswordForm.tsx",
+    ].every(
+      (f) =>
+        !/isSupabaseConfigured|AuthNotConfigured/.test(
+          readFileSync(join(ROOT, f), "utf8"),
+        ),
+    ),
   );
+  ok("no source file imports a Supabase package", !/@supabase\//.test(ALL_SRC));
   ok(
-    "the not-configured message never mentions a service-role key",
-    // Comment-stripped: the component's own JSDoc explains that the
-    // service-role key is never referenced, and a raw scan would flag that
-    // explanation as though it were rendered to the user.
-    !/service.?role/i.test(stripJsComments(notConfigured)),
+    "no source file reads a Supabase or cron environment variable",
+    !/NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE_ROLE|CRON_SECRET/.test(ALL_SRC),
   );
+  ok("env.ts reads no environment variable at all", !/process\.env/.test(envSrc));
   ok(
-    "the not-configured message points at Netlify, not just a local file",
-    /netlify/i.test(notConfigured) && /environment variables/i.test(notConfigured),
+    "the configured check always reports true",
+    /export function isSupabaseConfigured\(\): boolean \{\s*return true;/.test(envSrc),
   );
-
-  // Every auth surface must use the shared component rather than repeating
-  // its own (previously misleading) inline copy.
-  const AUTH_SURFACES = [
-    "src/components/auth/LoginForm.tsx",
-    "src/components/auth/RegisterForm.tsx",
-    "src/components/auth/ForgotPasswordForm.tsx",
-    "src/components/auth/ResetPasswordForm.tsx",
-    "src/app/reset-password/page.tsx",
-    "src/app/dashboard/page.tsx",
-  ];
-  for (const f of AUTH_SURFACES) {
-    const s = readFileSync(join(ROOT, f), "utf8");
-    ok(
-      `auth surface uses the shared not-configured notice: ${f.replace("src/", "")}`,
-      s.includes("AuthNotConfigured") &&
-        !s.includes("Authentication is not configured yet"),
-    );
-  }
 
   // Deployment config must carry no credentials of any kind.
   ok(
@@ -961,9 +949,14 @@ eq(
   // A deployment missing its public config must still be reachable and must
   // never crash: the middleware allows traffic through rather than throwing.
   ok(
-    "middleware degrades safely when Supabase is unconfigured",
-    middleware.includes("isSupabaseConfigured()") &&
-      /if\s*\(!isSupabaseConfigured\(\)\)[\s\S]{0,200}return response/.test(middleware),
+    "middleware guards on the local session cookie, not a remote session",
+    middleware.includes("raktsetu.session") &&
+      !/isSupabaseConfigured/.test(middleware),
+  );
+  ok(
+    "middleware redirects an unauthenticated visitor away from protected routes",
+    /isProtected && !signedIn/.test(middleware) &&
+      middleware.includes('"/login"'),
   );
 
   // Every private prefix must be guarded at the edge as well as in the page.
@@ -1025,20 +1018,18 @@ eq(
     !/Join RaktSetu|Sign\s?up|Sign\s?in/i.test(navbar),
   );
 
-  // .env.example must tell a deployer where the values actually go.
+  // The strongest deployment guarantee is that there is nothing to configure.
   ok(
-    ".env.example documents the Netlify variable names",
-    envExample.includes("NEXT_PUBLIC_SUPABASE_URL") &&
-      envExample.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
-      envExample.includes("CRON_SECRET"),
+    ".env.example assigns no variables",
+    !/^\s*[A-Z0-9_]+\s*=\s*\S/m.test(envExample),
   );
   ok(
-    ".env.example warns the public values are build-time",
-    /build/i.test(envExample),
+    ".env.example states the app needs no environment variables",
+    /no environment variables/i.test(envExample),
   );
   ok(
-    ".env.example warns against the service-role key",
-    /service-role/i.test(envExample),
+    "netlify.toml assigns no environment variables",
+    !/NEXT_PUBLIC_|SUPABASE_|CRON_SECRET\s*=/.test(netlify),
   );
 }
 

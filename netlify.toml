@@ -1,16 +1,12 @@
 # Netlify deployment configuration.
 #
-# Contains NO credentials. Supabase values are supplied as environment variables
-# in the Netlify UI (Site configuration → Environment variables), not here:
+# Contains NO credentials, and requires NONE. RaktSetu is self-contained: the
+# data layer runs entirely in the visitor's own browser, so there is no
+# database URL, no API key and no environment variable to set. A fresh clone
+# deploys and runs as-is.
 #
-#   NEXT_PUBLIC_SUPABASE_URL        https://<project-ref>.supabase.co
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY   the project's public "anon" key
-#   CRON_SECRET                     shared secret for /api/cron/tick
-#
-# Both NEXT_PUBLIC_ values are safe to expose: they are public credentials and
-# every row they can read is protected by Row Level Security. The Supabase
-# service-role key must NEVER be added to this file or any client-reachable
-# variable.
+# (The Supabase packages were removed from package.json; nothing in src/ imports
+# them any more.)
 
 [build]
   command = "npm run build"
@@ -25,9 +21,3 @@
   package = "@netlify/plugin-nextjs"
 
 # The scheduler endpoint must never be cached or indexed.
-[[headers]]
-  for = "/api/cron/*"
-  [headers.values]
-    Cache-Control = "no-store, no-cache, must-revalidate"
-    X-Robots-Tag = "noindex"
-    X-Frame-Options = "DENY"

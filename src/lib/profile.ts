@@ -1,15 +1,15 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
 
-import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { LocalUser } from "@/lib/local/store";
 import type { AccountRole, Profile } from "@/types";
 
 export interface SessionInfo {
-  /** True when Supabase env vars are present and reachable. */
+  /** Always true — the app has no external auth dependency. Retained so the
+   *  existing guard call sites keep compiling. */
   configured: boolean;
-  user: User | null;
+  user: LocalUser | null;
   profile: Profile | null;
 }
 
@@ -19,9 +19,6 @@ export interface SessionInfo {
  * Supabase project is not configured yet.
  */
 export const getSessionInfo = cache(async (): Promise<SessionInfo> => {
-  if (!isSupabaseConfigured()) {
-    return { configured: false, user: null, profile: null };
-  }
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.getUser();
@@ -36,7 +33,7 @@ export const getSessionInfo = cache(async (): Promise<SessionInfo> => {
 
     return { configured: true, user, profile: (profile as Profile) ?? null };
   } catch {
-    return { configured: false, user: null, profile: null };
+    return { configured: true, user: null, profile: null };
   }
 });
 
@@ -85,7 +82,7 @@ async function endSessionAndReportSuspension(): Promise<never> {
  */
 export async function requireRolePage(
   role: AccountRole
-): Promise<{ user: User; profile: Profile }> {
+): Promise<{ user: LocalUser; profile: Profile }> {
   const session = await getSessionInfo();
 
   if (!session.configured) redirect("/dashboard");
@@ -106,7 +103,7 @@ export async function requireRolePage(
  * Applies the same suspension rule as requireRolePage.
  */
 export async function requireAuthPage(): Promise<{
-  user: User;
+  user: LocalUser;
   profile: Profile;
 }> {
   const session = await getSessionInfo();

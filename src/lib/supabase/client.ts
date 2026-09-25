@@ -1,11 +1,17 @@
-import { createBrowserClient } from "@supabase/ssr";
-
-import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
-
 /**
- * Supabase client for use in Client Components ("use client").
- * Uses only the anon key — all data access is governed by Row Level Security.
+ * Browser-side data client.
+ *
+ * This used to be a Supabase client gated on NEXT_PUBLIC_SUPABASE_* variables,
+ * which left every auth screen showing "Authentication is not configured" on a
+ * deployment without them. The app is now self-contained, so the client is the
+ * local adapter and needs no environment variables, no API key and no backend.
+ *
+ * The return type is deliberately the same shape the rest of the app already
+ * consumes, so pages and server actions above this seam are unchanged.
  */
-export function createSupabaseBrowserClient() {
-  return createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey());
+import { createLocalClient, type LocalClient } from "@/lib/local/adapter";
+
+export function createSupabaseBrowserClient(): LocalClient {
+  return createLocalClient();
 }
+
