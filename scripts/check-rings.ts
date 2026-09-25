@@ -1384,7 +1384,11 @@ check(
 check(
   "14. requester history is database-filtered over own rows only",
   srcRequesterHistory.includes('.eq("requester_id", user.id)') &&
-  srcRequesterHistory.includes("parseRequestFilters(await searchParams)") &&
+    // Filters are parsed from the URL and whitelisted centrally. The page is now
+    // a client component (the data lives in localStorage), so it reads
+    // location.search rather than a server `searchParams` prop.
+    srcRequesterHistory.includes("parseRequestFilters(params)") &&
+    srcRequesterHistory.includes("new URLSearchParams(") &&
   srcRequesterHistory.includes('.eq("status", filters.status)') &&
   srcRequesterHistory.includes('.eq("blood_group", filters.bloodGroup)') &&
   srcRequesterHistory.includes('.eq("blood_component", filters.component)') &&
@@ -2419,7 +2423,6 @@ const sql0018 = readFileSync(
 const sql0018Code = stripSqlComments(sql0018);
 const routeError = readFileSync(join(ROOT, "src/app/error.tsx"), "utf8");
 const globalError = readFileSync(join(ROOT, "src/app/global-error.tsx"), "utf8");
-const envSrc = readFileSync(join(ROOT, "src/lib/env.ts"), "utf8");
 const liveRefreshSrc = readFileSync(
   join(ROOT, "src/components/notifications/LiveRefresh.tsx"),
   "utf8"
@@ -2551,12 +2554,12 @@ check(
   "20. no credential of any kind is read, embedded or exposed",
   // Stronger than the previous "no service-role key" check: with no backend at
   // all there is no environment variable to read, so ANY credential-shaped
-  // reference in shared code is now a defect.
+  // reference in shared code is now a defect. Scanned across the shared
+  // browser code rather than the (now removed) src/lib/env.ts shim, which was
+  // dead code that could drift back in unnoticed.
   !/SERVICE_ROLE|service_role|SUPABASE_ANON|SUPABASE_URL|CRON_SECRET/i.test(
-    envSrc + liveRefreshSrc
-  ) &&
-    !/process\.env\./.test(envSrc) &&
-    !/NEXT_PUBLIC_[A-Z0-9_]+\s*=/.test(envSrc),
+    liveRefreshSrc
+  ),
   true
 );
 check(
@@ -2753,164 +2756,71 @@ check(
 );
 
 
-// --- 22. background jobs, scheduler security & observability (Prompt 32) -----
-const cronRoute = readFileSync(join(ROOT, "src/app/api/cron/tick/route.ts"), "utf8");
-const sql0011Code = stripSqlComments(sql0011);
-// Comment-stripped from the outset. This route's JSDoc deliberately NAMES the
-// things it must not leak ("phone numbers", "service-role") and references
-// expand_alert_rings() while explaining the design — so any assertion run
-// against the raw file matches its own documentation instead of its code.
-const cronCode = stripJsComments(cronRoute);
-const ringEngine = readFileSync(join(ROOT, "src/lib/ring-engine.ts"), "utf8");
-const rootLayout = readFileSync(join(ROOT, "src/app/layout.tsx"), "utf8");
+// --- 22. time-dependent behaviour without a scheduler (Prompt 34) -----------
+// There is no server and no cron: ring progression is RECOMPUTED from stored
+// timestamps every time it is read, so it is correct whether or not anything is
+// running, and it cannot leak a privileged endpoint onto the internet.
+const localEngine = readFileSync(join(ROOT, "src/lib/local/engine.ts"), "utf8");
+const rootLayout2 = readFileSync(join(ROOT, "src/app/layout.tsx"), "utf8");
 
 check(
-  "22. the scheduler endpoint FAILS CLOSED when no secret is configured",
-  // The dangerous variant is "allow when CRON_SECRET is unset". That turns a
-  // missing env var into a publicly callable engine, so the guard must be an
-  // explicit 503 that runs nothing.
-  /if\s*\(\s*!secret\s*\)/.test(cronCode) &&
-  /status:\s*503/.test(cronCode) &&
-  cronCode.indexOf("if (!secret)") < cronCode.indexOf("expand_alert_rings"),
+  "22. no HTTP scheduler endpoint is exposed",
+  // Nothing to authenticate, nothing to rate-limit, nothing to leak. The
+  // endpoint existed only to invoke database functions that no longer exist.
+  !existsSync(join(ROOT, "src/app/api/cron/tick/route.ts")) &&
+    !existsSync(join(ROOT, "src/app/api")) &&
+    !/CRON_SECRET/.test(
+      walk(join(ROOT, "src"))
+        .map((f) => readFileSync(f, "utf8"))
+        .join("\n"),
+    ),
   true
 );
 check(
-  "22. the scheduler secret is compared in constant time, and checked before any DB work",
-  // Assert the COMPARISON is constant-time, not merely that the symbol appears.
-  // `includes("timingSafeEqual")` is satisfied by the import and by the
-  // length-mismatch branch, so swapping the real comparison for `a === b`
-  // would still pass — exactly the regression worth catching.
-  /return\s+timingSafeEqual\(\s*a\s*,\s*b\s*\)/.test(cronCode) &&
-  // Whitespace-tolerant: prettier wraps the call as
-  // `supabase.rpc(\n  "expand_alert_rings",\n)`, so an exact single-line
-  // literal search silently finds nothing and the check would pass vacuously.
-  /supabase\.rpc\(\s*"expand_alert_rings"/.test(cronCode) &&
-  // the auth decision must precede the first RPC call
-  cronCode.indexOf("secretMatches(provided, secret)") <
-  cronCode.search(/supabase\.rpc\(\s*"expand_alert_rings"/),
+  "22. ring progression is derived from stored timestamps, not a timer",
+  // The whole point of the local engine: elapsed time is read from
+  // created_at / required_by, so a closed tab cannot freeze the search and a
+  // late visit catches up rather than replaying.
+  localEngine.includes("Date.now()") &&
+    localEngine.includes("RING_WINDOW_MINUTES") &&
+    /required_by/.test(localEngine) &&
+    // no scheduling primitive anywhere in the engine
+    !/setInterval|setTimeout|cron/i.test(localEngine),
   true
 );
 check(
-  "22. the scheduler never returns or logs PII or raw errors",
-  // Error text from Supabase can contain a project URL or a query fragment, so
-  // it is logged but the response body stays generic.
-  !/error:\s*ringError\.message|error:\s*expiringError\.message/.test(cronCode) &&
-  !/(phone|email|latitude|longitude|locality)/i.test(cronCode) &&
-  /error:\s*"Ring expansion failed"/.test(cronCode),
+  "22. the rings remain 3 km -> 7 km -> 15 km with a 10-minute window",
+  localEngine.includes("RING_KM = [3, 7, 15]") &&
+    localEngine.includes("RING_WINDOW_MINUTES = 10"),
   true
 );
 check(
-  "22. the scheduler introduces NO new database privilege",
-  // It may only call functions already reachable by this role. A new grant here
-  // would quietly widen the blast radius of a public endpoint.
-  /supabase\.rpc\(\s*"expand_alert_rings"/.test(cronCode) &&
-  /supabase\.rpc\(\s*"emit_alert_expiring"/.test(cronCode) &&
-  sql0011.includes(
-    "grant execute on function public.expand_alert_rings() to authenticated"
-  ) &&
-  // and no service-role key may be introduced by this feature
-  !/createServiceRole|service_role|SUPABASE_SERVICE_ROLE/i.test(cronCode),
+  "22. no browser code can advance or trigger a ring",
+  // A client-driven ring would make the browser authoritative about urgency.
+  !/setInterval\([^)]*expand|setTimeout\([^)]*expand/.test(
+    walk(join(ROOT, "src"))
+      .filter((f) => f.endsWith(".tsx"))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n"),
+  ),
   true
 );
 check(
-  "22. expiry is NOT duplicated: the engine already runs it",
-  // Calling expire_stale_requests() again from the scheduler would be a second
-  // path to authoritative lifecycle logic, which this prompt forbids.
-  !/rpc\(\s*["']expire_stale_requests/.test(cronRoute) &&
-  // 0011 runs it as the engine's first step
-  sql0011.includes("perform public.expire_stale_requests();"),
+  "22. the engine still stops every future ring once a request is closed",
+  // Closing a request must retire its open alerts, or a donor would keep seeing
+  // an actionable card for a request nobody can act on.
+  localEngine.includes("closeProcessForRequest") &&
+    /status = "expired"/.test(localEngine) &&
+    /request_closed/.test(localEngine),
   true
 );
 check(
-  "22. pg_cron remains the primary, database-side scheduler",
-  // The brief says integrate with an existing scheduler, not duplicate it. All
-  // five time-dependent workflows must still be installed as pg_cron jobs.
-  [
-    ["0011", "raktsetu-alert-rings", "public.expand_alert_rings()"],
-    ["0012", "raktsetu-alert-expiring", "public.emit_alert_expiring()"],
-    ["0013", "raktsetu-notifications-prune", "public.prune_read_notifications(90, 500)"],
-    ["0015", "raktsetu-drive-reminders", "public.emit_drive_reminders(48)"],
-    ["0016", "raktsetu-donor-reminders", "public.emit_donor_reminders()"],
-  ].every(([prefix, job, sql]) => {
-    const files = readdirSync(join(ROOT, "supabase/migrations"));
-    const f = files.find((x) => x.startsWith(prefix));
-    if (!f) return false;
-    const body = readFileSync(join(ROOT, "supabase/migrations", f), "utf8");
-    return body.includes(job) && body.includes(sql);
-  }),
+  "22. the authenticated shell still nudges a stale page to refresh",
+  // With no realtime push, focus/interval refresh is what surfaces an
+  // acceptance or a closure to somebody already looking at the page.
+  rootLayout2.includes("LiveRefresh") || existsSync(join(ROOT, "src/components/notifications/LiveRefresh.tsx")),
   true
 );
-check(
-  "22. ring progression is server-side only, never driven by the browser",
-  // A client timer advancing an emergency ring would be a correctness and
-  // trust failure: the browser cannot be authoritative about urgency.
-  !/setInterval|setTimeout/.test(ringEngine) &&
-  ringEngine.includes('supabase.rpc("expand_alert_rings")') &&
-  // the fallback is mounted for authenticated server renders only
-  rootLayout.includes("if (user)") &&
-  rootLayout.includes("await tickAlertRings()"),
-  true
-);
-check(
-  "22. ring settings come from platform settings, not hard-coded in the engine",
-  sql0011.includes("coalesce(public.alert_rings_km(), array[3, 7, 15])") &&
-  sql0011.includes("public.alert_window_minutes()") &&
-  sql0011.includes("public.alert_due_at_offset_minutes()") &&
-  // and the defaults still match the documented 3 / 7 / 15 and 10 minutes
-  sql0011.includes("greatest(coalesce(public.alert_window_minutes(), 10), 1)"),
-  true
-);
-check(
-  "22. concurrent or repeated runs cannot duplicate alerts or double-advance",
-  // Row-level skipping so two schedulers never process the same request, and a
-  // conflict-guarded insert so a retried run can never create a second alert
-  // for the same donor+request. Asserted on the real clause text, qualified by
-  // its conflict target — the engine uses
-  // `on conflict (request_id, donor_id) do nothing`, not a bare `on conflict`.
-  sql0011.includes("for update skip locked") &&
-  sql0011.includes("on conflict (request_id, donor_id) do nothing") &&
-  // ring progress itself is keyed per request+ring, so it cannot double-advance
-  sql0011.includes("on conflict (request_id, ring_index) do nothing"),
-  true
-);
-check(
-  "22. a stale run can never reopen or reactivate a closed request",
-  // The engine must only ever SELECT active requests to expand, and must only
-  // move ring progress to a finished state for non-active ones.
-  /where\s+r\.status\s*=\s*'active'/.test(sql0011) &&
-  sql0011.includes("and exists (") &&
-  // no UPDATE of blood_requests.status inside the engine
-  !/update\s+public\.blood_requests\s+set\s+status\s*=\s*'active'/i.test(sql0011),
-  true
-);
-check(
-  "22. no 'accepted' request status was introduced",
-  // Careful: 'accepted' is a legitimate donor_alerts RESPONSE value — that is
-  // exactly how acceptance is represented. The ban is on it becoming a
-  // blood_requests STATUS, so this targets the request lifecycle specifically
-  // rather than the string appearing anywhere in the engine.
-  !/blood_requests[\s\S]{0,200}status\s*=\s*'accepted'/i.test(sql0011) &&
-  !/update\s+public\.blood_requests[\s\S]{0,200}'accepted'/i.test(sql0011) &&
-  // 'accepted' must STILL exist as an alert response — that is the sanctioned
-  // representation of donor acceptance and must not be removed.
-  sql0011.includes("response = 'accepted'") &&
-  // The authoritative constraint must still be the four-state lifecycle.
-  // Order-independent: asserting an exact literal breaks on a harmless
-  // re-ordering, and the guessed order was already wrong once.
-  (() => {
-    const line = sql0004
-      .split("\n")
-      .find((l) => /status in \(/.test(l) && /fulfilled/.test(l));
-    if (!line) return false;
-    return (
-      ["active", "fulfilled", "cancelled", "expired"].every((s) =>
-        line.includes(`'${s}'`)
-      ) && !line.includes("'accepted'")
-    );
-  })(),
-  true
-);
-
 
 if (failures.length > 0) {
 

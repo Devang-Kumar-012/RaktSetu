@@ -22,6 +22,17 @@ import {
   setRequestStatus,
 } from "./engine";
 import {
+  adminListAlerts,
+  adminPlatformOverview,
+  adminRingProgress,
+  campusDriveStats,
+  donorActiveAlerts,
+  donorDonationHistory,
+  matchingDonorStats,
+  volunteerActiveRequests,
+  volunteerRequestDetail,
+} from "./projections";
+import {
   clone,
   createUser,
   newId,
@@ -29,8 +40,13 @@ import {
   readDatabase,
   readSession,
   signIn,
+  signInDetailed,
+  setCurrentPassword,
   updateDatabase,
   writeSession,
+  findUniqueViolation,
+  UNIQUE_VIOLATION,
+  type LocalDatabase,
   type LocalUser,
 } from "./store";
 
@@ -65,21 +81,58 @@ export function currentUser(): LocalUser | null {
 }
 
 /**
- * Mirrors the session into a cookie so server components and middleware can
- * still tell whether somebody is signed in. Readable by design — it holds only
- * a user id, and it authorises nothing on its own.
+ * Mirrors the session into cookies so the SERVER and the route middleware see
+ * the same answer as the browser.
+ *
+ * Before this carried only a user id, which the middleware could see but a
+ * Server Component could not — so the two disagreed and /dashboard looped
+ * forever between itself and /login. The routing cookie carries the few
+ * non-sensitive fields a Server Component needs to choose a dashboard.
+ *
+ * No credential material is ever written: no password, hash or salt.
  */
-function syncSessionCookie(userId: string | null): void {
+function syncSessionCookie(user: LocalUser | null): void {
   if (typeof document === "undefined") return;
+  const year = "path=/; max-age=31536000; samesite=lax";
   try {
-    if (userId) {
-      document.cookie = `raktsetu.session=${encodeURIComponent(userId)}; path=/; max-age=31536000; samesite=lax`;
+    if (user) {
+      document.cookie = `raktsetu.session=${encodeURIComponent(user.id)}; ${year}`;
+      const routing = {
+        id: user.id,
+        role: user.role,
+        status: user.status,
+        full_name: user.full_name ?? "",
+        email: user.email ?? "",
+      };
+      document.cookie = `raktsetu.routing=${encodeURIComponent(
+        JSON.stringify(routing),
+      )}; ${year}`;
     } else {
       document.cookie = "raktsetu.session=; path=/; max-age=0";
+      document.cookie = "raktsetu.routing=; path=/; max-age=0";
     }
   } catch {
     // ignore
   }
+}
+
+/**
+ * Maps the table names the UI uses onto the names the store holds.
+ *
+ * The app addresses the account table as "profiles" (its historical name), while
+ * the local store calls it "users". Without this alias, every `.from("profiles")`
+ * call resolved to a phantom table: reads returned an empty array and writes
+ * silently matched nothing. That broke the profile lookup on every page,
+ * display-name edits, account suspension and the admin user list — all without a
+ * single error. Resolved in ONE place so it cannot drift.
+ */
+const TABLE_ALIASES: Record<string, string> = {
+  profiles: "users",
+};
+
+/** The store's own name for a table the UI asked for. */
+function storeTableName(requested: string): string {
+  return TABLE_ALIASES[requested] ?? requested;
 }
 
 interface Filter {
@@ -112,7 +165,30 @@ class TableQuery {
   private headOnly = false;
   private wantsCount = false;
 
-  constructor(private readonly table: string) {}
+  /**
+   * Resolved ONCE, here, so every read and write below uses the store's own
+   * name and no code path can fall back to a phantom table.
+   */
+  private readonly table: string;
+  constructor(requested: string) {
+    this.table = storeTableName(requested);
+  }
+
+  /**
+   * Rows for this table, or a thrown error when the table does not exist.
+   *
+   * The throw is the point. Defaulting an unknown table to `[]` is what made the
+   * `profiles`/`users` mismatch invisible: reads quietly returned nothing and
+   * writes quietly matched nothing, with no error anywhere. A missing table is
+   * a programming mistake and must fail loudly, not look like empty data.
+   */
+  private tableRows(db: LocalDatabase): Row[] {
+    const store = db as unknown as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(store, this.table)) {
+      throw new Error(`Unknown local table "${this.table}"`);
+    }
+    return store[this.table] as Row[];
+  }
 
   select(
     _columns?: string,
@@ -271,7 +347,7 @@ class TableQuery {
 
   private selected(): Row[] {
     const db = readDatabase();
-    const table = (db as unknown as Record<string, Row[]>)[this.table] ?? [];
+    const table = this.tableRows(db);
     let rows = table.filter((r) => this.matches(r));
     for (const o of [...this.orderBy].reverse()) {
       rows = [...rows].sort((a, b) => {
@@ -314,32 +390,49 @@ class TableQuery {
   }
 
   private execute(): QueryResult<Row[]> & { count?: number } {
-    const result = this.run();
+    const rows = this.selected();
+    // The count is taken from the rows BEFORE a head query discards them.
+    // Computing it from the returned data instead would make every count read
+    // 0 and silently under-report every dashboard total.
+    const result = this.run(rows);
     if (this.wantsCount) {
-      return { ...result, count: result.data?.length ?? 0 };
+      return { ...result, count: rows.length };
     }
     return result;
   }
 
-  private run(): QueryResult<Row[]> {
+  private run(rows: Row[] = this.selected()): QueryResult<Row[]> {
     switch (this.mode) {
       case "select": {
-        const rows = clone(this.selected());
+        const cloned = clone(rows);
         // A HEAD request asks for the count only, so no payload is returned.
-        return this.headOnly ? { data: [] as Row[], error: null } : ok(rows);
+        return this.headOnly ? { data: [] as Row[], error: null } : ok(cloned);
       }
 
       case "insert":
       case "upsert": {
         const incoming = Array.isArray(this.payload) ? this.payload : [this.payload ?? {}];
+        // Enforce the store's uniqueness rules BEFORE writing, and report the
+        // same 23505 UNIQUE_VIOLATION code the actions already handle. A UI-only
+        // pre-check is a read followed by a write — not a guarantee — and the
+        // 23505 branches in the actions were unreachable.
+        const blocked = updateDatabase((db) => {
+          const rows = this.tableRows(db);
+          for (const row of incoming) {
+            const existing = row.id ? rows.find((r) => r.id === row.id) : undefined;
+            if (existing) continue; // an upsert of the same row is fine
+            const violation = findUniqueViolation(db, this.table, row);
+            if (violation) return violation;
+          }
+          return null;
+        });
+        if (blocked) return fail("Duplicate entry.", UNIQUE_VIOLATION);
         return ok(updateDatabase((db) => {
-          const store = db as unknown as Record<string, Row[]>;
+          const rows = this.tableRows(db);
           const out: Row[] = [];
           for (const row of incoming) {
             // Idempotent upsert: match on the primary key, never duplicate.
-            const existing = row.id
-              ? store[this.table].find((r) => r.id === row.id)
-              : undefined;
+            const existing = row.id ? rows.find((r) => r.id === row.id) : undefined;
             if (existing) {
               Object.assign(existing, row, { updated_at: nowIso() });
               out.push(existing);
@@ -349,7 +442,7 @@ class TableQuery {
                 id: row.id ?? newId(this.table.slice(0, 3)),
                 created_at: row.created_at ?? nowIso(),
               };
-              store[this.table].push(created);
+              rows.push(created);
               out.push(created);
             }
           }
@@ -360,9 +453,8 @@ class TableQuery {
       case "update": {
         const patch = (this.payload ?? {}) as Row;
         return ok(updateDatabase((db) => {
-          const store = db as unknown as Record<string, Row[]>;
           const updated: Row[] = [];
-          for (const row of store[this.table]) {
+          for (const row of this.tableRows(db)) {
             if (!this.matches(row)) continue;
             Object.assign(row, patch, { updated_at: nowIso() });
             updated.push(row);
@@ -375,12 +467,12 @@ class TableQuery {
         return ok(updateDatabase((db) => {
           const store = db as unknown as Record<string, Row[]>;
           const removed: Row[] = [];
-          store[this.table] = store[this.table].filter((row) => {
-            const keep = !this.matches(row);
-            if (keep) return true;
+          const kept = this.tableRows(db).filter((row) => {
+            if (!this.matches(row)) return true;
             removed.push(row);
             return false;
           });
+          store[this.table] = kept;
           return clone(removed);
         }));
       }
@@ -396,6 +488,12 @@ const RPC = {
   match_donors_for_request: () => ({ data: expandAlertRings(), error: null }),
 
   advance_alert_rings: () => ({ data: expandAlertRings(), error: null }),
+
+  /** The name the application actually calls. Registered separately because the
+   *  two spellings coexisted: the app ticked `expand_alert_rings` while only
+   *  `advance_alert_rings` existed, so every ring tick returned "Unknown
+   *  function" and emergency alerts never progressed. */
+  expand_alert_rings: () => ({ data: expandAlertRings(), error: null }),
 
   expire_stale_requests: () => ({ data: expandAlertRings(), error: null }),
 
@@ -504,6 +602,32 @@ const RPC = {
       error: null,
     };
   },
+
+  // --- Read-only projections. These used to be SQL functions; without them the
+  // donor alert list, donor history, both volunteer views, the admin overview,
+  // admin alerts, ring progress, matching stats and drive stats all rendered as
+  // EMPTY while the build stayed green.
+  donor_active_alerts: (a: Record<string, unknown>) =>
+    donorActiveAlerts(a, currentUser()),
+  donor_donation_history: (a: Record<string, unknown>) =>
+    donorDonationHistory(a, currentUser()),
+  volunteer_active_requests: (a: Record<string, unknown>) =>
+    volunteerActiveRequests(a, currentUser()),
+  volunteer_request_detail: (a: Record<string, unknown>) =>
+    volunteerRequestDetail(a, currentUser()),
+  admin_list_alerts: (a: Record<string, unknown>) => adminListAlerts(a, currentUser()),
+  admin_ring_progress: (a: Record<string, unknown>) =>
+    adminRingProgress(a, currentUser()),
+  admin_platform_overview: () => adminPlatformOverview(currentUser()),
+  matching_donor_stats: (a: Record<string, unknown>) =>
+    matchingDonorStats(a, currentUser()),
+  campus_drive_stats: (a: Record<string, unknown>) => campusDriveStats(a, currentUser()),
+
+  /** Reminders are advisory and time-based. With no scheduler the local build
+   *  computes the same information on demand, so these are deliberate no-ops
+   *  rather than errors — and they must never break the page that ticks them. */
+  emit_alert_expiring: () => ({ data: 0, error: null }),
+  emit_drive_reminders: () => ({ data: 0, error: null }),
 } as const;
 
 /** Plain-language reasons a response was rejected, matching the engine's
@@ -553,23 +677,21 @@ export function createLocalClient(): LocalClient {
       },
 
       async signInWithPassword({ email, password }) {
-        const user = signIn(email, password);
-        if (!user) {
-          // Deliberately identical for "no such account" and "wrong password",
-          // so this endpoint cannot be used to discover which emails exist.
+        const result = signInDetailed(email, password);
+        if (result.ok) {
+          syncSessionCookie(result.user);
+          return { data: { user: result.user }, error: null };
+        }
+        if (result.reason === "suspended") {
           return {
             data: { user: null },
-            error: { message: "Incorrect email or password." },
+            error: {
+              message: "This account has been suspended. Contact an administrator.",
+            },
           };
         }
-        if (user.status !== "active") {
-          return {
-            data: { user: null },
-            error: { message: "This account has been suspended. Contact an administrator." },
-          };
-        }
-        syncSessionCookie(user.id);
-        return { data: { user }, error: null };
+        // Deliberately identical for "no such account" and "wrong password".
+        return { data: { user: null }, error: { message: "Incorrect email or password." } };
       },
 
       async signUp({ email, password, options }) {
@@ -580,7 +702,7 @@ export function createLocalClient(): LocalClient {
           role?: string;
           full_name?: string;
         });
-        syncSessionCookie(user.id);
+        syncSessionCookie(user);
         return { data: { user, session: { user } }, error: null };
       },
 
@@ -596,7 +718,20 @@ export function createLocalClient(): LocalClient {
         return { error: null };
       },
 
-      async updateUser() {
+      async updateUser(attributes: { password?: string }) {
+        // Actually applies the change. This used to return success while doing
+        // nothing, so "reset my password" appeared to work and then locked the
+        // user out of the password they had just chosen.
+        if (attributes.password !== undefined) {
+          if (!setCurrentPassword(attributes.password)) {
+            return {
+              error: {
+                message:
+                  "That password could not be saved. Choose one of at least 8 characters.",
+              },
+            };
+          }
+        }
         return { error: null };
       },
 
@@ -637,6 +772,12 @@ export interface LocalClient {
     name: string,
     args?: Record<string, unknown>,
   ): Promise<{ data: any; error: { message: string; code?: string } | null }>;
+  /**
+   * A select result may carry a `count` alongside `data`, exactly as the
+   * Supabase client did for `select(cols, { count, head })`. It is a SIBLING of
+   * `data`, not a field inside it.
+   */
+  count?: number;
   auth: {
     getUser(): Promise<{ data: { user: LocalUser | null }; error: null }>;
     getSession(): Promise<{
@@ -660,7 +801,9 @@ export interface LocalClient {
       email: string,
       options?: { redirectTo?: string },
     ): Promise<{ error: null }>;
-    updateUser(attributes: { password?: string }): Promise<{ error: null }>;
+    updateUser(
+      attributes: { password?: string },
+    ): Promise<{ error: { message: string } | null }>;
     verifyOtp(_params: unknown): Promise<{ error: { message: string } }>;
   };
   /** Realtime shim — see LocalChannel. */

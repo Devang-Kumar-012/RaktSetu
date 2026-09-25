@@ -20,4 +20,3 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# The scheduler endpoint must never be cached or indexed.

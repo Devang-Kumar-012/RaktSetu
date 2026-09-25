@@ -2,6 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { readServerSession } from "@/lib/local/session-cookie";
 import type { LocalUser } from "@/lib/local/store";
 import type { AccountRole, Profile } from "@/types";
 
@@ -15,23 +16,36 @@ export interface SessionInfo {
 
 /**
  * Per-request cached session + profile lookup for Server Components.
- * Never throws — callers can rely on a safe result even when the
- * Supabase project is not configured yet.
+ *
+ * WHY THIS NO LONGER USES THE LOCAL ADAPTER
+ *
+ * The data layer lives in the visitor's browser, so `readSession()` returns null
+ * during server rendering. This function therefore ALWAYS reported "nobody
+ * signed in" to a Server Component, while the route middleware — reading the
+ * `raktsetu.session` cookie — reported the opposite. The result was a redirect
+ * loop: /dashboard bounced to /login, which bounced back to /dashboard, and
+ * Next.js showed this route's loading boundary forever.
+ *
+ * The fix is at the shared layer, not per-page: the server now reads the same
+ * cookies the middleware reads, so both always agree. With no cookie the answer
+ * is "nobody", which is also what the middleware concludes, and the bouncing
+ * stops.
+ *
+ * Always resolves — every path returns, and the catch returns a safe value, so
+ * no request can hang on authentication.
  */
 export const getSessionInfo = cache(async (): Promise<SessionInfo> => {
   try {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.auth.getUser();
-    const user = error ? null : data.user;
-    if (!user) return { configured: true, user: null, profile: null };
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, role, status, created_at, updated_at")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    return { configured: true, user, profile: (profile as Profile) ?? null };
+    // Server-side: the cookie is the only auth state a Server Component can see.
+    const fromCookie = await readServerSession();
+    if (fromCookie.user) {
+      return {
+        configured: true,
+        user: fromCookie.user,
+        profile: (fromCookie.profile as unknown as Profile) ?? null,
+      };
+    }
+    return { configured: true, user: null, profile: null };
   } catch {
     return { configured: true, user: null, profile: null };
   }

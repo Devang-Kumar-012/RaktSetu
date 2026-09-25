@@ -1,12 +1,10 @@
-import { requireRolePage } from "@/lib/profile";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+"use client";
+
 import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/States";
 import { DonorAlertCard } from "@/components/alerts/DonorAlertCard";
-import { LiveRefresh } from "@/components/notifications/LiveRefresh";
-import { tickDonorReminders } from "@/lib/actions/notifications";
 import { AvailabilityControl } from "@/components/donor/AvailabilityControl";
 import { DonorStatusBadges, DonorRecognitionCard } from "@/components/donor/DonorStatusBadges";
 import { DriveCard } from "@/components/drives/DriveCard";
@@ -23,6 +21,10 @@ import {
 import { getDonorEligibility } from "@/lib/eligibility";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/utils";
+import { useClientAuth } from "@/components/local/useClientAuth";
+import { LiveRefresh } from "@/components/notifications/LiveRefresh";
+import type { LocalClient } from "@/lib/local/adapter";
+import type { LocalUser } from "@/lib/local/store";
 import type {
   CampusDrive,
   DonorAlertRow,
@@ -32,16 +34,42 @@ import type {
   DriveRegistration,
 } from "@/types";
 
-export const metadata = { title: "Donor dashboard" };
+// NOTE: this page is a Client Component (the data lives in the visitor's
+// localStorage), so it cannot export `metadata` itself — a client module may
+// not export it. The title lives in ./layout.tsx instead.
 
-// Session-gated: render per request so the role check is never baked into a
-// static prerender (which would redirect forever in production).
-export const dynamic = "force-dynamic";
+type AlertCard = {
+  row: DonorAlertRow;
+  actionable: boolean;
+  minutesLeft: number | null;
+};
 
-export default async function DonorDashboardPage() {
-  const { user, profile } = await requireRolePage("donor");
+interface DonorDashboardData {
+  donorProfile: DonorProfile | null;
+  firstName: string;
+  openCards: AlertCard[];
+  acceptedCards: AlertCard[];
+  closedCount: number;
+  donationHistory: DonorDonationRow[];
+  eligibility: ReturnType<typeof getDonorEligibility>;
+  recognition: DonorRecognition | null;
+  upcomingDrives: CampusDrive[];
+  myDriveStatuses: Map<string, DriveRegistration["status"]>;
+}
 
-  const supabase = await createSupabaseServerClient();
+/**
+ * Reads the donor's own dashboard data from the local store, in the BROWSER.
+ *
+ * This used to be a Server Component awaiting `createSupabaseServerClient()`.
+ * That could never work once the data moved into localStorage: the server has no
+ * localStorage, so every query returned empty and the page rendered its empty
+ * state forever. The server still re-checks every donor action; this only
+ * decides what the screen shows.
+ */
+async function loadDonorDashboard(
+  supabase: LocalClient,
+  user: LocalUser
+): Promise<DonorDashboardData> {
   const { data: donor } = await supabase
     .from("donor_profiles")
     .select(
@@ -51,64 +79,60 @@ export default async function DonorDashboardPage() {
     .maybeSingle();
 
   const donorProfile = (donor as DonorProfile) ?? null;
-  const firstName = profile.full_name.trim().split(" ")[0];
+  const firstName = user.full_name.trim().split(" ")[0];
 
-  // Emergency alert queue (ring engine — migration 0011). Actionability is
-  // decided here with the SERVER clock; the database re-checks everything
-  // atomically when the donor submits accept/decline. The queue splits into
-  // still-actionable alerts, this donor's acceptances, and everything already
-  // closed/declined (hidden so a past alert never resurfaces as new).
+  // Emergency alert queue. Actionability is decided from the CURRENT time and
+  // the store re-checks everything when the donor submits accept/decline. The
+  // queue splits into still-actionable alerts, this donor's acceptances, and
+  // everything already closed (hidden so a past alert never resurfaces).
   const { data: alertRows } = await supabase.rpc("donor_active_alerts", {
     p_limit: 20,
   });
   const nowMs = Date.now();
-  const alertCards = ((alertRows as DonorAlertRow[] | null) ?? []).map((row) => {
-    const actionable = isAlertActionable(
-      {
-        id: row.alert_id,
-        requestId: row.request_id,
-        donorId: user.id,
-        ringKm: row.ring_km,
-        status: row.status,
-        dueAt: new Date(row.due_at).getTime(),
-        response: row.response,
-      } satisfies AlertState,
-      nowMs
-    );
-    return {
-      row,
-      actionable,
-      minutesLeft: actionable
-        ? Math.max(
-          0,
-          Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
-        )
-        : null,
-    };
-  });
+  const alertCards: AlertCard[] = ((alertRows as DonorAlertRow[] | null) ?? []).map(
+    (row) => {
+      const actionable = isAlertActionable(
+        {
+          id: row.alert_id,
+          requestId: row.request_id,
+          donorId: user.id,
+          ringKm: row.ring_km,
+          status: row.status,
+          dueAt: new Date(row.due_at).getTime(),
+          response: row.response,
+        } satisfies AlertState,
+        nowMs
+      );
+      return {
+        row,
+        actionable,
+        minutesLeft: actionable
+          ? Math.max(
+              0,
+              Math.ceil((new Date(row.due_at).getTime() - nowMs) / 60_000)
+            )
+          : null,
+      };
+    }
+  );
   const openCards = alertCards.filter((c) => c.actionable);
   const acceptedCards = alertCards.filter((c) => c.row.response === "accepted");
-  const closedCount =
-    alertCards.length - openCards.length - acceptedCards.length;
+  const closedCount = alertCards.length - openCards.length - acceptedCards.length;
 
-  // Own donation history (migration 0012 — SECURITY DEFINER, own rows only).
+  // Own donation history.
   const { data: historyRows } = await supabase.rpc("donor_donation_history", {
     p_limit: 20,
   });
   const donationHistory = (historyRows as DonorDonationRow[] | null) ?? [];
   const eligibility = getDonorEligibility(donorProfile);
 
-  // Advisory donor reminders (migration 0016) are a one-shot, idempotent
-  // sweep, ticked here so they still go out when pg_cron is unavailable.
-  await tickDonorReminders();
-
-  // Own recognition (migration 0016) — computed from donation_history only.
+  // Own recognition — computed from recorded donations only.
   const { data: recognitionRows } = await supabase.rpc("donor_recognition");
   const recognition = ((recognitionRows as DonorRecognition[] | null) ?? [])[0] ?? null;
 
-  // Campus drives (migration 0015). Published drives are readable by any
-  // signed-in user; the viewer's OWN registrations are what RLS will return,
-  // so this can never show anyone else's participation.
+  // Published drives are visible to any signed-in user; the viewer's OWN
+  // registrations are the only participation rows returned, so this can never
+  // show anybody else's interest.
   const [driveResult, ownDrivesResult] = await Promise.all([
     supabase
       .from("campus_blood_drives")
@@ -126,10 +150,54 @@ export default async function DonorDashboardPage() {
   ]);
   const upcomingDrives = (driveResult.data as CampusDrive[] | null) ?? [];
   const myDriveStatuses = new Map<string, DriveRegistration["status"]>(
-    ((ownDrivesResult.data ?? []) as { drive_id: string; status: DriveRegistration["status"] }[]).map(
-      (r) => [r.drive_id, r.status]
-    )
+    ((ownDrivesResult.data ?? []) as {
+      drive_id: string;
+      status: DriveRegistration["status"];
+    }[]).map((r) => [r.drive_id, r.status])
   );
+
+  return {
+    donorProfile,
+    firstName,
+    openCards,
+    acceptedCards,
+    closedCount,
+    donationHistory,
+    eligibility,
+    recognition,
+    upcomingDrives,
+    myDriveStatuses,
+  };
+}
+
+export default function DonorDashboardPage() {
+  const auth = useClientAuth("donor", loadDonorDashboard, "/dashboard/donor");
+
+  // A terminal loading state, never a permanent one: the hook always settles.
+  if (auth.status === "checking") {
+    return (
+      <Section>
+        <p role="status" className="text-lg text-ink-600">
+          Loading your donor dashboard…
+        </p>
+      </Section>
+    );
+  }
+  // Signed-out, wrong-role and suspended all redirect inside the hook.
+  if (auth.status !== "ready") return null;
+
+  const {
+    donorProfile,
+    firstName,
+    openCards,
+    acceptedCards,
+    closedCount,
+    donationHistory,
+    eligibility,
+    recognition,
+    upcomingDrives,
+    myDriveStatuses,
+  } = auth.data;
 
   return (
     <>

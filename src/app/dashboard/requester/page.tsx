@@ -1,5 +1,5 @@
-import { requireRolePage } from "@/lib/profile";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+"use client";
+
 import { describeGap, formatDate, formatDateTime } from "@/lib/utils";
 import {
   BLOOD_COMPONENT_LABELS,
@@ -25,31 +25,54 @@ import {
 } from "@/lib/request-filters";
 import { RequestCountdown } from "@/components/requests/RequestCountdown";
 import { ALERT_RINGS_KM, ALERT_WINDOW_MINUTES } from "@/lib/constants";
+import { useClientAuth } from "@/components/local/useClientAuth";
+import type { LocalClient } from "@/lib/local/adapter";
+import type { LocalUser } from "@/lib/local/store";
 import type { AcceptedDonor, BloodRequest, RequesterRingStatus } from "@/types";
 
-export const metadata = { title: "Requester dashboard" };
+// NOTE: a Client Component may not export `metadata` or `dynamic`; the route
+// title lives in ./layout.tsx. This page must be a client component because the
+// data lives in the visitor's localStorage, which the server cannot read.
 
-// Session-gated: render per request so the role check is never baked into a
-// static prerender (which would redirect forever in production).
-export const dynamic = "force-dynamic";
+interface RequesterDashboardData {
+  firstName: string;
+  list: BloodRequest[];
+  active: BloodRequest[];
+  historyAll: BloodRequest[];
+  historyCount: number;
+  fulfilledCount: number;
+  totalCount: number;
+  filters: ReturnType<typeof parseRequestFilters>;
+  filtering: boolean;
+  acceptedByRequest: Map<string, AcceptedDonor>;
+  ringsByRequest: Map<string, RequesterRingStatus>;
+  alertedByRequest: Map<string, number>;
+}
 
-export default async function RequesterDashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const { user, profile } = await requireRolePage("requester");
-  const firstName = profile.full_name.trim().split(" ")[0];
+/**
+ * Reads the requester's OWN requests from the local store, in the browser.
+ *
+ * The `.eq("requester_id", user.id)` on every query is what keeps one requester
+ * from ever seeing another's rows: the store scopes every read to the signed-in
+ * user, and the filter is stated explicitly rather than relied on implicitly.
+ */
+async function loadRequesterDashboard(
+  supabase: LocalClient,
+  user: LocalUser
+): Promise<RequesterDashboardData> {
+  const firstName = user.full_name.trim().split(" ")[0];
 
   // History filters come from the URL and are whitelisted centrally; unknown
-  // values fall back to "all" so a crafted query can never widen access.
-  const filters = parseRequestFilters(await searchParams);
+  // values fall back to "all" so a crafted query can never widen access. Read
+  // from location.search — this loader runs in the browser, after mount.
+  const params = Object.fromEntries(
+    new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).entries()
+  );
+  const filters = parseRequestFilters(params);
   const filtering = hasActiveFilters(filters);
 
-  const supabase = await createSupabaseServerClient();
-
-  // Active requests always stay actionable at the top (existing behaviour):
-  // newest own active rows, bounded, with reveal + ring data attached.
+  // Active requests always stay actionable at the top: newest own active rows,
+  // bounded, with reveal + ring data attached.
   const { data: activeRows } = await supabase
     .from("blood_requests")
     .select("*")
@@ -62,9 +85,7 @@ export default async function RequesterDashboardPage({
     (r) => r.status === "active"
   );
 
-  // History: database-side filtering + sorting + pagination over the caller's
-  // OWN rows only. The .eq("requester_id") is explicit here (RLS enforces it
-  // too) so history can never expose another requester's rows.
+  // History: filtered, sorted and paginated over the caller's OWN rows only.
   let historyQuery = supabase
     .from("blood_requests")
     .select("*", { count: "exact" })
@@ -75,7 +96,6 @@ export default async function RequesterDashboardPage({
   if (filters.urgency !== "all") historyQuery = historyQuery.eq("urgency", filters.urgency);
   if (filters.from) historyQuery = historyQuery.gte("created_at", `${filters.from}T00:00:00Z`);
   if (filters.to) historyQuery = historyQuery.lte("created_at", `${filters.to}T23:59:59.999Z`);
-  if (filters.urgency !== "all") historyQuery = historyQuery.eq("urgency", filters.urgency);
   historyQuery =
     filters.sort === "required_by"
       ? historyQuery.order("required_by", { ascending: true }).order("created_at", { ascending: false })
@@ -84,7 +104,7 @@ export default async function RequesterDashboardPage({
   const { data: historyRows, count: historyTotal } = await historyQuery.range(from, from + PAGE_SIZE - 1);
 
   // "Most urgent first" ranks critical > urgent > routine within the page
-  // (small bounded set — the DB already filtered and paginated it).
+  // (small bounded set — the store already filtered and paginated it).
   const historyAll = ((historyRows as BloodRequest[]) ?? []).slice();
   if (filters.sort === "urgent") {
     historyAll.sort(
@@ -110,14 +130,12 @@ export default async function RequesterDashboardPage({
   ]);
 
   const list = Array.from(
-    new Map(
-      [...active, ...historyAll].map((r) => [r.id, r])
-    ).values()
+    new Map([...active, ...historyAll].map((r) => [r.id, r])).values()
   );
 
-  // Post-acceptance reveal + ring-engine progress — both SECURITY DEFINER,
-  // own-requests only (migration 0011). Donor contact appears only while the
-  // database still reports contact_shared_until; nothing is derivable here.
+  // Post-acceptance reveal + ring-engine progress — own-requests only. Donor
+  // contact appears ONLY while the store still reports it as shareable; nothing
+  // is derivable here.
   const requestIds = list.map((r) => r.id);
   const [{ data: revealRows }, { data: ringRows }] = await Promise.all([
     supabase.rpc("reveal_accepted_donors", { p_request_ids: requestIds }),
@@ -141,6 +159,52 @@ export default async function RequesterDashboardPage({
       (alertedByRequest.get(row.request_id) ?? 0) + row.alerts_sent
     );
   }
+
+  return {
+    firstName,
+    list,
+    active,
+    historyAll,
+    historyCount,
+    fulfilledCount,
+    totalCount,
+    filters,
+    filtering,
+    acceptedByRequest,
+    ringsByRequest,
+    alertedByRequest,
+  };
+}
+
+export default function RequesterDashboardPage() {
+  const auth = useClientAuth("requester", loadRequesterDashboard, "/dashboard/requester");
+
+  // Terminal loading state: the hook always settles, so this cannot hang.
+  if (auth.status === "checking") {
+    return (
+      <Section>
+        <p role="status" className="text-lg text-ink-600">
+          Loading your requests…
+        </p>
+      </Section>
+    );
+  }
+  if (auth.status !== "ready") return null;
+
+  const {
+    firstName,
+    list,
+    active,
+    historyAll,
+    historyCount,
+    fulfilledCount,
+    totalCount,
+    filters,
+    filtering,
+    acceptedByRequest,
+    ringsByRequest,
+    alertedByRequest,
+  } = auth.data;
 
   function RequestCard({ request }: { request: BloodRequest }) {
     const isActive = request.status === "active";

@@ -11,7 +11,8 @@
     "check:rules": "tsx scripts/check-rules.ts",
     "check:rings": "tsx scripts/check-rings.ts",
     "check:invariants": "tsx scripts/check-invariants.ts",
-    "check": "npm run check:rules && npm run check:rings && npm run check:invariants && npm run build",
+    "check:local": "tsx scripts/check-local-stack.ts",
+    "check": "npm run check:rules && npm run check:rings && npm run check:invariants && npm run check:local && npm run build",
     "smoke": "sh scripts/smoke-test.sh"
   },
   "dependencies": {

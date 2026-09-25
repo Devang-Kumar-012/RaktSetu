@@ -21,6 +21,7 @@
 import { isBloodCompatible } from "@/lib/blood-compat";
 import {
   clone,
+  getPlatformSettings,
   newId,
   nowIso,
   readDatabase,
@@ -35,12 +36,39 @@ import {
   type LocalUser,
 } from "./store";
 
-/** Documented defaults, matching the original SQL configuration. */
+/**
+ * Documented defaults, matching the original SQL configuration.
+ *
+ * These are the FALLBACKS, not the live values: the ring engine reads the
+ * platform_settings row on every tick, so an admin change takes effect
+ * immediately. They are exported for the UI's explanatory copy and for rendering
+ * before any settings row exists.
+ */
 export const RING_KM = [3, 7, 15] as const;
 export const RING_WINDOW_MINUTES = 10;
 export const ALERT_DUE_OFFSET_MINUTES = 120;
+export const DEFAULT_COOLDOWN_DAYS = 90;
 
-let cooldownDays = 90;
+let ringKm: number[] = [...RING_KM];
+let ringWindowMinutes = RING_WINDOW_MINUTES;
+let alertDueOffsetMinutes = ALERT_DUE_OFFSET_MINUTES;
+let cooldownDays = DEFAULT_COOLDOWN_DAYS;
+
+/**
+ * Keeps the module-level mirrors in step with the stored settings.
+ *
+ * Called at the top of every engine entry point so a settings change is picked
+ * up on the next action without a page reload — and, critically, so a stale
+ * mirror can never be used after an admin has changed a value.
+ */
+function refreshSettings(): void {
+  const s = getPlatformSettings();
+  ringKm = s.alert_rings_km;
+  ringWindowMinutes = s.alert_window_minutes;
+  alertDueOffsetMinutes = s.alert_due_at_offset_minutes;
+  cooldownDays = s.donation_interval_days;
+}
+
 export function setCooldownDays(days: number): void {
   if (Number.isFinite(days) && days > 0) cooldownDays = days;
 }
@@ -152,6 +180,7 @@ export function notify(
  * actually earned rather than replaying them.
  */
 export function expandAlertRings(): number {
+  refreshSettings();
   return updateDatabase((db) => {
     const now = Date.now();
     let created = 0;
@@ -197,17 +226,17 @@ export function expandAlertRings(): number {
           (a, b) => b.ring_index - a.ring_index,
         )[0] ?? null;
 
-      const targetIndex = last ? Math.min(last.ring_index, RING_KM.length) : 0;
-      if (targetIndex >= RING_KM.length) {
+      const targetIndex = last ? Math.min(last.ring_index, ringKm.length) : 0;
+      if (targetIndex >= ringKm.length) {
         closeProcessForRequest(db, request, "rings_exhausted");
         continue;
       }
       if (last) {
         const elapsedMin = (now - new Date(last.started_at).getTime()) / 60_000;
-        if (elapsedMin < RING_WINDOW_MINUTES) continue; // still inside the window
+        if (elapsedMin < ringWindowMinutes) continue; // still inside the window
       }
 
-      const ringKm = RING_KM[targetIndex];
+      const ringKmValue = ringKm[targetIndex];
       // UNIQUE(request, donor): never alert the same donor twice for one
       // request, however far the search widens.
       const already = new Set(
@@ -228,14 +257,14 @@ export function expandAlertRings(): number {
         // With no coordinates the demo must still be able to show an alert, so
         // distance is treated as unknown rather than disqualifying. WITH
         // coordinates the radius is enforced strictly.
-        if (d !== null && d > ringKm) continue;
+        if (d !== null && d > ringKmValue) continue;
 
         const alert: LocalDonorAlert = {
           id: newId("alert"),
           request_id: request.id,
           donor_id: profile.user_id,
           ring_index: targetIndex + 1,
-          ring_km: ringKm,
+          ring_km: ringKmValue,
           status: "sent",
           response: null,
           responded_at: null,
@@ -266,12 +295,12 @@ export function expandAlertRings(): number {
         (p) => p.request_id === request.id && p.ring_index === targetIndex + 1,
       );
       if (row) {
-        row.ring_km = ringKm;
+        row.ring_km = ringKmValue;
       } else {
         db.ring_progress.push({
           request_id: request.id,
           ring_index: targetIndex + 1,
-          ring_km: ringKm,
+          ring_km: ringKmValue,
           started_at: nowIso(),
           finished_at: null,
           outcome: null,
@@ -307,6 +336,7 @@ export function respondToAlert(
   donorId: string,
   response: "accepted" | "declined",
 ): RespondResult {
+  refreshSettings();
   return updateDatabase((db) => {
     const alert = db.donor_alerts.find((a) => a.id === alertId);
     if (!alert || alert.donor_id !== donorId) return "not_your_alert";
@@ -344,7 +374,7 @@ export function respondToAlert(
 
     alert.accepted_at = nowIso();
     const deadline = new Date(request.required_by).getTime();
-    const due = deadline - ALERT_DUE_OFFSET_MINUTES * 60_000;
+    const due = deadline - alertDueOffsetMinutes * 60_000;
     alert.contact_shared_until = new Date(Math.min(due, deadline)).toISOString();
 
     closeProcessForRequest(db, request, "accepted");
@@ -538,6 +568,8 @@ export function setRequestStatus(
   requesterId: string,
   status: Extract<LocalRequestStatus, "fulfilled" | "cancelled">,
 ): "ok" | "not_found" | "not_owner" | "already_closed" {
+  refreshSettings();
+  refreshSettings();
   return updateDatabase((db) => {
     const request = db.blood_requests.find((r) => r.id === requestId);
     if (!request) return "not_found";

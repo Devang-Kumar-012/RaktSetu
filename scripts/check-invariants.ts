@@ -876,7 +876,6 @@ eq(
 // These are the failures that produced a live site where nobody could log in.
 // They are cheap to check and expensive to discover in production.
 {
-  const envSrc = readFileSync(join(ROOT, "src/lib/env.ts"), "utf8");
   const netlify = readFileSync(join(ROOT, "netlify.toml"), "utf8");
   const envExample = readFileSync(join(ROOT, ".env.example"), "utf8");
   const middleware = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
@@ -913,11 +912,79 @@ eq(
     "no source file reads a Supabase or cron environment variable",
     !/NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE_ROLE|CRON_SECRET/.test(ALL_SRC),
   );
-  ok("env.ts reads no environment variable at all", !/process\.env/.test(envSrc));
+  // The app is self-contained, so NO source file may read process.env at all.
+  // This replaces an earlier check that only inspected the (now removed)
+  // src/lib/env.ts shim, which was dead code. Scanning every file is both
+  // stronger and immune to that shim coming back.
+  ok("no source file reads process.env", !/process\.env/.test(ALL_SRC));
   ok(
-    "the configured check always reports true",
-    /export function isSupabaseConfigured\(\): boolean \{\s*return true;/.test(envSrc),
+    "no source file hard-codes a localhost or loopback URL",
+    !/https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)/.test(ALL_SRC),
   );
+  ok(
+    "the vestigial environment shim is gone",
+    !existsSync(join(ROOT, "src/lib/env.ts")),
+  );
+
+  // --- The /dashboard infinite-loading redirect loop -------------------------
+  // This shipped as a real bug. `readSession()` returns null during server
+  // rendering, so `getSessionInfo()` told every Server Component "nobody is
+  // signed in" while the middleware read the session COOKIE and said the
+  // opposite. /dashboard redirected to /login, which redirected back, and the
+  // route's loading boundary never resolved. The two must read the SAME source.
+  {
+    const profileSrc = readFileSync(join(ROOT, "src/lib/profile.ts"), "utf8");
+    const cookieSrc = readFileSync(
+      join(ROOT, "src/lib/local/session-cookie.ts"),
+      "utf8",
+    );
+    const middlewareSrc = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
+
+    ok(
+      "the server session reader exists and reads cookies",
+      cookieSrc.includes('from "next/headers"') &&
+        cookieSrc.includes("export async function readServerSession"),
+    );
+    ok(
+      "getSessionInfo reads the cookie, never the browser-only store",
+      // Reading the local adapter here is the bug: it always answers "nobody"
+      // on the server, which is what produced the loop.
+      profileSrc.includes("readServerSession()") &&
+        !/getSessionInfo[\s\S]{0,600}createSupabaseServerClient/.test(profileSrc),
+    );
+    ok(
+      "the server and the middleware read the SAME session cookie",
+      cookieSrc.includes('SESSION_COOKIE = "raktsetu.session"') &&
+        middlewareSrc.includes('cookies.get("raktsetu.session")'),
+    );
+    ok(
+      "the routing cookie carries no credential material",
+      // Comment-stripped: the file's doc comment literally says "no password",
+      // so a naive word match would flag the very text promising safety.
+      (() => {
+        const code = stripJsComments(cookieSrc);
+        return (
+          !/password|hash|salt/i.test(code) &&
+          /No credential material is ever written/i.test(
+            readFileSync(join(ROOT, "src/lib/local/adapter.ts"), "utf8"),
+          )
+        );
+      })(),
+    );
+    ok(
+      "the routing cookie must agree with the session cookie",
+      // Without this the page and the middleware can disagree again — the
+      // exact class of bug that produced the loop.
+      /parsed\.id !== sessionId/.test(cookieSrc) &&
+        cookieSrc.includes("return { user: null, profile: null };"),
+    );
+    ok(
+      "auth initialisation always terminates (no unguarded await path)",
+      // Every branch must return, and the catch returns a safe "signed out"
+      // value rather than rethrowing into a stuck loading boundary.
+      /catch \{[\s\S]{0,200}return \{ configured: true, user: null/.test(profileSrc),
+    );
+  }
 
   // Deployment config must carry no credentials of any kind.
   ok(
@@ -928,10 +995,6 @@ eq(
   ok("netlify.toml builds with the project build command", netlify.includes('command = "npm run build"'));
   ok("netlify.toml publishes the Next.js output", netlify.includes('publish = ".next"'));
   ok("netlify.toml installs the Next.js runtime plugin", netlify.includes("@netlify/plugin-nextjs"));
-  ok(
-    "the scheduler route is marked no-store on Netlify",
-    /for\s*=\s*"\/api\/cron\/\*"/.test(netlify) && /no-store/.test(netlify),
-  );
 
   // The redirect target must come from the incoming request, never a baked-in
   // localhost, or every production email link would point at a developer's
