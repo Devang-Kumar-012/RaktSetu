@@ -27,7 +27,7 @@ import { RequestCountdown } from "@/components/requests/RequestCountdown";
 import { ALERT_RINGS_KM, ALERT_WINDOW_MINUTES } from "@/lib/constants";
 import { useClientAuth } from "@/components/local/useClientAuth";
 import type { LocalClient } from "@/lib/local/adapter";
-import type { LocalUser } from "@/lib/local/store";
+import type { AuthenticatedUser } from "@/types";
 import type { AcceptedDonor, BloodRequest, RequesterRingStatus } from "@/types";
 
 // NOTE: a Client Component may not export `metadata` or `dynamic`; the route
@@ -58,7 +58,7 @@ interface RequesterDashboardData {
  */
 async function loadRequesterDashboard(
   supabase: LocalClient,
-  user: LocalUser
+  user: AuthenticatedUser
 ): Promise<RequesterDashboardData> {
   const firstName = user.full_name.trim().split(" ")[0];
 

@@ -35,8 +35,9 @@ export default async function LoginPage({
       <Alert variant="info" title="Demo administrator">
         <p>
           Email <strong>{DEMO_ADMIN_EMAIL}</strong>, password{" "}
-          <strong>{DEMO_ADMIN_PASSWORD}</strong>. This account exists only in this
-          browser&apos;s local prototype data. It cannot be created through sign-up.
+          <strong>{DEMO_ADMIN_PASSWORD}</strong>. It is seeded into the
+          deployment&apos;s own database on first start, and cannot be created
+          through sign-up.
         </p>
       </Alert>
     </AuthShell>

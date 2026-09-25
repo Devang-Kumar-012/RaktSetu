@@ -28,6 +28,7 @@ import {
   SAFETY_LIMITS_DEFAULTS,
   SETTINGS_BOUNDS,
 } from "@/lib/constants";
+import { DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD } from "../demo-account";
 import { makeCredential, verifyPassword } from "./crypto";
 export const STORE_KEY = "raktsetu.local.v1";
 export const SESSION_KEY = "raktsetu.session.v1";
@@ -507,8 +508,11 @@ export function getSafetyLimits(): LocalSafetyLimits {
  * request body — only a brand-new local database contains it, and the login page
  * says so plainly.
  */
-export const DEMO_ADMIN_EMAIL = "admin@raktsetu.demo";
-export const DEMO_ADMIN_PASSWORD = "raktsetu-demo";
+// The credential itself lives in `@/lib/demo-account`, so the legacy browser
+// store and the server database seed the SAME documented account. Re-exported
+// here because this module is where the demo login has always been imported
+// from — the login page and the local-stack checks both read it from here.
+export { DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD };
 
 /** The demo admin, present in a fresh database only. */
 /**

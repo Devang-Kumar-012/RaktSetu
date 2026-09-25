@@ -21,13 +21,14 @@ export function LogoutButton({
   async function handleLogout() {
     setLoading(true);
     try {
-      const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
-      const supabase = createSupabaseBrowserClient();
-      await supabase.auth.signOut();
+      // Server-side: the session row is revoked AND the HTTP-only cookie is
+      // cleared, so nothing keeps a usable token after this.
+      const { signOutCurrentUser } = await import("@/lib/actions/auth");
+      await signOutCurrentUser();
       router.push("/");
       router.refresh();
     } catch {
-      // Supabase not configured — still return the user home.
+      // Even a failed revoke returns the user home rather than trapping them.
       router.push("/");
       router.refresh();
     } finally {

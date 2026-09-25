@@ -6,6 +6,27 @@ export type AccountRole = "donor" | "requester" | "volunteer" | "admin";
 
 export type AccountStatus = "active" | "suspended";
 
+/**
+ * The authenticated identity, as the SERVER resolves it from the HTTP-only
+ * session cookie.
+ *
+ * Declared here, in the dependency-free types module, for one reason: a Client
+ * Component must be able to hold the server's answer without importing
+ * `src/lib/server/session.ts`, which owns the database handle and must never
+ * reach the browser. It is deliberately narrower than the `users` row — name,
+ * email, role, status and timestamps — so no credential material can travel
+ * out of the database through it.
+ */
+export interface AuthenticatedUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: AccountRole;
+  status: AccountStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Row shape of the `profiles` table (see supabase/migrations/0001_profiles.sql). */
 export interface Profile {
   id: string;

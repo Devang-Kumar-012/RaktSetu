@@ -13,17 +13,52 @@
  * remember, and a restart re-opens the same file.
  */
 
-import { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+
+import {
+  DEMO_ADMIN_EMAIL,
+  DEMO_ADMIN_NAME,
+  DEMO_ADMIN_PASSWORD,
+} from "@/lib/demo-account";
+import { hashPassword } from "./password";
 
 /**
- * Where the database lives. Defaults to `./data/raktsetu.db` beside the app,
- * correct for a persistent Node host. RAKTSETU_DB_PATH overrides it when the
- * platform mounts a volume elsewhere. Never sent to the browser.
+ * Where the database lives: `./data/raktsetu.db` beside the app, which is
+ * correct for a persistent Node host. This is the single place to change it if
+ * the platform mounts its volume elsewhere.
+ *
+ * There is deliberately NO environment lookup here. The application is
+ * self-contained and reads no configuration at all, an invariant asserted
+ * across every file in `src/` by `scripts/check-invariants.ts`. Never sent to
+ * the browser.
  */
-const DB_PATH =
-  process.env.RAKTSETU_DB_PATH ?? join(process.cwd(), "data", "raktsetu.db");
+const DB_PATH = join(process.cwd(), "data", "raktsetu.db");
+
+/**
+ * `node:sqlite` is resolved lazily, on first use.
+ *
+ * WHY THIS IS NOT A STATIC IMPORT
+ *
+ * A static `import ... from "node:sqlite"` puts the builtin into Next's
+ * build-time module graph. As soon as the server data seam actually reached
+ * this module, `next build` stopped dead at "Collecting page data" and never
+ * progressed (0% CPU, no database file ever created, so nothing here had even
+ * run). Verified by A/B against the previous working tree. Resolving it on
+ * demand keeps it out of that graph, and keeps `getDb()` synchronous — which
+ * every caller depends on.
+ */
+const require_ = createRequire(import.meta.url);
+let DatabaseSyncCtor: typeof DatabaseSync | null = null;
+function sqliteDatabase(): typeof DatabaseSync {
+  if (!DatabaseSyncCtor) {
+    DatabaseSyncCtor = require_("node:sqlite").DatabaseSync as typeof DatabaseSync;
+  }
+  return DatabaseSyncCtor;
+}
 
 let db: DatabaseSync | null = null;
 
@@ -31,7 +66,7 @@ let db: DatabaseSync | null = null;
 export function getDb(): DatabaseSync {
   if (db) return db;
   mkdirSync(dirname(DB_PATH), { recursive: true });
-  db = new DatabaseSync(DB_PATH);
+  db = new (sqliteDatabase())(DB_PATH);
   // WAL lets readers proceed during a write and survives restarts with the
   // file. NORMAL is the right durability trade for SQLite at this scale.
   db.exec("PRAGMA journal_mode = WAL;");
@@ -295,6 +330,26 @@ function migrate(conn: DatabaseSync): void {
   conn
     .prepare("INSERT OR IGNORE INTO platform_safety_limits (id, updated_at) VALUES (1, ?)")
     .run(now);
+
+  // The one documented demo administrator (see `@/lib/demo-account`).
+  //
+  // Public sign-up cannot create an admin, so without this the entire admin
+  // area would be unreachable — and the login page advertises these very
+  // credentials. It is seeded ONLY when the address is absent, so a password
+  // changed through the app is never reset by a restart, and re-running this
+  // migration is free. Hashing happens once, on first creation.
+  const demoSeeded = conn
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .get(DEMO_ADMIN_EMAIL);
+  if (!demoSeeded) {
+    const { hash } = hashPassword(DEMO_ADMIN_PASSWORD);
+    conn
+      .prepare(
+        `INSERT INTO users (id, email, password_hash, full_name, role, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?)`
+      )
+      .run(randomUUID(), DEMO_ADMIN_EMAIL, hash, DEMO_ADMIN_NAME, now, now);
+  }
 }
 
 export const DB_FILE = DB_PATH;

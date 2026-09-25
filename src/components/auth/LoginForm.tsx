@@ -7,9 +7,9 @@ import { useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input, PasswordInput } from "@/components/ui/Input";
+import { signInWithPassword } from "@/lib/actions/auth";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { isValidEmail } from "@/lib/utils";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function LoginForm({
   nextPath,
@@ -44,14 +44,12 @@ export function LoginForm({
 
     setLoading(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      // The password is verified on the SERVER, which then sets an HTTP-only
+      // session cookie. Nothing about the account is decided in this browser.
+      const result = await signInWithPassword(email.trim(), password);
 
-      if (signInError) {
-        setError(friendlyAuthError(signInError));
+      if (result.error) {
+        setError(friendlyAuthError(result.error));
         setLoading(false);
         return;
       }

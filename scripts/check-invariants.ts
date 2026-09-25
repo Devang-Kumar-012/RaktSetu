@@ -926,56 +926,79 @@ eq(
   );
 
   // --- The /dashboard infinite-loading redirect loop -------------------------
-  // This shipped as a real bug. `readSession()` returns null during server
-  // rendering, so `getSessionInfo()` told every Server Component "nobody is
-  // signed in" while the middleware read the session COOKIE and said the
-  // opposite. /dashboard redirected to /login, which redirected back, and the
-  // route's loading boundary never resolved. The two must read the SAME source.
+  // This shipped as a real bug. Sign-in used to happen in the visitor's browser,
+  // so the Server Component guard and the route middleware could disagree about
+  // who was signed in: /dashboard redirected to /login, which redirected back,
+  // and the route's loading boundary never resolved. They must read the SAME
+  // source — and that source must be the SERVER's session, not a cookie the
+  // visitor's own JavaScript wrote and could therefore forge.
   {
     const profileSrc = readFileSync(join(ROOT, "src/lib/profile.ts"), "utf8");
+    const sessionSrc = readFileSync(join(ROOT, "src/lib/server/session.ts"), "utf8");
     const cookieSrc = readFileSync(
-      join(ROOT, "src/lib/local/session-cookie.ts"),
+      join(ROOT, "src/lib/server/session-cookie.ts"),
+      "utf8",
+    );
+    const authSrc = readFileSync(join(ROOT, "src/lib/actions/auth.ts"), "utf8");
+    const profileActionSrc = readFileSync(
+      join(ROOT, "src/lib/actions/profile.ts"),
       "utf8",
     );
     const middlewareSrc = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
 
     ok(
-      "the server session reader exists and reads cookies",
-      cookieSrc.includes('from "next/headers"') &&
-      cookieSrc.includes("export async function readServerSession"),
+      "getSessionInfo resolves the caller from the server session, never the browser store",
+      // Reading the local adapter here is the bug: on the server it can only
+      // ever answer "nobody", which is what produced the loop.
+      profileSrc.includes("readSessionToken()") &&
+      profileSrc.includes("getUserForToken(") &&
+      !/getSessionInfo[\s\S]{0,600}createSupabaseServerClient/.test(profileSrc) &&
+      !/getSessionInfo[\s\S]{0,600}localStorage/.test(profileSrc),
     );
     ok(
-      "getSessionInfo reads the cookie, never the browser-only store",
-      // Reading the local adapter here is the bug: it always answers "nobody"
-      // on the server, which is what produced the loop.
-      profileSrc.includes("readServerSession()") &&
-      !/getSessionInfo[\s\S]{0,600}createSupabaseServerClient/.test(profileSrc),
+      "the session cookie is HTTP-only and only the server can set it",
+      cookieSrc.includes('from "next/headers"') &&
+      cookieSrc.includes("httpOnly: true") &&
+      // A "use server" module is the only place cookies().set() is legal, so
+      // the cookie can never be written by the browser bundle.
+      authSrc.startsWith('"use server"') &&
+      authSrc.includes("setSessionCookie("),
     );
     ok(
       "the server and the middleware read the SAME session cookie",
-      cookieSrc.includes('SESSION_COOKIE = "raktsetu.session"') &&
-      middlewareSrc.includes('cookies.get("raktsetu.session")'),
+      sessionSrc.includes('SESSION_COOKIE = "raktsetu_session"') &&
+      middlewareSrc.includes('cookies.get("raktsetu_session")'),
     );
     ok(
-      "the routing cookie carries no credential material",
-      // Comment-stripped: the file's doc comment literally says "no password",
-      // so a naive word match would flag the very text promising safety.
-      (() => {
-        const code = stripJsComments(cookieSrc);
-        return (
-          !/password|hash|salt/i.test(code) &&
-          /No credential material is ever written/i.test(
-            readFileSync(join(ROOT, "src/lib/local/adapter.ts"), "utf8"),
-          )
-        );
-      })(),
+      "no client-supplied identity may choose which profile is written",
+      // The client submits FIELDS. An id in the payload would let a caller name
+      // somebody else's row, so the update must key off the session's own user.
+      profileActionSrc.includes('eq("id", user.id)') &&
+      !/formData\.get\(\s*["'](id|userId|user_id)["']\s*\)/.test(profileActionSrc) &&
+      // And the client guard asks the server who it is, instead of reading a
+      // value the browser could have edited.
+      readFileSync(
+        join(ROOT, "src/components/local/useClientAuth.ts"),
+        "utf8",
+      ).includes("getClientSession()"),
     );
     ok(
-      "the routing cookie must agree with the session cookie",
-      // Without this the page and the middleware can disagree again — the
-      // exact class of bug that produced the loop.
-      /parsed\.id !== sessionId/.test(cookieSrc) &&
-      cookieSrc.includes("return { user: null, profile: null };"),
+      "a suspended account's session is REVOKED, not merely redirected",
+      // The redirect alone would leave a still-valid token on the device.
+      sessionSrc.includes("export function revokeSession") &&
+      profileSrc.includes("revokeSession(token)"),
+    );
+    ok(
+      "the legacy routing cookie is inert and carries no credential material",
+      // Kept from before the migration: the file still exists, and it still must
+      // not smuggle a password, hash or salt into a cookie the browser can read.
+      // Comment-stripped, because the file's own doc comment promises exactly
+      // that — a naive word match would flag the text vouching for safety.
+      !/password|hash|salt/i.test(
+        stripJsComments(
+          readFileSync(join(ROOT, "src/lib/local/session-cookie.ts"), "utf8"),
+        ),
+      ),
     );
     ok(
       "auth initialisation always terminates (no unguarded await path)",
@@ -1011,8 +1034,8 @@ eq(
   // A deployment missing its public config must still be reachable and must
   // never crash: the middleware allows traffic through rather than throwing.
   ok(
-    "middleware guards on the local session cookie, not a remote session",
-    middleware.includes("raktsetu.session") &&
+    "middleware guards on the server session cookie, not a remote session",
+    middleware.includes("raktsetu_session") &&
     !/isSupabaseConfigured/.test(middleware),
   );
   ok(

@@ -25,11 +25,13 @@ export async function updateFullName(
   const error = validateFullName(fullName);
   if (error) return { ok: false, error };
 
-  // RLS also restricts this update to the user's own row.
+  // The account being edited comes from the HTTP-only session, never from the
+  // submitted form. `user.id` was resolved server-side, so a caller cannot name
+  // somebody else's row — and the form carries no id to tamper with.
   const supabase = await createSupabaseServerClient();
   const { error: dbError } = await supabase
     .from("profiles")
-    .update({ full_name: fullName.trim() })
+    .update({ full_name: fullName.trim(), updated_at: new Date().toISOString() })
     .eq("id", user.id);
 
   if (dbError) {

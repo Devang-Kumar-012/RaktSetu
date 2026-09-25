@@ -7,10 +7,10 @@ import { useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input, PasswordInput } from "@/components/ui/Input";
+import { signUpNewAccount } from "@/lib/actions/auth";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { REGISTER_ROLES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isValidEmail } from "@/lib/utils";
 
 type Phase = "form" | "check-email";
@@ -61,30 +61,32 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
 
     setLoading(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      // The SERVER creates the account: it re-validates every field, enforces
+      // the role allow-list (admin can never be self-registered), hashes the
+      // password, and starts the session. No account row is written here.
+      const result = await signUpNewAccount({
+        fullName: fullName.trim(),
         email: email.trim(),
         password,
-        options: {
-          data: { full_name: fullName.trim(), role: safeRole },
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/dashboard")}`,
-        },
+        role: safeRole,
       });
 
-      if (signUpError) {
-        setError(friendlyAuthError(signUpError));
+      if (result.error) {
+        setError(friendlyAuthError(result.error));
         setLoading(false);
         return;
       }
 
-      if (data.session) {
-        // Email confirmation disabled — signed in immediately.
+      if (result.signedIn) {
+        // No mail transport exists in this deployment, so a new account is
+        // signed in immediately by the server that created it.
         router.replace("/dashboard");
         router.refresh();
         return;
       }
 
-      // Email confirmation enabled — ask them to check their inbox.
+      // Not reached today: kept so a build that requires email confirmation can
+      // ask the visitor to check their inbox instead of silently doing nothing.
       setPhase("check-email");
       setLoading(false);
     } catch (err) {

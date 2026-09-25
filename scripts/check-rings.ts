@@ -2263,8 +2263,9 @@ check(
   // BOTH guards must check status; checking only one leaves the other open.
   (codeProfile.match(/session\.profile\.status !== "active"/g) ?? []).length >= 2 &&
   srcProfile.includes("async function endSessionAndReportSuspension") &&
-  // signing out is the part that actually revokes access, not just the redirect
-  srcProfile.includes("await supabase.auth.signOut();") &&
+  // Revoking the session ROW is the part that actually removes access; the
+  // redirect alone would leave a still-valid token on the device.
+  srcProfile.includes("revokeSession(token)") &&
   srcProfile.includes('redirect("/account-suspended")'),
   true
 );

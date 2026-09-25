@@ -21,17 +21,25 @@ const AUTH_PAGES = ["/login", "/register", "/signup", "/signin", "/create-accoun
 /**
  * Route guard.
  *
- * Authentication now lives in the visitor's own browser, so this reads the
- * plain `raktsetu.session` cookie the local auth layer writes. It authorises
- * nothing on its own — every page still re-checks the profile and the role, and
- * the cookie is readable by design so a role can never be smuggled through it.
+ * Authentication is a session row in the server database, and the browser holds
+ * only an HTTP-only token cookie. This reads that cookie to redirect early and
+ * cheaply.
+ *
+ * The cookie NAME is inlined rather than imported: `src/lib/server/session.ts`
+ * owns it, but importing that module would drag the database handle into the
+ * edge runtime, which cannot load it. `scripts/check-invariants.ts` pins the two
+ * literals together so they cannot drift apart.
+ *
+ * It authorises nothing on its own. The edge cannot verify a token — every
+ * guarded page re-checks the session, the profile, the role and the account
+ * status server-side, and those checks are what actually grant access.
  */
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   response.headers.set("x-raktsetu-app", APP_NAME);
 
   const { pathname, search } = request.nextUrl;
-  const signedIn = Boolean(request.cookies.get("raktsetu.session")?.value);
+  const signedIn = Boolean(request.cookies.get("raktsetu_session")?.value);
 
   const isProtected = PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

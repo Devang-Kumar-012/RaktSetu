@@ -1,51 +1,69 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { readServerSession } from "@/lib/local/session-cookie";
-import type { LocalUser } from "@/lib/local/store";
-import type { AccountRole, Profile } from "@/types";
+import { getUserForToken, revokeSession } from "@/lib/server/session";
+import { readSessionToken } from "@/lib/server/session-cookie";
+import type { AccountRole, AuthenticatedUser, Profile } from "@/types";
 
 export interface SessionInfo {
   /** Always true — the app has no external auth dependency. Retained so the
    *  existing guard call sites keep compiling. */
   configured: boolean;
-  user: LocalUser | null;
+  user: AuthenticatedUser | null;
   profile: Profile | null;
+}
+
+/**
+ * The caller's profile, built from the users row the session already resolved.
+ *
+ * A second query is deliberately avoided: the session lookup returns every
+ * field `Profile` needs, so the profile can never disagree with the identity it
+ * belongs to.
+ */
+function profileOf(user: AuthenticatedUser): Profile {
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+  };
 }
 
 /**
  * Per-request cached session + profile lookup for Server Components.
  *
- * WHY THIS NO LONGER USES THE LOCAL ADAPTER
+ * WHERE THE TRUTH LIVES
  *
- * The data layer lives in the visitor's browser, so `readSession()` returns null
- * during server rendering. This function therefore ALWAYS reported "nobody
- * signed in" to a Server Component, while the route middleware — reading the
- * `raktsetu.session` cookie — reported the opposite. The result was a redirect
- * loop: /dashboard bounced to /login, which bounced back to /dashboard, and
- * Next.js showed this route's loading boundary forever.
+ * The session is a row in the `sessions` table and the token is an HTTP-only
+ * cookie the SERVER set. So the account is whatever the database says it is —
+ * not what the browser claims. The client contributes a credential at sign-in
+ * and nothing else: there is no user id in any query below.
  *
- * The fix is at the shared layer, not per-page: the server now reads the same
- * cookies the middleware reads, so both always agree. With no cookie the answer
- * is "nobody", which is also what the middleware concludes, and the bouncing
- * stops.
+ * This is the same answer the route middleware reaches, so a page guard and the
+ * edge can never disagree about "is somebody signed in" — the disagreement that
+ * once produced a /dashboard ⇄ /login redirect loop with a loading boundary
+ * that never resolved.
+ *
+ * A suspended account still gets a session and a profile. Refusing to resolve
+ * it here would hide the status from the guards that must act on it; the status
+ * travels with the session and `requireRolePage` / `requireAuthPage` end it.
  *
  * Always resolves — every path returns, and the catch returns a safe value, so
  * no request can hang on authentication.
  */
 export const getSessionInfo = cache(async (): Promise<SessionInfo> => {
   try {
-    // Server-side: the cookie is the only auth state a Server Component can see.
-    const fromCookie = await readServerSession();
-    if (fromCookie.user) {
-      return {
-        configured: true,
-        user: fromCookie.user,
-        profile: (fromCookie.profile as unknown as Profile) ?? null,
-      };
-    }
-    return { configured: true, user: null, profile: null };
+    // The cookie read comes FIRST, before any database work: during a static
+    // prerender this call is what opts the route out of generation, so the
+    // build never opens the database file.
+    const token = await readSessionToken();
+    const user = getUserForToken(token);
+    if (!user) return { configured: true, user: null, profile: null };
+
+    return { configured: true, user, profile: profileOf(user) };
   } catch {
     return { configured: true, user: null, profile: null };
   }
@@ -69,17 +87,21 @@ export function sanitizeNextPath(value: unknown, fallback = "/dashboard"): strin
  * Ends the session of an account an administrator has suspended, then sends the
  * user to the explanation page.
  *
- * Signing out is deliberate and is the part that actually matters: without it
- * a suspended user keeps a valid auth cookie, so "log in again" or "reopen an
- * old tab" would restore access. Revoking the session means every subsequent
- * request fails at `auth.getUser()` no matter which route it targets, which is
- * the guarantee the prompt asks for. It is best-effort — if the revoke call
- * fails we still leave the page, and the redirect alone is harmless.
+ * Revoking the row is deliberate and is the part that actually matters: without
+ * it a suspended user keeps a token that still resolves, so "log in again" or
+ * "reopen an old tab" would restore access. Revocation makes every subsequent
+ * request fail at `getUserForToken()` no matter which route it targets, which is
+ * the guarantee the guards exist to provide. It is best-effort — if the revoke
+ * call fails we still leave the page, and the redirect alone is harmless.
+ *
+ * The cookie is NOT cleared here: a render pass cannot set cookies. It would not
+ * help either — a token whose row is revoked authenticates nobody — and the
+ * next sign-in overwrites it. `signOutCurrentUser()` clears cookie and row.
  */
 async function endSessionAndReportSuspension(): Promise<never> {
   try {
-    const supabase = await createSupabaseServerClient();
-    await supabase.auth.signOut();
+    const token = await readSessionToken();
+    if (token) revokeSession(token);
   } catch {
     // Best-effort: the redirect below is still correct.
   }
@@ -96,7 +118,7 @@ async function endSessionAndReportSuspension(): Promise<never> {
  */
 export async function requireRolePage(
   role: AccountRole
-): Promise<{ user: LocalUser; profile: Profile }> {
+): Promise<{ user: AuthenticatedUser; profile: Profile }> {
   const session = await getSessionInfo();
 
   if (!session.configured) redirect("/dashboard");
@@ -117,7 +139,7 @@ export async function requireRolePage(
  * Applies the same suspension rule as requireRolePage.
  */
 export async function requireAuthPage(): Promise<{
-  user: LocalUser;
+  user: AuthenticatedUser;
   profile: Profile;
 }> {
   const session = await getSessionInfo();

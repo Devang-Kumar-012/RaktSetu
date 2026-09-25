@@ -26,7 +26,12 @@ type Bindable = Parameters<ReturnType<typeof getDb>["prepare"]>[0] extends never
 
 export type Row = Record<string, unknown>;
 
-export interface QueryResult<T = Row> {
+/**
+ * `T` defaults to `any` so this adapter stays a drop-in for the legacy one it
+ * replaced, whose `Row` was already `any`. Call sites cast `data` directly to
+ * their domain types, so a strict default turns valid casts into errors.
+ */
+export interface QueryResult<T = any> {
   data: T | null;
   error: { message: string; code?: string } | null;
   /** Row count for `.select("*", { count: "exact" })`. */
@@ -182,6 +187,8 @@ function sqliteError(err: unknown): QueryResult {
  */
 export class SqlTableQuery implements PromiseLike<QueryResult> {
   private filters: Filter[] = [];
+  /** One entry per `.or(...)` call: its clauses are OR-ed, then AND-ed in. */
+  private orGroups: Filter[][] = [];
   private orders: { column: string; ascending: boolean }[] = [];
   private limitTo: number | null = null;
   private offsetTo = 0;
@@ -199,8 +206,25 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
     }
     return this;
   }
-  insert(values: Row | Row[]): this { this.mode = "insert"; this.payload = values; return this; }
-  upsert(values: Row | Row[]): this { this.mode = "upsert"; this.payload = values; return this; }
+  insert(values: Row | Row[], _options?: { onConflict?: string }): this {
+    this.mode = "insert";
+    this.payload = values;
+    return this;
+  }
+  /**
+   * `onConflict` is accepted only for call-site parity: the SQLite path already
+   * upserts against the table's own primary key, which is what every caller
+   * relying on this option means (`{ onConflict: "user_id" }` on a table whose
+   * primary key is `user_id`).
+   */
+  upsert(
+    values: Row | Row[],
+    _options?: { onConflict?: string; ignoreDuplicates?: boolean },
+  ): this {
+    this.mode = "upsert";
+    this.payload = values;
+    return this;
+  }
   update(values: Row): this { this.mode = "update"; this.payload = values; return this; }
   delete(_e?: unknown): this { this.mode = "delete"; return this; }
 
@@ -209,6 +233,11 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
     return this;
   }
   eq(c: string, v: unknown) { return this.add("eq", c, v); }
+  /**
+   * PostgREST `is` — null / true / false checks. `is(col, null)` becomes
+   * `IS NULL`, which `where()` renders from the `eq` operator.
+   */
+  is(c: string, v: unknown) { return this.add("eq", c, v); }
   neq(c: string, v: unknown) { return this.add("neq", c, v); }
   in(c: string, v: unknown[]) { return this.add("in", c, v); }
   gt(c: string, v: unknown) { return this.add("gt", c, v); }
@@ -216,6 +245,41 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
   lt(c: string, v: unknown) { return this.add("lt", c, v); }
   lte(c: string, v: unknown) { return this.add("lte", c, v); }
   like(c: string, v: unknown) { return this.add("like", c, v); }
+
+  /**
+   * PostgREST `or()` — a raw filter string, e.g.
+   * `"hospital_name.ilike.%x%,hospital_locality.ilike.%x%"`.
+   *
+   * Clauses are OR-ed together and the whole group is AND-ed with the other
+   * filters, which is the semantics Supabase gives. `ilike` maps onto SQLite
+   * `LIKE`, which is already case-insensitive for ASCII. Unknown columns are
+   * dropped by `where()` rather than interpolated, so the string is never a
+   * SQL-injection vector.
+   *
+   * NOTE: the legacy adapter silently dropped `ilike` clauses (its parser only
+   * accepted `like`), so keyword search never actually filtered anything. This
+   * implementation honours them.
+   */
+  or(filters: string): this {
+    const group: Filter[] = [];
+    for (const clause of filters.split(",")) {
+      const m = clause
+        .trim()
+        .match(/^([A-Za-z_][A-Za-z0-9_]*)\.(eq|neq|gt|gte|lt|lte|like|ilike)\.(.*)$/);
+      if (!m) continue;
+      const [, column, rawOp, rawValue] = m;
+      const lowered = rawOp.toLowerCase();
+      const op: Op = lowered === "ilike" ? "like" : (lowered as Op);
+      let value: unknown = rawValue;
+      if (rawValue === "null") value = null;
+      else if (rawValue === "true") value = true;
+      else if (rawValue === "false") value = false;
+      else if (rawValue !== "" && !Number.isNaN(Number(rawValue))) value = Number(rawValue);
+      group.push({ column, op, value });
+    }
+    if (group.length > 0) this.orGroups.push(group);
+    return this;
+  }
   order(c: string, o?: { ascending?: boolean }): this {
     this.orders.push({ column: c, ascending: o?.ascending ?? true });
     return this;
@@ -232,23 +296,44 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
     const allowed = new Set(cols(this.table));
     const parts: string[] = [];
     const params: unknown[] = [];
-    for (const f of this.filters) {
-      if (!allowed.has(f.column)) continue; // unknown column: ignore, never inject
+
+    /**
+     * Renders one filter into SQL, appending its bindings to `sink`.
+     * Returns null when the column does not exist on this table.
+     */
+    const render = (f: Filter, sink: unknown[]): string | null => {
+      if (!allowed.has(f.column)) return null; // unknown column: ignore, never inject
       if (f.op === "in") {
         const arr = Array.isArray(f.value) ? f.value : [];
-        if (arr.length === 0) { parts.push("0 = 1"); continue; }
-        parts.push(`"${f.column}" IN (${arr.map(() => "?").join(",")})`);
-        for (const v of arr) params.push(toStorage(v, f.column));
-        continue;
+        if (arr.length === 0) return "0 = 1";
+        for (const v of arr) sink.push(toStorage(v, f.column));
+        return `"${f.column}" IN (${arr.map(() => "?").join(",")})`;
       }
       if (f.value === null) {
-        // .eq(col, null) means IS NULL, matching the previous behaviour.
-        parts.push(f.op === "neq" ? `"${f.column}" IS NOT NULL` : `"${f.column}" IS NULL`);
-        continue;
+        // .eq(col, null) — and PostgREST's .is(col, null) — mean IS NULL.
+        return f.op === "neq" ? `"${f.column}" IS NOT NULL` : `"${f.column}" IS NULL`;
       }
-      parts.push(`"${f.column}" ${SQL_OP[f.op]} ?`);
-      params.push(toStorage(f.value, f.column));
+      sink.push(toStorage(f.value, f.column));
+      return `"${f.column}" ${SQL_OP[f.op]} ?`;
+    };
+
+    for (const f of this.filters) {
+      const clause = render(f, params);
+      if (clause) parts.push(clause);
     }
+
+    // Each .or(...) call becomes one parenthesised OR-group, AND-ed with the
+    // filters above. Render into a local sink so its bindings stay contiguous.
+    for (const group of this.orGroups) {
+      const groupParams: unknown[] = [];
+      const clauses = group
+        .map((f) => render(f, groupParams))
+        .filter((c): c is string => c !== null);
+      if (clauses.length === 0) continue;
+      parts.push(`(${clauses.join(" OR ")})`);
+      params.push(...groupParams);
+    }
+
     return { sql: parts.length ? " WHERE " + parts.join(" AND ") : "", params };
   }
 

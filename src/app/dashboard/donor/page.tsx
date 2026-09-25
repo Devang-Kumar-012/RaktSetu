@@ -24,7 +24,7 @@ import { formatDate } from "@/lib/utils";
 import { useClientAuth } from "@/components/local/useClientAuth";
 import { LiveRefresh } from "@/components/notifications/LiveRefresh";
 import type { LocalClient } from "@/lib/local/adapter";
-import type { LocalUser } from "@/lib/local/store";
+import type { AuthenticatedUser } from "@/types";
 import type {
   CampusDrive,
   DonorAlertRow,
@@ -68,7 +68,7 @@ interface DonorDashboardData {
  */
 async function loadDonorDashboard(
   supabase: LocalClient,
-  user: LocalUser
+  user: AuthenticatedUser
 ): Promise<DonorDashboardData> {
   const { data: donor } = await supabase
     .from("donor_profiles")

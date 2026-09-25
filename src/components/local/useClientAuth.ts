@@ -4,24 +4,28 @@
  * Client-side session and role guard.
  *
  * The Server Component guard (`requireRolePage`) cannot be used from a client
- * component, and the data-driven pages must now run on the client because the
- * data lives in the visitor's localStorage. This is the client counterpart.
+ * component, so the data-driven pages ask the SERVER who is signed in. The
+ * session lives in an HTTP-only cookie this browser cannot read, so identity is
+ * never decided here: it is the same answer the Server Component guards and the
+ * middleware get, which is what stops the two from disagreeing.
  *
- * It always settles: an unknown, missing or malformed session resolves to
- * "signed out" rather than throwing, and the caller decides what to render.
+ * It always settles: an unknown, missing, expired or malformed session resolves
+ * to "signed out" rather than throwing, and the caller decides what to render.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { getClientSession } from "@/lib/actions/auth";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { LocalUser } from "@/lib/local/store";
+import type { AuthenticatedUser } from "@/types";
 
 export type ClientAuth<T> =
   | { status: "checking" }
   | { status: "signed-out" }
   | { status: "wrong-role" }
   | { status: "suspended" }
-  | { status: "ready"; user: LocalUser; data: T };
+  | { status: "ready"; user: AuthenticatedUser; data: T };
 
 /**
  * Resolves the signed-in user, requiring `role`.
@@ -33,7 +37,7 @@ export function useClientAuth<T>(
   role: string,
   load: (
     supabase: ReturnType<typeof createSupabaseBrowserClient>,
-    user: LocalUser
+    user: AuthenticatedUser
   ) => Promise<T>,
   nextPath: string,
 ): ClientAuth<T> & { reload: () => void } {
@@ -47,9 +51,10 @@ export function useClientAuth<T>(
 
     (async () => {
       try {
-        const supabase = createSupabaseBrowserClient();
-        const { data } = await supabase.auth.getUser();
-        const user = data.user;
+        // Identity comes from the SERVER's session lookup, never from a value
+        // this component or a visitor editing storage can supply. The server
+        // answers `null` when the session is missing or no longer valid.
+        const user = await getClientSession();
         if (!live) return;
         if (!user) {
           // No session: send the visitor to sign in, remembering where they
@@ -68,6 +73,9 @@ export function useClientAuth<T>(
           setState({ status: "suspended" });
           return;
         }
+        // These pages' own payloads still come from the local adapter;
+        // migrating them is a separate step that this guard must not block on.
+        const supabase = createSupabaseBrowserClient();
         const loaded = await load(supabase, user);
         if (live) setState({ status: "ready", user, data: loaded });
       } catch {

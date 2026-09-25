@@ -8,28 +8,31 @@
  */
 import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createHash } from "node:crypto";
 
 /** Matches the hashing session.ts uses, so a test token resolves. */
 const require_sha = (t: string) => createHash("sha256").update(t).digest("hex");
 
-import { getDb, closeDb } from "../src/lib/server/db";
+import { getDb, closeDb, DB_FILE } from "../src/lib/server/db";
 import { createSqlClient } from "../src/lib/server/sql-adapter";
 import { hashPassword, verifyPassword } from "../src/lib/server/password";
 import {
   createUser, authenticate, createSession, getUserForToken, revokeSession,
 } from "../src/lib/server/session";
 
-/**
- * Run with RAKTSETU_DB_PATH pointing at a scratch file — db.ts reads it at
- * module load, so it must be set before these imports are evaluated. The npm
- * script does that.
- */
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
-const DB = process.env.RAKTSETU_DB_PATH ?? join(tmpdir(), "raktsetu-test.db");
+/**
+ * The path db.ts actually opened — imported, never recomputed.
+ *
+ * An earlier version guessed `os.tmpdir()`, so the cleanup below deleted a file
+ * that was never used while the real `./data/raktsetu.db` was left in place. A
+ * second run then failed on a UNIQUE constraint against the fixture user, which
+ * made this check look broken long after the layer it tests was fine. Reading
+ * the adapter's own constant keeps the cleanup provably aligned with the file
+ * under test.
+ */
+const DB = DB_FILE;
 
 let RQ = "";
 const DN = "donor-1";

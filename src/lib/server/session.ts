@@ -10,6 +10,8 @@
  * old localStorage session, which existed only inside one browser.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+
+import type { AuthenticatedUser } from "@/types";
 import { getDb } from "./db";
 import { hashPassword, verifyPassword } from "./password";
 
@@ -20,13 +22,15 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export interface SessionUser {
-  id: string;
-  email: string;
-  full_name: string;
-  role: "donor" | "requester" | "volunteer" | "admin";
-  status: "active" | "suspended";
-}
+/**
+ * The authenticated identity.
+ *
+ * The shape is declared in `@/types` so a CLIENT component can hold the
+ * server's answer without importing this module — which owns the database
+ * handle. It carries identity, role and timestamps only: no hash, no salt, and
+ * no route back to a credential.
+ */
+export type SessionUser = AuthenticatedUser;
 
 /** Create a user. Throws code 23505 on a duplicate email. */
 export function createUser(input: {
@@ -59,6 +63,8 @@ export function createUser(input: {
     full_name: input.fullName.trim(),
     role: input.role,
     status: "active",
+    created_at: now,
+    updated_at: now,
   };
 }
 
@@ -81,6 +87,8 @@ export function authenticate(email: string, password: string): SessionUser | nul
     full_name: String(row.full_name),
     role: row.role as SessionUser["role"],
     status: row.status as SessionUser["status"],
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
   };
 }
 
@@ -106,7 +114,8 @@ export function getUserForToken(token: string | undefined): SessionUser | null {
   if (!token) return null;
   const row = getDb()
     .prepare(
-      `SELECT u.id, u.email, u.full_name, u.role, u.status
+      `SELECT u.id, u.email, u.full_name, u.role, u.status,
+              u.created_at, u.updated_at
          FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`
     )
@@ -120,6 +129,8 @@ export function getUserForToken(token: string | undefined): SessionUser | null {
     full_name: String(row.full_name),
     role: row.role,
     status: row.status,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
   };
 }
 
