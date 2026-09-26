@@ -84,6 +84,57 @@ export function closeDb(): void {
   db = null;
 }
 
+/**
+ * `blood_requests`, split out of SCHEMA_HEAD because `migrate()` rebuilds the
+ * table when the location column changes shape. SQLite cannot ALTER a column
+ * that other things depend on while preserving every row, so the corrected DDL
+ * has to be available on its own.
+ */
+const SCHEMA_REQUESTS = `
+CREATE TABLE IF NOT EXISTS blood_requests (
+  id                TEXT PRIMARY KEY,
+  requester_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  requester_name    TEXT NOT NULL,
+  requester_phone   TEXT NOT NULL,
+  blood_group       TEXT NOT NULL,
+  blood_component   TEXT NOT NULL,
+  units             INTEGER NOT NULL CHECK (units > 0),
+  -- The general area where the blood is needed. NOT a hospital and NOT an
+  -- address: an approximate locality, compared against a donor's own locality.
+  locality          TEXT NOT NULL,
+  urgency           TEXT NOT NULL,
+  required_by       TEXT NOT NULL,
+  note              TEXT,
+  status            TEXT NOT NULL DEFAULT 'active'
+                      CHECK (status IN ('active','fulfilled','cancelled','expired')),
+  latitude          REAL,
+  longitude         REAL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL,
+  -- When the request reached its terminal state. Kept separate from
+  -- updated_at so "closed, and closed WHEN" survives later edits.
+  cancelled_at      TEXT,
+  fulfilled_at      TEXT
+);
+`;
+
+/**
+ * Terminal states are terminal. Enforced by the DATABASE, not by a button:
+ * a row may only leave 'active' once, and a closed request can never be
+ * reopened or re-closed. This is what makes a racing cancel/fulfil/expiry lose
+ * cleanly instead of double-writing a terminal state.
+ *
+ * Separate from the table DDL because rebuilding a table drops its triggers.
+ */
+const SCHEMA_REQUESTS_GUARD = `
+CREATE TRIGGER IF NOT EXISTS blood_requests_terminal_guard
+BEFORE UPDATE OF status ON blood_requests
+FOR EACH ROW WHEN OLD.status <> 'active' AND NEW.status <> OLD.status
+BEGIN
+  SELECT RAISE(ABORT, 'a closed request cannot change status');
+END;
+`;
+
 const SCHEMA_HEAD = `
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
@@ -102,8 +153,37 @@ CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  revoked_at TEXT
+  revoked_at TEXT,
+  -- The profile this DEVICE is currently acting as. Server-side and NOT in a
+  -- cookie: the browser holds an opaque token and nothing else, so the active
+  -- role cannot be edited client-side. NULL on a session created before this
+  -- column existed, which getUserForToken resolves and persists.
+  active_role TEXT
 );
+
+-- ROLE MEMBERSHIP. The account is the identity; this is what the account may DO.
+--
+-- One email is one users row, forever. What that account is allowed to be —
+-- a donor, a requester, a volunteer, an administrator — is a set of rows here,
+-- so a person can give blood AND request blood without a second account, a
+-- second email, or a second login.
+--
+-- The users.role column is the LEGACY single-role field. It is kept only so an older
+-- database file still opens, and it is NEVER read for authorization: this table
+-- is the one authoritative source, and migrate() seeds it from that column on
+-- first boot. A CHECK constraint is deliberately NOT applied to users.role for
+-- new rows by any code path — nothing writes it after the backfill.
+--
+-- is_primary marks the role the account starts in, so a brand-new dual-role
+-- user lands somewhere sensible without anyone choosing.
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('donor','requester','volunteer','admin')),
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, role)
+);
+CREATE INDEX IF NOT EXISTS user_roles_role_idx ON user_roles(role);
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS donor_profiles (
@@ -128,47 +208,6 @@ CREATE TABLE IF NOT EXISTS volunteer_profiles (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS blood_requests (
-  id                TEXT PRIMARY KEY,
-  requester_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  requester_name    TEXT NOT NULL,
-  requester_phone   TEXT NOT NULL,
-  blood_group       TEXT NOT NULL,
-  blood_component   TEXT NOT NULL,
-  units             INTEGER NOT NULL CHECK (units > 0),
-  hospital_name     TEXT NOT NULL,
-  hospital_locality TEXT NOT NULL,
-  urgency           TEXT NOT NULL,
-  required_by       TEXT NOT NULL,
-  note              TEXT,
-  status            TEXT NOT NULL DEFAULT 'active'
-                      CHECK (status IN ('active','fulfilled','cancelled','expired')),
-  latitude          REAL,
-  longitude         REAL,
-  created_at        TEXT NOT NULL,
-  updated_at        TEXT NOT NULL,
-  -- When the request reached its terminal state. Kept separate from
-  -- updated_at so "closed, and closed WHEN" survives later edits.
-  cancelled_at      TEXT,
-  fulfilled_at      TEXT
-);
-CREATE INDEX IF NOT EXISTS blood_requests_requester_idx
-  ON blood_requests(requester_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS blood_requests_active_idx
-  ON blood_requests(status, required_by);
-
--- Terminal states are terminal. Enforced by the DATABASE, not by a button:
--- a row may only leave 'active' once, and a closed request can never be
--- reopened or re-closed. This is the same rule the Postgres CHECK/trigger
--- pair expressed, and it is what makes a racing cancel/fulfil/expiry lose
--- cleanly instead of double-writing a terminal state.
-CREATE TRIGGER IF NOT EXISTS blood_requests_terminal_guard
-BEFORE UPDATE OF status ON blood_requests
-FOR EACH ROW WHEN OLD.status <> 'active' AND NEW.status <> OLD.status
-BEGIN
-  SELECT RAISE(ABORT, 'a closed request cannot change status');
-END;
 
 CREATE TABLE IF NOT EXISTS ring_progress (
   request_id       TEXT PRIMARY KEY REFERENCES blood_requests(id) ON DELETE CASCADE,
@@ -366,7 +405,53 @@ function migrate(conn: DatabaseSync): void {
   conn.exec(SCHEMA_TAIL);
   const now = new Date().toISOString();
 
+  conn.exec(SCHEMA_REQUESTS);
   conn.exec(SCHEMA_ALERTS);
+  conn.exec(SCHEMA_REQUESTS_GUARD);
+
+  // The session's active profile. It lives on the row rather than in a cookie so
+  // it cannot be edited in the browser, and it is nullable so a session created
+  // before this column existed still resolves.
+  const sessionColumns = (
+    conn.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
+  ).map((r) => r.name);
+  if (!sessionColumns.includes("active_role")) {
+    conn.exec("ALTER TABLE sessions ADD COLUMN active_role TEXT");
+  }
+
+  // ROLE MEMBERSHIP BACKFILL — the one-way, idempotent move off the legacy
+  // single-role column.
+  //
+  // Every existing account gets a membership for the role it already had, so no
+  // account loses the access it had and no data moves between user ids. Running
+  // it again is a no-op because of the primary key, which is what makes it safe
+  // on every boot. The `users.role` column itself is left in place so an older
+  // binary could still open the file, but nothing reads it for authorization.
+  conn.exec(
+    `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
+     SELECT id, role, 1, created_at FROM users`,
+  );
+  // An account must always have at least one role, or it could authenticate and
+  // then have no dashboard at all. Anything without a membership inherits its
+  // legacy role; if even that is unusable the account is pinned to 'requester',
+  // the least-privileged role, which cannot be escalated from there.
+  conn.exec(
+    `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
+     SELECT u.id,
+            CASE WHEN u.role IN ('donor','requester','volunteer','admin')
+                 THEN u.role ELSE 'requester' END,
+            1,
+            u.created_at
+       FROM users u
+      WHERE NOT EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id)`,
+  );
+  // Exactly one primary per account, so "where do I land?" is never ambiguous.
+  conn.exec(
+    `UPDATE user_roles SET is_primary = 0
+      WHERE is_primary = 1
+        AND user_id IN (SELECT user_id FROM user_roles
+                         GROUP BY user_id HAVING COUNT(*) > 1)`,
+  );
 
   // The acceptance index is dropped and recreated on every boot. That is what
   // upgrades a database written before the index was scoped to request_id alone:
@@ -386,6 +471,48 @@ function migrate(conn: DatabaseSync): void {
       .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
       .get(table, column);
     if (!present) conn.exec(ddl);
+  }
+
+  // The request's location is no longer a hospital: it is the general area where
+  // the blood is needed. A request that has never been created has no hospital
+  // columns, so nothing to do; one written by an older build does, and its data
+  // is preserved — `hospital_locality` was already the general area, and the
+  // hospital name is kept as the locality's own text only when there is no
+  // better value, so a request never silently loses its location.
+  const requestColumns = (
+    conn.prepare("SELECT name FROM pragma_table_info('blood_requests')").all() as {
+      name: string;
+    }[]
+  ).map((r) => r.name);
+  if (requestColumns.includes("hospital_locality")) {
+    // A table cannot be rebuilt while a trigger on it exists, and the guard
+    // below is recreated from SCHEMA_HEAD on the next boot anyway.
+    conn.exec("DROP TRIGGER IF EXISTS blood_requests_terminal_guard");
+    conn.exec("ALTER TABLE blood_requests RENAME TO blood_requests_legacy");
+    conn.exec(SCHEMA_REQUESTS);
+    conn.exec(
+      `INSERT INTO blood_requests
+         (id, requester_id, requester_name, requester_phone, blood_group,
+          blood_component, units, locality, urgency, required_by, note, status,
+          latitude, longitude, created_at, updated_at, cancelled_at, fulfilled_at)
+       SELECT id, requester_id, requester_name, requester_phone, blood_group,
+              blood_component, units,
+              COALESCE(NULLIF(hospital_locality, ''), NULLIF(hospital_name, ''), 'Unknown area'),
+              urgency, required_by, note, status, latitude, longitude,
+              created_at, updated_at, cancelled_at, fulfilled_at
+         FROM blood_requests_legacy`,
+    );
+    conn.exec("DROP TABLE blood_requests_legacy");
+    // The index names are unchanged, but they went with the old table.
+    conn.exec(
+      `CREATE INDEX IF NOT EXISTS blood_requests_requester_idx
+         ON blood_requests(requester_id, created_at DESC)`,
+    );
+    conn.exec(
+      `CREATE INDEX IF NOT EXISTS blood_requests_active_idx
+         ON blood_requests(status, required_by)`,
+    );
+    conn.exec(SCHEMA_REQUESTS_GUARD);
   }
 
   // `donor_alerts.status` also changed vocabulary: an answer is recorded as
@@ -449,12 +576,22 @@ function migrate(conn: DatabaseSync): void {
     .get(DEMO_ADMIN_EMAIL);
   if (!demoSeeded) {
     const { hash } = hashPassword(DEMO_ADMIN_PASSWORD);
+    const id = randomUUID();
     conn
       .prepare(
         `INSERT INTO users (id, email, password_hash, full_name, role, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?)`
       )
-      .run(randomUUID(), DEMO_ADMIN_EMAIL, hash, DEMO_ADMIN_NAME, now, now);
+      .run(id, DEMO_ADMIN_EMAIL, hash, DEMO_ADMIN_NAME, now, now);
+    // The role-membership backfill above has already run, so the demo admin —
+    // created after it — must be given its membership explicitly. Without this
+    // the account would sign in with no roles at all and lose admin access.
+    conn
+      .prepare(
+        `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
+         VALUES (?, 'admin', 1, ?)`,
+      )
+      .run(id, now);
   }
 }
 

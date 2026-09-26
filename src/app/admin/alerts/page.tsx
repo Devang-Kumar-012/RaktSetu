@@ -66,7 +66,7 @@ export default async function AdminAlertsPage() {
                   className="border-b border-ink-100"
                 >
                   <td className="px-4 py-3 text-ink-600">
-                    {r.blood_group} · {r.hospital_name}, {r.hospital_locality}
+                    {r.blood_group} · {r.locality}
                   </td>
                   <td className="px-4 py-3 font-semibold text-ink-900">
                     #{r.ring_index} · {r.ring_km} km
@@ -129,7 +129,7 @@ export default async function AdminAlertsPage() {
                   </td>
                   <td className="px-4 py-3 text-ink-600">{responseLabel(a)}</td>
                   <td className="px-4 py-3 text-ink-600">
-                    {a.blood_group} · {a.hospital_name}, {a.hospital_locality}
+                    {a.blood_group} · {a.locality}
                   </td>
                   <td className="px-4 py-3 text-sm text-ink-600">{a.donor_id.slice(0, 8)}…</td>
                   <td className="px-4 py-3 text-sm text-ink-600">{formatDateTime(a.created_at)}</td>

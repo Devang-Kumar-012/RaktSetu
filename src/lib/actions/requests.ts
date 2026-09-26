@@ -12,7 +12,7 @@ import type { ProfileActionState } from "@/lib/actions/action-state";
 import { bloodRequestFieldErrors } from "@/lib/validation";
 import type { BloodComponent, RequestUrgency } from "@/types";
 import { parseCoordInput, roundCoord } from "@/lib/geo";
-import { geocodeHospitalArea } from "@/lib/geocode";
+import { geocodeArea } from "@/lib/geocode";
 import { safetyLimitMessage } from "@/lib/safety";
 
 /** Plain-language message when a lifecycle update matched zero rows: the
@@ -44,8 +44,7 @@ export async function createBloodRequest(
   const bloodGroup = String(formData.get("bloodGroup") ?? "").trim();
   const bloodComponent = String(formData.get("bloodComponent") ?? "").trim();
   const units = String(formData.get("units") ?? "").trim();
-  const hospitalName = String(formData.get("hospitalName") ?? "").trim();
-  const hospitalLocality = String(formData.get("hospitalLocality") ?? "").trim();
+  const locality = String(formData.get("locality") ?? "").trim();
   const urgency = String(formData.get("urgency") ?? "").trim();
   const requiredBy = String(formData.get("requiredBy") ?? "").trim();
   const contactName = String(formData.get("contactName") ?? "").trim();
@@ -57,8 +56,7 @@ export async function createBloodRequest(
     bloodGroup,
     bloodComponent,
     units,
-    hospitalName,
-    hospitalLocality,
+    locality,
     urgency,
     requiredBy,
     contactName,
@@ -68,24 +66,20 @@ export async function createBloodRequest(
   const firstError = Object.values(fieldErrors)[0];
   if (firstError) return { ok: false, error: firstError };
 
-  // Approximate hospital location, for distance estimates only.
-  // 1) If the requester picked a lookup candidate ("lat:lng"), use that.
-  // 2) Otherwise try a best-effort geocode of "hospital, locality".
-  // 3) If both fail, store no coordinates — matching still works, the
-  //    request just can't be distance-sorted until it gets a location.
-  const coordsRaw = String(formData.get("coordsChoice") ?? "").trim();
-  let hospitalCoords: { lat: number; lng: number } | null = (() => {
-    if (coordsRaw === "") return null;
-    const [latRaw, lngRaw] = coordsRaw.split(":");
-    const lat = parseCoordInput(latRaw, "lat");
-    const lng = parseCoordInput(lngRaw, "lng");
+  // Approximate area coordinates, for distance estimates ONLY.
+  // 1) The point the user picked from the lookup, if they did.
+  // 2) Otherwise a best-effort geocode of the locality text.
+  // 3) If both fail, store no coordinates — matching still works, the request
+  //    just cannot be distance-sorted until it gets an area.
+  //
+  // The requester's own location is never read here: this is where the BLOOD is
+  // needed, which is a different thing from where the requester lives.
+  const areaCoords: { lat: number; lng: number } | null = (() => {
+    const lat = parseCoordInput(String(formData.get("latitude") ?? "").trim(), "lat");
+    const lng = parseCoordInput(String(formData.get("longitude") ?? "").trim(), "lng");
     if (!lat.ok || !lng.ok || lat.value === null || lng.value === null) return null;
     return { lat: roundCoord(lat.value), lng: roundCoord(lng.value) };
-  })();
-
-  if (!hospitalCoords) {
-    hospitalCoords = await geocodeHospitalArea(hospitalName, hospitalLocality);
-  }
+  })() ?? (await geocodeArea(locality));
 
   const supabase = await createSupabaseServerClient();
   // The request id is generated HERE, on the server. It is never taken from the
@@ -93,11 +87,10 @@ export async function createBloodRequest(
   const requestId = randomUUID();
   // The payload is written in the STORE's column names, not the form's.
   // `blood_requests` keeps the requester's own contact as requester_name /
-  // requester_phone and the approximate hospital pin as latitude / longitude,
-  // and its `id` has no default. The adapter drops keys the table does not
-  // have, so a payload naming contact_name / hospital_latitude silently lost
-  // every one of these columns — the NOT NULLs then refused the row outright
-  // and "create a request" could never succeed.
+  // requester_phone and the approximate area pin as latitude / longitude, and
+  // its `id` has no default. The adapter drops keys the table does not have, so
+  // a payload naming a column that does not exist silently lost data — the
+  // NOT NULLs then refused the row outright.
   const { error: dbError } = await supabase.from("blood_requests").insert({
     id: requestId,
     requester_id: session.user.id,
@@ -106,13 +99,12 @@ export async function createBloodRequest(
     blood_group: bloodGroup,
     blood_component: bloodComponent as BloodComponent,
     units: Number(units),
-    hospital_name: hospitalName,
-    hospital_locality: hospitalLocality,
+    locality,
     urgency: urgency as RequestUrgency,
     required_by: new Date(requiredBy).toISOString(),
     note: note === "" ? null : note,
-    latitude: hospitalCoords?.lat ?? null,
-    longitude: hospitalCoords?.lng ?? null,
+    latitude: areaCoords?.lat ?? null,
+    longitude: areaCoords?.lng ?? null,
   });
 
   if (dbError) {

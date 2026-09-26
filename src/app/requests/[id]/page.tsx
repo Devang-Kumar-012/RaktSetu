@@ -129,7 +129,7 @@ export default async function RequestDetailsPage({
       <PageHeader
         eyebrow="Request details"
         title={`${request.blood_group} · ${BLOOD_COMPONENT_LABELS[request.blood_component]}`}
-        description={`${request.units} ${request.units === 1 ? "unit" : "units"} needed at ${request.hospital_name}, ${request.hospital_locality}.`}
+        description={`${request.units} ${request.units === 1 ? "unit" : "units"} needed at ${request.locality}.`}
       />
 
       <Section className="max-w-3xl">
@@ -300,8 +300,8 @@ export default async function RequestDetailsPage({
                 value={`${request.units} ${request.units === 1 ? "unit" : "units"}`}
               />
               <Detail label="Urgency" value={URGENCY_LABELS[request.urgency]} />
-              <Detail label="Hospital" value={request.hospital_name} />
-              <Detail label="Locality" value={request.hospital_locality} />
+              <Detail label="Hospital" value={request.locality} />
+              <Detail label="Locality" value={request.locality} />
               <Detail label="Required by" value={formatDateTime(request.required_by)} />
               <Detail label="Contact name" value={request.contact_name} />
               <Detail

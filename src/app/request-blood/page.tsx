@@ -96,20 +96,28 @@ export default async function RequestBloodPage() {
           </div>
         )}
 
+        {/*
+          INFORMATIONAL ONLY. These are the groups RaktSetu supports — they are
+          not a control. Rendered as a plain, non-focusable list with a default
+          cursor and no hover affordance, so nothing about them implies they can
+          be clicked, focused or submitted.
+        */}
         <div className="mt-12">
           <Card className="max-w-3xl">
             <CardBody className="pt-6">
-              <p className="font-semibold text-ink-900">Blood groups we support</p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <p className="font-semibold text-ink-900">
+                These are the blood groups RaktSetu supports
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-2" aria-label="Supported blood groups">
                 {BLOOD_GROUPS.map((g) => (
-                  <span
+                  <li
                     key={g}
-                    className="rounded-md border border-ink-200 bg-ink-50 px-4 py-2 text-base font-bold text-ink-900"
+                    className="cursor-default select-none rounded-md border border-ink-200 bg-ink-50 px-4 py-2 text-base font-bold text-ink-900"
                   >
                     {g}
-                  </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </CardBody>
           </Card>
         </div>

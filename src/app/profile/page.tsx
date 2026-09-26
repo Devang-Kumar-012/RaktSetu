@@ -1,10 +1,11 @@
-import { requireAuthPage } from "@/lib/profile";
+import { requireAuthPage, getSessionInfo } from "@/lib/profile";
 import { ROLE_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { ProfileNameForm } from "@/components/profile/ProfileNameForm";
 import { NotificationPreferencesForm } from "@/components/profile/NotificationPreferencesForm";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
   const { user, profile } = await requireAuthPage();
+  const session = await getSessionInfo();
 
   // Own-row RLS: this can only ever return the caller's own preferences.
   const supabase = await createSupabaseServerClient();
@@ -37,6 +39,23 @@ export default async function ProfilePage() {
       />
 
       <Section className="max-w-2xl">
+        {/*
+          THE PROFILE SWITCHER. One account can hold several roles; choosing one
+          rewrites the session's active role server-side. The account keeps every
+          role it has, and no second email or login is involved.
+        */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Profiles</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <RoleSwitcher
+              activeRole={session.activeRole ?? profile?.role ?? "requester"}
+              roles={session.roles.length ? session.roles : [profile?.role ?? "requester"]}
+            />
+          </CardBody>
+        </Card>
+
         <Card glass>
           <CardHeader>
             <CardTitle>Account</CardTitle>
@@ -44,12 +63,22 @@ export default async function ProfilePage() {
           <CardBody className="flex flex-wrap gap-x-10 gap-y-4">
             <div>
               <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
-                Role
+                Current profile
               </p>
               <p className="text-lg font-bold text-ink-900">
                 {profile ? ROLE_LABELS[profile.role] : "Setting up"}
               </p>
             </div>
+            {profile && profile.roles.length > 1 && (
+              <div>
+                <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
+                  All profiles
+                </p>
+                <p className="text-lg font-bold text-ink-900">
+                  {profile.roles.map((r) => ROLE_LABELS[r]).join(" · ")}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
                 Email

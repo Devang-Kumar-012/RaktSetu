@@ -98,8 +98,10 @@ function seed(opts: {
       blood_group: opts.group,
       blood_component: "whole_blood",
       units: 1,
+      // The browser-side store keeps its own shape; the SQLite request table has
+      // moved to a single `locality` (see src/lib/server/db.ts).
       hospital_name: "City Hospital",
-      hospital_locality: "Central",
+      hospital_locality: "Bengaluru Central",
       urgency: "critical",
       required_by: new Date(Date.now() + 6 * 3_600_000).toISOString(),
       note: null,

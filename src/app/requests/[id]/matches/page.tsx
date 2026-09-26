@@ -58,8 +58,8 @@ export default async function RequestMatchesPage({
     <>
       <PageHeader
         eyebrow="Matches"
-        title={`${bloodRequest.blood_group} · ${bloodRequest.hospital_name}`}
-        description={`${BLOOD_COMPONENT_LABELS[bloodRequest.blood_component]} · ${bloodRequest.units} ${bloodRequest.units === 1 ? "unit" : "units"} · ${bloodRequest.hospital_locality}`}
+        title={`${bloodRequest.blood_group} · ${bloodRequest.locality}`}
+        description={`${BLOOD_COMPONENT_LABELS[bloodRequest.blood_component]} · ${bloodRequest.units} ${bloodRequest.units === 1 ? "unit" : "units"} · ${bloodRequest.locality}`}
       />
 
       <Section className="max-w-3xl">
@@ -86,7 +86,7 @@ export default async function RequestMatchesPage({
           Matching donors
         </h2>
         <p className="mt-2 text-base text-ink-600">
-          Checked within {MATCH_RINGS_KM.join(" km, ")} km of {bloodRequest.hospital_locality}.
+          Checked within {MATCH_RINGS_KM.join(" km, ")} km of {bloodRequest.locality}.
           Distances are rough estimates, and matching pauses while your request is not
           active. Alerting runs on its own ring-by-ring timeline — this screen previews who
           would match right now and never alerts anyone by itself.

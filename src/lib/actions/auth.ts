@@ -30,7 +30,10 @@ import {
   createSession,
   createUser,
   getUserForToken,
+  getUserRoles,
+  grantRole,
   revokeSession,
+  setSessionActiveRole,
   type SessionUser,
 } from "@/lib/server/session";
 import {
@@ -123,6 +126,88 @@ export async function signUpNewAccount(input: {
   const { token, expiresAt } = createSession(user.id);
   await setSessionCookie(token, expiresAt);
   return { error: null, signedIn: true };
+}
+
+/**
+ * Ends THIS device's session: the row is revoked, then the cookie is cleared.
+ *
+ * Revoking first is what actually matters — it invalidates the token even if
+
+/**
+ * Switch which profile this device is ACTING as.
+ *
+ * One account, many roles, one session. Switching changes the session row's
+ * active role and nothing else: the same user stays signed in, with the same
+ * email, the same donor profile and the same requests.
+ *
+ * AUTHORIZATION
+ *
+ * The requested role arrives from the browser, so it is treated as a CLAIM and
+ * checked against the caller's own memberships in `user_roles`. A role the
+ * account does not hold — `admin` included, unless the account genuinely has an
+ * admin membership — is refused and changes nothing. That check lives in the
+ * database layer, so no caller can bypass it.
+ *
+ * The session is located by the HTTP-only token, so a revoked or expired session
+ * resolves to no row and the update matches nothing: switching is impossible
+ * without a live session.
+ */
+export async function switchActiveRole(input: { role: unknown }): Promise<{
+  error: string | null;
+  role: string | null;
+  roles: string[];
+}> {
+  const token = await readSessionToken();
+  const user = getUserForToken(token);
+  if (!user) return { error: "Please sign in again.", role: null, roles: [] };
+
+  const requested = typeof input?.role === "string" ? input.role : "";
+  if (!setSessionActiveRole(user.id, token ?? "", requested)) {
+    // Deliberately does not say whether the role exists or is merely not theirs.
+    return {
+      error: "That profile is not available on this account.",
+      role: user.role,
+      roles: user.roles,
+    };
+  }
+  return { error: null, role: requested, roles: user.roles };
+}
+
+/**
+ * Add a capability to the account that is ALREADY signed in — "Become a donor",
+ * "Become a requester".
+ *
+ * No second account, no second email, no re-authentication: the caller keeps the
+ * session it already has, gains one more role, and is switched into it.
+ *
+ * `admin` is refused structurally rather than cosmetically — it is absent from
+ * the allow-list, so it cannot be reached by a crafted payload.
+ */
+export async function addRoleToCurrentAccount(input: { role: unknown }): Promise<{
+  error: string | null;
+  role: string | null;
+  roles: string[];
+}> {
+  const token = await readSessionToken();
+  const user = getUserForToken(token);
+  if (!user) return { error: "Please sign in first.", role: null, roles: [] };
+  if (user.status !== "active") {
+    return { error: "This account is suspended.", role: null, roles: user.roles };
+  }
+
+  const requested = typeof input?.role === "string" ? input.role : "";
+  if (!PUBLIC_ROLE_VALUES.includes(requested)) {
+    // Includes every attempt to grant admin from the browser.
+    return {
+      error: "That profile cannot be added to your account.",
+      role: null,
+      roles: user.roles,
+    };
+  }
+
+  grantRole(user.id, requested as SessionUser["role"]);
+  if (token) setSessionActiveRole(user.id, token, requested);
+  return { error: null, role: requested, roles: getUserRoles(user.id) };
 }
 
 /**

@@ -30,8 +30,16 @@ export default async function AdminDonationsPage() {
         description="Administration records only — who donated for which request, when, and how many units. RaktSetu keeps no medical data."
       />
       <Section>
+        {/*
+          `min-w-0` on the grid item is what makes the horizontal scroll work.
+          A grid/flex item defaults to `min-width: auto`, so it refuses to shrink
+          below its widest child — the 560px table — and pushes the whole page
+          sideways instead of letting `overflow-x-auto` take over. The table keeps
+          its minimum width so it stays readable and simply scrolls inside its
+          column, which is the correct behaviour for a data table on a phone.
+        */}
         <div className="grid gap-10 lg:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
               Recent donations ({records.length})
             </h2>

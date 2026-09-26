@@ -20,8 +20,9 @@ import type { LocationLookupState } from "@/lib/actions/location-state";
 /**
  * Looks up approximate area candidates. The query comes from an explicit
  * "locationQuery" field when present; otherwise the action reuses whatever
- * locality text is already in the form (donor "locality", or the request's
- * "hospitalName" + "hospitalLocality").
+ * locality text is already in the form — the donor's own locality, or the
+ * locality of the area where blood is needed. Both are approximate areas, so
+ * one lookup serves both.
  */
 export async function lookupAreaCandidates(
   _prev: LocationLookupState,
@@ -33,15 +34,7 @@ export async function lookupAreaCandidates(
   }
 
   const explicit = String(formData.get("locationQuery") ?? "").trim();
-  const query =
-    explicit ||
-    String(formData.get("locality") ?? "").trim() ||
-    [
-      String(formData.get("hospitalName") ?? "").trim(),
-      String(formData.get("hospitalLocality") ?? "").trim(),
-    ]
-      .filter(Boolean)
-      .join(", ");
+  const query = explicit || String(formData.get("locality") ?? "").trim();
 
   if (query.length < 3) {
     return {

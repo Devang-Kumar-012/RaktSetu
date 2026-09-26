@@ -253,7 +253,7 @@ export function expireStaleRequests(): number {
   return transaction((db) => {
     const stale = db
       .prepare(
-        `SELECT id, requester_id, units, blood_group, hospital_name
+        `SELECT id, requester_id, units, blood_group, locality
            FROM blood_requests
           WHERE status = 'active' AND required_by <= ?`,
       )
@@ -275,7 +275,7 @@ export function expireStaleRequests(): number {
         userId: r.requester_id as string,
         kind: "request_expired",
         title: "Your blood request expired",
-        body: `The request for ${r.units} unit(s) of ${r.blood_group} at ${r.hospital_name} passed its deadline and is now closed.`,
+        body: `The request for ${r.units} unit(s) of ${r.blood_group} at ${r.locality} passed its deadline and is now closed.`,
         requestId: r.id as string,
         dedupeKey: `expired-${r.id}`,
         link: "/dashboard/requester",
@@ -438,7 +438,7 @@ function advanceRequestRings(
       userId: donorId,
       kind: "alert_received",
       title: `Blood needed nearby — ${request.blood_group}`,
-      body: `${request.units} unit(s) needed at ${request.hospital_name}, ${request.hospital_locality}. This is an application-level alert; the blood bank decides medical eligibility.`,
+      body: `${request.units} unit(s) needed at ${request.locality}. This is an application-level alert; the blood bank decides medical eligibility.`,
       requestId: id,
       alertId,
       dedupeKey: `alert-${alertId}`,
@@ -594,7 +594,7 @@ function announceAcceptance(db: Db, request: Row, alertId: number, donorId: stri
     userId: donorId,
     kind: "acceptance_confirmed",
     title: "You accepted this request",
-    body: `Thank you — your acceptance is recorded for the ${request.blood_group} need at ${request.hospital_name}, ${request.hospital_locality}. The requester can see your name and phone until the response window closes.`,
+    body: `Thank you — your acceptance is recorded for the ${request.blood_group} need at ${request.locality}. The requester can see your name and phone until the response window closes.`,
     requestId,
     alertId,
     dedupeKey: `acceptance-${alertId}`,
@@ -604,7 +604,7 @@ function announceAcceptance(db: Db, request: Row, alertId: number, donorId: stri
     userId: request.requester_id as string,
     kind: "donor_accepted",
     title: "A donor accepted your blood request",
-    body: `An alerted donor responded yes for ${request.units} unit(s) of ${request.blood_group} at ${request.hospital_name}. Their contact is on your request until the deadline.`,
+    body: `An alerted donor responded yes for ${request.units} unit(s) of ${request.blood_group} at ${request.locality}. Their contact is on your request until the deadline.`,
     requestId,
     alertId,
     dedupeKey: `donor-accepted-${alertId}`,
@@ -706,7 +706,7 @@ export function closeRequestAsRequester(
       userId: caller.id,
       kind: `request_${status}`,
       title: `Your blood request was ${status}`,
-      body: `The ${request.blood_group} request at ${request.hospital_name} is now ${status}. Alerting has stopped.`,
+      body: `The ${request.blood_group} request at ${request.locality} is now ${status}. Alerting has stopped.`,
       requestId,
       dedupeKey: `${status}-${requestId}`,
       link: "/dashboard/requester",
@@ -721,7 +721,7 @@ export function closeRequestAsRequester(
         userId: a.donor_id as string,
         kind: "request_closed",
         title: "A request you were alerted about is closed",
-        body: `The ${request.blood_group} request at ${request.hospital_name} is now ${status}, so no response is needed. Thank you for being ready to help.`,
+        body: `The ${request.blood_group} request at ${request.locality} is now ${status}, so no response is needed. Thank you for being ready to help.`,
         requestId,
         alertId: Number(a.id),
         dedupeKey: `request-closed-${a.id}`,

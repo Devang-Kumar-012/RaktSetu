@@ -70,8 +70,8 @@ export default async function VolunteerRequestDetailPage({
       <LiveRefresh />
       <PageHeader
         eyebrow="Volunteer · Request details"
-        title={`${request.blood_group} · ${request.hospital_name}`}
-        description={`${BLOOD_COMPONENT_LABELS[request.blood_component]} · ${request.units} ${request.units === 1 ? "unit" : "units"} · ${request.hospital_locality}`}
+        title={`${request.blood_group} · ${request.locality}`}
+        description={`${BLOOD_COMPONENT_LABELS[request.blood_component]} · ${request.units} ${request.units === 1 ? "unit" : "units"} · ${request.locality}`}
       />
 
       <Section className="max-w-3xl">
@@ -99,8 +99,8 @@ export default async function VolunteerRequestDetailPage({
             </div>
 
             <p className="mt-4 text-lg font-bold text-ink-900">
-              {request.hospital_name}
-              <span className="font-medium text-ink-600"> — {request.hospital_locality}</span>
+              {request.locality}
+              <span className="font-medium text-ink-600"> — {request.locality}</span>
             </p>
             <p className="mt-1 text-base text-ink-600">
               {URGENCY_LABELS[request.urgency]} · Required by{" "}

@@ -1408,8 +1408,9 @@ check(
   srcAdminRequests.includes('.eq("urgency", filters.urgency)') &&
   srcAdminRequests.includes('.gte("created_at"') &&
   srcAdminRequests.includes('.lte("created_at"') &&
-  srcAdminRequests.includes("hospital_name.ilike.") &&
-  srcAdminRequests.includes("hospital_locality.ilike.") &&
+  // A request is located by ONE general area now, so there is one searchable
+  // locality column rather than a hospital name and a hospital locality.
+  srcAdminRequests.includes("locality.ilike.") &&
   srcAdminRequests.includes(".range(from, from + PAGE_SIZE - 1)"),
   true
 );

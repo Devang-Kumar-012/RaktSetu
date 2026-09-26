@@ -86,14 +86,16 @@ export async function lookupLocalities(query: string): Promise<GeocodeCandidate[
 }
 
 /**
- * Best-effort geocode for a hospital area. Returns the first match's
- * rounded coordinates, or null when nothing usable is found.
+ * Best-effort geocode for a request's area. Returns the first match's rounded
+ * coordinates, or null when nothing usable is found.
+ *
+ * Generic on purpose: it takes the area text the user typed, whatever that is.
+ * It knows nothing about hospitals — the same function serves a donor locality
+ * and a request locality, which is exactly why the two are interchangeable for
+ * matching and both stay approximate.
  */
-export async function geocodeHospitalArea(
-  hospitalName: string,
-  locality: string
-): Promise<LatLng | null> {
-  const q = normalizeQuery([hospitalName, locality].filter(Boolean).join(", "));
+export async function geocodeArea(area: string): Promise<LatLng | null> {
+  const q = normalizeQuery(area);
   if (q.length < 3) return null;
   try {
     const [first] = await nominatimSearch(q);

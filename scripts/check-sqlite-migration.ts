@@ -14,7 +14,10 @@
 import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+
+import { getUserForToken, getUserRoles, grantRole } from "../src/lib/server/session";
 
 const DB = join(import.meta.dirname, "..", "data", "raktsetu.db");
 
@@ -89,7 +92,10 @@ async function main() {
     const row = db.prepare("SELECT * FROM blood_requests WHERE id = 'old-req'").get() as
       Record<string, unknown>;
     assert.ok(row, "the pre-existing request must survive");
-    assert.equal(row.hospital_name, "City Hospital");
+    // `hospital_name` was replaced by `locality` ("blood needed near"), so the
+    // rebuild maps the old value across and drops the dead column.
+    assert.equal(row.locality, "Central");
+    assert.equal(row.hospital_name, undefined, "the removed field must be gone");
     assert.equal(row.status, "active", "its state must not be rewritten");
   });
 
@@ -175,6 +181,100 @@ async function main() {
     assert.equal(after.cancelled_at, before.cancelled_at, "and must not re-stamp it");
   });
 
+  // --- THE ROLE-MEMBERSHIP MIGRATION ---------------------------------------
+  // A database written by the single-role era must gain memberships without
+  // losing an account, a request or a session.
+  await check("a single-role account becomes exactly one membership", () => {
+    const rows = getDb()
+      .prepare("SELECT role FROM user_roles WHERE user_id = 'u1' ORDER BY role")
+      .all() as { role: string }[];
+    assert.deepEqual(rows.map((r) => r.role), ["requester"], "u1 was a requester");
+    // The pre-migration file had several accounts; the backfill must not add
+    // one, and must not leave a membership pointing at a missing account.
+    const ids = (getDb().prepare("SELECT id FROM users ORDER BY id").all() as { id: string }[])
+      .map((r) => r.id);
+    assert.ok(ids.includes("u1"), "the original account must still be there");
+    const orphan = getDb()
+      .prepare("SELECT COUNT(*) AS n FROM user_roles WHERE user_id NOT IN (SELECT id FROM users)")
+      .get() as { n: number };
+    assert.equal(Number(orphan.n), 0, "no membership may point at a missing account");
+  });
+
+  await check("the membership IS the authority, not the legacy column", () => {
+    // Granting a role does NOT touch users.role, which is what proves the single
+    // legacy column is no longer consulted for authorization.
+    grantRole("u1", "donor");
+    const rows = getDb()
+      .prepare("SELECT role FROM user_roles WHERE user_id = 'u1' ORDER BY role")
+      .all() as { role: string }[];
+    assert.deepEqual(rows.map((r) => r.role), ["donor", "requester"]);
+    const legacy = getDb().prepare("SELECT role FROM users WHERE id = 'u1'").get() as {
+      role: string;
+    };
+    assert.equal(legacy.role, "requester", "the legacy column is left exactly as it was");
+    const roles = getUserRoles("u1");
+    assert.equal(roles.length, 2);
+    assert.equal(roles[0], "requester", "the original role stays primary");
+  });
+
+  await check("a session predating active_role still resolves, and is given one", () => {
+    const token = "pre-migration-token";
+    getDb()
+      .prepare(
+        `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at)
+         VALUES ('s-pre', 'u1', ?, ?, ?)`,
+      )
+      .run(
+        createHash("sha256").update(token).digest("hex"),
+        new Date().toISOString(),
+        new Date(Date.now() + 86_400_000).toISOString(),
+      );
+    const resolved = getUserForToken(token);
+    assert.ok(resolved, "a session created before the column existed must still resolve");
+    assert.equal(resolved.id, "u1");
+    assert.ok(resolved.roles.includes("donor") && resolved.roles.includes("requester"));
+    const row = getDb()
+      .prepare("SELECT active_role FROM sessions WHERE id = 's-pre'")
+      .get() as { active_role: string | null };
+    assert.equal(row.active_role, "requester", "chosen from real memberships, then persisted");
+  });
+
+  await check("a stale active role the account never held is repaired", () => {
+    getDb()
+      .prepare("UPDATE user_roles SET is_primary = 1 WHERE user_id = 'u1' AND role = 'donor'")
+      .run();
+    getDb()
+      .prepare("UPDATE user_roles SET is_primary = 0 WHERE user_id = 'u1' AND role = 'requester'")
+      .run();
+    getDb()
+      .prepare("UPDATE sessions SET active_role = 'admin' WHERE id = 's-pre'")
+      .run();
+    const resolved = getUserForToken("pre-migration-token");
+    assert.equal(resolved?.role, "donor", "an unheld admin active_role must not survive");
+    assert.ok(!resolved!.roles.includes("admin"), "and admin is not among its roles");
+  });
+
+  await check("the migrated request keeps its original owner", () => {
+    const req = getDb()
+      .prepare("SELECT requester_id FROM blood_requests WHERE id = 'old-req'")
+      .get() as { requester_id: string };
+    assert.equal(req.requester_id, "u1", "no data moved between accounts");
+  });
+
+  await check("the role backfill is idempotent across a re-boot", () => {
+    const before = getDb().prepare("SELECT COUNT(*) AS n FROM user_roles").get() as { n: number };
+    closeDb();
+    getDb();
+    getDb();
+    const after = getDb().prepare("SELECT COUNT(*) AS n FROM user_roles").get() as { n: number };
+    assert.equal(Number(after.n), Number(before.n), "the backfill must not duplicate rows");
+    const dupes = getDb()
+      .prepare(
+        "SELECT user_id, role, COUNT(*) AS n FROM user_roles GROUP BY user_id, role HAVING n > 1",
+      )
+      .all() as unknown[];
+    assert.equal(dupes.length, 0, "no duplicate membership may exist");
+  });
   closeDb();
   for (const s of ["", "-wal", "-shm"]) if (existsSync(DB + s)) rmSync(DB + s);
 

@@ -83,7 +83,7 @@ async function dataChecks() {
     await db.from("blood_requests").insert({
       id: "req-1", requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-      units: 2, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 2, locality: "Bengaluru Central",
       urgency: "urgent", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -111,7 +111,7 @@ async function dataChecks() {
       await db.from("blood_requests").insert({
         id, requester_id: RQ, requester_name: "Rita Requester",
         requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-        units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+        units: 1, locality: "Bengaluru Central",
         urgency: "urgent", required_by: soon(), status: "active",
         created_at: now(), updated_at: now(),
       });
@@ -130,7 +130,7 @@ async function dataChecks() {
     await db.from("blood_requests").insert({
       id, requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "urgent", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -184,7 +184,7 @@ async function raceChecks() {
     await db.from("blood_requests").insert({
       id: "req-race", requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O-", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "urgent", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -260,7 +260,7 @@ async function raceChecks() {
     await db.from("blood_requests").insert({
       id, requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O-", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "urgent", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -428,8 +428,7 @@ async function workflowChecks() {
       blood_group: "O+",
       blood_component: "whole_blood",
       units: 2,
-      hospital_name: "City Hospital",
-      hospital_locality: "Central",
+  locality: "Bengaluru Central",
       urgency: "urgent",
       required_by: soon(),
       note: "Surgery on Friday",
@@ -444,8 +443,8 @@ async function workflowChecks() {
     assert.equal(row.blood_group, "O+");
     assert.equal(row.blood_component, "whole_blood");
     assert.equal(row.units, 2);
-    assert.equal(row.hospital_name, "City Hospital");
-    assert.equal(row.hospital_locality, "Central");
+    assert.equal(row.locality, "Bengaluru Central");
+    assert.equal(row.locality, "Bengaluru Central");
     assert.equal(row.urgency, "urgent");
     assert.equal(row.requester_name, "Rita Requester");
     assert.equal(row.note, "Surgery on Friday");
@@ -557,7 +556,7 @@ async function workflowChecks() {
     await db.from("blood_requests").insert({
       id: bare, requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "routine", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -604,7 +603,7 @@ async function workflowChecks() {
     await db.from("blood_requests").insert({
       id, requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "urgent", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -627,7 +626,7 @@ async function workflowChecks() {
     await db.from("blood_requests").insert({
       id, requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "routine", required_by: new Date(Date.now() - 3_600_000).toISOString(),
       status: "active", created_at: now(), updated_at: now(),
     });
@@ -646,7 +645,7 @@ async function workflowChecks() {
     await db.from("blood_requests").insert({
       id, requester_id: RQ, requester_name: "Rita Requester",
       requester_phone: "9999999999", blood_group: "O+", blood_component: "whole_blood",
-      units: 1, hospital_name: "City Hospital", hospital_locality: "Central",
+      units: 1, locality: "Bengaluru Central",
       urgency: "routine", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
@@ -728,7 +727,7 @@ async function sessionChecks() {
     const after = (await db.from("blood_requests").eq("id", "req-1").single())
       .data as Record<string, unknown>;
     assert.ok(after, "the request must survive");
-    assert.equal(after.hospital_name, "City Hospital");
+    assert.equal(after.locality, "Bengaluru Central");
     assert.equal(after.status, "active");
     const users = getDb().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
     assert.ok(Number(users.n) >= 2, "users must survive");

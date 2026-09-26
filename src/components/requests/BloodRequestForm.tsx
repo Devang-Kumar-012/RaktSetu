@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useActionState } from "react";
+import { useActionState, useState, type FormEvent } from "react";
 
 import { createBloodRequest } from "@/lib/actions/requests";
 import { lookupAreaCandidates } from "@/lib/actions/location";
@@ -10,7 +9,14 @@ import {
   type LocationLookupState,
 } from "@/lib/actions/location-state";
 import { initialProfileActionState } from "@/lib/actions/action-state";
-import { BLOOD_GROUPS, BLOOD_COMPONENTS, URGENCY_OPTIONS, MIN_UNITS, MAX_UNITS, REQUEST_NOTE_MAX } from "@/lib/constants";
+import {
+  BLOOD_GROUPS,
+  BLOOD_COMPONENTS,
+  URGENCY_OPTIONS,
+  MIN_UNITS,
+  MAX_UNITS,
+  REQUEST_NOTE_MAX,
+} from "@/lib/constants";
 import { bloodRequestFieldErrors, type BloodRequestFieldInput } from "@/lib/validation";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -22,23 +28,49 @@ function defaultDeadline(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Read every validated field straight off the form, as raw strings. */
-function readFields(form: HTMLFormElement): BloodRequestFieldInput {
-  const fd = new FormData(form);
-  const text = (name: string) => String(fd.get(name) ?? "").trim();
+/**
+ * THE ENTIRE FORM, in ONE piece of state.
+ *
+ * WHY THE FORM OWNS ITS VALUES INSTEAD OF LEAVING THEM UNCONTROLLED
+ *
+ * The fields used to be uncontrolled (`defaultValue`, read back through
+ * FormData). Uncontrolled inputs survive a rerender, so this was never
+ * obviously broken — but they are reset by anything that re-submits the form,
+ * and this form has a SECOND action on it: the area lookup. Submitting that
+ * lookup re-submits the same `<form>`, and React resets the form's fields
+ * around a form action. That is why typing an area and then pressing the lookup
+ * button silently emptied the blood group, units, urgency and deadline that had
+ * already been entered — and why the optional section, which wraps that button,
+ * looked like it "ate" the form whenever it was opened.
+ *
+ * So the values live in React state and every input is controlled. That makes
+ * them immune to re-submission, to a remount of anything below this component,
+ * and to any rerender. `defaultDeadline()` is computed ONCE in the lazy
+ * initialiser below: previously it was evaluated on every render, which also
+ * re-based the deadline under the user as they filled the form in.
+ */
+interface RequestFormValues extends BloodRequestFieldInput {
+  /** Approximate area coordinates, when the user picks a lookup result. */
+  latitude: number | null;
+  longitude: number | null;
+}
+
+function initialValues(contactName: string): RequestFormValues {
   return {
-    bloodGroup: text("bloodGroup"),
-    bloodComponent: text("bloodComponent"),
-    units: text("units"),
-    hospitalName: text("hospitalName"),
-    hospitalLocality: text("hospitalLocality"),
-    urgency: text("urgency"),
-    requiredBy: text("requiredBy"),
-    contactName: text("contactName"),
-    contactPhone: text("contactPhone"),
-    note: text("note"),
+    bloodGroup: "",
+    bloodComponent: "whole_blood",
+    units: "1",
+    locality: "",
+    urgency: "urgent",
+    requiredBy: defaultDeadline(),
+    contactName,
+    contactPhone: "",
+    note: "",
+    latitude: null,
+    longitude: null,
   };
 }
+
 
 /**
  * Emergency-first blood request form. Large labels, big controls, one
@@ -57,17 +89,59 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
     initialLocationLookupState
   );
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+  // Lazy initialiser: the defaults are computed once per mount, never per render.
+  const [values, setValues] = useState<RequestFormValues>(() => initialValues(contactName));
+  /** The area the user picked from a lookup, kept out of the submitted fields. */
+  const [pickedArea, setPickedArea] = useState<{ label: string; lat: number; lng: number } | null>(
+    null,
+  );
+
+  /**
+   * Merge ONE field. Never `setValues(next)`, which would discard every other
+   * value the user has typed — the exact failure this form had.
+   */
+  function setField<K extends keyof RequestFormValues>(field: K, value: RequestFormValues[K]) {
+    setValues((prev) => ({ ...prev, [field]: value }));
+  }
+
+  /** Clear a field's error as soon as the user edits it, but never the value. */
+  function onEdit<K extends keyof BloodRequestFieldInput>(field: K, value: string) {
+    setField(field, value as RequestFormValues[K]);
+    setClientErrors((prev) => {
+      if (!(field in prev)) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
 
   /** Pre-submit validation — blocks the server round trip when invalid. */
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    const form = event.currentTarget;
-    const errors = bloodRequestFieldErrors(readFields(form));
+    // The area-lookup button lives on this same form and submits through its own
+    // action. Its submission must NOT be validated as a request submission, or a
+    // half-finished form could never be used to look up its area.
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+    if (submitter?.dataset.lookup === "true") return;
+
+    // Read from STATE, not from FormData: state is the single source of truth,
+    // so what is validated is exactly what is displayed and submitted.
+    const errors = bloodRequestFieldErrors({
+      bloodGroup: values.bloodGroup,
+      bloodComponent: values.bloodComponent,
+      units: values.units,
+      locality: values.locality,
+      urgency: values.urgency,
+      requiredBy: values.requiredBy,
+      contactName: values.contactName,
+      contactPhone: values.contactPhone,
+      note: values.note,
+    });
     setClientErrors(errors);
 
     const firstField = Object.keys(errors)[0];
     if (firstField) {
       event.preventDefault();
-      const field = form.elements.namedItem(firstField);
+      const field = event.currentTarget.elements.namedItem(firstField);
       if (field instanceof HTMLElement) field.focus();
     }
   }
@@ -97,7 +171,8 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           required
           requiredMark
           disabled={pending}
-          defaultValue=""
+          value={values.bloodGroup}
+          onChange={(e) => onEdit("bloodGroup", e.target.value)}
           error={clientErrors.bloodGroup}
         >
           <option value="" disabled>
@@ -116,7 +191,8 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           required
           requiredMark
           disabled={pending}
-          defaultValue="whole_blood"
+          value={values.bloodComponent}
+          onChange={(e) => onEdit("bloodComponent", e.target.value)}
           error={clientErrors.bloodComponent}
         >
           {BLOOD_COMPONENTS.map((c) => (
@@ -134,10 +210,11 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           type="number"
           min={MIN_UNITS}
           max={MAX_UNITS}
-          defaultValue={1}
           required
           requiredMark
           disabled={pending}
+          value={values.units}
+          onChange={(e) => onEdit("units", e.target.value)}
           error={clientErrors.units}
         />
 
@@ -147,7 +224,8 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           required
           requiredMark
           disabled={pending}
-          defaultValue="urgent"
+          value={values.urgency}
+          onChange={(e) => onEdit("urgency", e.target.value)}
           error={clientErrors.urgency}
         >
           {URGENCY_OPTIONS.map((u) => (
@@ -158,50 +236,55 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
         </Select>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <Input
-          label="Hospital name"
-          name="hospitalName"
-          placeholder="e.g. St. Martha's Hospital"
-          maxLength={120}
-          required
-          requiredMark
-          disabled={pending}
-          error={clientErrors.hospitalName}
-        />
-        <Input
-          label="Hospital locality"
-          name="hospitalLocality"
-          placeholder="e.g. Bengaluru Central"
-          maxLength={120}
-          required
-          requiredMark
-          disabled={pending}
-          error={clientErrors.hospitalLocality}
-        />
-      </div>
+      <Input
+        label="Blood needed near"
+        name="locality"
+        placeholder="e.g. Indiranagar, Bengaluru"
+        maxLength={100}
+        required
+        requiredMark
+        disabled={pending}
+        hint="The general locality or area where the patient needs blood. Not a hospital name and not a home address."
+        value={values.locality}
+        onChange={(e) => {
+          onEdit("locality", e.target.value);
+          // Editing the area invalidates a previously picked map point, so the
+          // coordinates are cleared — but only the coordinates, never the text
+          // the user is still typing.
+          setPickedArea(null);
+          setField("latitude", null);
+          setField("longitude", null);
+        }}
+        error={clientErrors.locality}
+      />
 
       <Input
         label="Required by"
         name="requiredBy"
         type="datetime-local"
-        defaultValue={defaultDeadline()}
         required
         requiredMark
         disabled={pending}
+        value={values.requiredBy}
+        onChange={(e) => onEdit("requiredBy", e.target.value)}
         error={clientErrors.requiredBy}
         hint="Must be in the future and within 30 days. Alerts to donors start as soon as the request is created."
       />
 
+      {/*
+        The area lookup. It is a SECOND action on this form, which is what used to
+        wipe it: submitting it re-submitted the form and React reset the fields.
+        The values now live in React state, so a reset of the DOM inputs cannot
+        lose anything — the very next render restores them from state.
+      */}
       <details className="rounded-md border border-ink-200 bg-ink-50 p-5">
         <summary className="cursor-pointer text-base font-bold text-ink-900">
-          Hospital map location (optional)
+          Pin this area on the map (optional)
         </summary>
         <p className="mt-3 text-sm text-ink-600">
-          This helps us estimate how far donors are from the hospital. RaktSetu stores
-          only a rough point (about 1 km) — never a street address. If you skip this, we
-          try a best-effort lookup from the hospital details above, and matching still
-          works either way.
+          This helps us estimate roughly how far donors are from the area above.
+          RaktSetu stores only a rough point (about 1 km) — never a street
+          address. Skip it and matching still works using the locality text.
         </p>
 
         <div className="mt-4">
@@ -210,9 +293,10 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
             formAction={lookupAction}
             formNoValidate
             variant="secondary"
+            data-lookup="true"
             disabled={lookupPending}
           >
-            {lookupPending ? "Checking…" : "Check hospital location"}
+            {lookupPending ? "Checking…" : "Find my area"}
           </Button>
         </div>
 
@@ -222,10 +306,16 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           </p>
         )}
 
+        {pickedArea && (
+          <p role="status" className="mt-3 text-sm font-medium text-green-700">
+            Area set to: {pickedArea.label}
+          </p>
+        )}
+
         {lookup.candidates.length > 0 && (
           <div className="mt-4 space-y-2">
             <p className="text-sm font-semibold text-ink-900">
-              Pick the closest match for the hospital area:
+              Pick the closest match for your area:
             </p>
             {lookup.candidates.map((c) => (
               <label
@@ -235,7 +325,15 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
                 <input
                   type="radio"
                   name="coordsChoice"
-                  value={`${c.lat}:${c.lng}`}
+                  checked={pickedArea?.lat === c.lat && pickedArea?.lng === c.lng}
+                  onChange={() => {
+                    // Merge ONLY the coordinates. Nothing else in the form is
+                    // touched, so the blood group, units, deadline and contact
+                    // details the user already entered all survive.
+                    setField("latitude", c.lat);
+                    setField("longitude", c.lng);
+                    setPickedArea({ label: c.label, lat: c.lat, lng: c.lng });
+                  }}
                   disabled={pending}
                   className="mt-1.5 h-4 w-4 accent-blood-700"
                 />
@@ -258,11 +356,12 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
           <Input
             label="Contact name"
             name="contactName"
-            defaultValue={contactName}
             maxLength={80}
             required
             requiredMark
             disabled={pending}
+            value={values.contactName}
+            onChange={(e) => onEdit("contactName", e.target.value)}
             error={clientErrors.contactName}
           />
           <Input
@@ -273,6 +372,8 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
             required
             requiredMark
             disabled={pending}
+            value={values.contactPhone}
+            onChange={(e) => onEdit("contactPhone", e.target.value)}
             error={clientErrors.contactPhone}
           />
         </div>
@@ -283,10 +384,20 @@ export function BloodRequestForm({ contactName }: { contactName: string }) {
         name="note"
         maxLength={REQUEST_NOTE_MAX}
         rows={3}
-        placeholder="Anything a donor should know — e.g. ward name, timings."
+        placeholder="Anything a donor should know — e.g. timings or how to coordinate."
         disabled={pending}
+        value={values.note}
+        onChange={(e) => onEdit("note", e.target.value)}
         error={clientErrors.note}
       />
+
+      {/*
+        The picked area travels as hidden fields so the server receives it
+        without the user re-typing anything. Absent means "no coordinates", which
+        is valid: matching then works on the locality text alone.
+      */}
+      <input type="hidden" name="latitude" value={values.latitude ?? ""} />
+      <input type="hidden" name="longitude" value={values.longitude ?? ""} />
 
       <div className="border-t border-ink-200 pt-6">
         <Button type="submit" disabled={pending} className="w-full sm:w-auto sm:min-w-72">

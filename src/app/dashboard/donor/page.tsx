@@ -418,10 +418,10 @@ export default function DonorDashboardPage() {
                         : "Not linked to a request"}
                   </span>
                 </div>
-                {row.hospital_name && (
+                {row.locality && (
                   <p className="mt-1 text-base text-ink-600">
-                    {row.hospital_name}
-                    {row.hospital_locality && ` — ${row.hospital_locality}`}
+                    {row.locality}
+                    
                   </p>
                 )}
                 {row.drive_title && row.drive_id && (

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { ButtonLink } from "@/components/ui/Button";
 import { APP_NAME, MAIN_NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
@@ -16,14 +17,19 @@ export function Brand({ compact = false }: { compact?: boolean }) {
     <Link href="/" className="flex items-center gap-2.5" aria-label={`${APP_NAME} home`}>
       <span
         aria-hidden
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-blood-700 text-white shadow-md"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blood-700 text-white shadow-md"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
           <path d="M12 2.5C12 2.5 5.5 10 5.5 14.6a6.5 6.5 0 0 0 13 0C18.5 10 12 2.5 12 2.5Z" />
         </svg>
       </span>
+      {/*
+        The wordmark is dropped on the narrowest phones, where the glyph plus the
+        menu button need the width more than the name does. The link keeps its
+        accessible name via aria-label, so this is a visual decision only.
+      */}
       {!compact && (
-        <span className="text-2xl font-extrabold tracking-tight text-ink-900">
+        <span className="hidden text-2xl font-extrabold tracking-tight text-ink-900 min-[400px]:inline">
           Rakt<span className="text-blood-700">Setu</span>
         </span>
       )}
@@ -60,8 +66,15 @@ export function Navbar({
   const [open, setOpen] = useState(false);
 
   const firstName = profile?.full_name?.trim()?.split(" ")[0];
-  // Role-aware dashboard target — /dashboard itself redirects by role too.
+  // The dashboard target follows the ACTIVE profile, which the server resolved
+  // from this session's memberships — never a value the browser supplies.
   const dashboardHref = profile?.role ? `/dashboard/${profile.role}` : "/dashboard";
+  // Only offered when there is something to switch between or add.
+  // The navbar only shows a switcher when there is something to switch BETWEEN.
+  // Adding a capability ("become a donor") is a deliberate act and lives on
+  // /profile, so a single-role account sees nothing extra in the bar — the brief
+  // is explicit that one account should not get clutter it cannot use.
+  const showRoleSwitcher = Boolean(profile) && profile!.roles.length > 1;
   const notificationsLabel =
     unreadNotifications > 0
       ? `Notifications, ${unreadNotifications} unread`
@@ -93,7 +106,13 @@ export function Navbar({
         collapses to the existing hamburger panel instead of squashing.
       */}
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:px-6">
-        <div className="shrink-0">
+        {/*
+          `min-w-0` lets the brand shrink inside the flex row instead of forcing
+          the bar wider than the viewport. The wordmark itself is allowed to drop
+          its text on the narrowest phones (the `Brand` component's own
+          breakpoint), where the hamburger matters more than the word.
+        */}
+        <div className="min-w-0 shrink-0">
           <Brand />
         </div>
 
@@ -109,8 +128,20 @@ export function Navbar({
           ))}
         </nav>
 
-        {/* Account cluster, grouped and pushed right. */}
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {/*
+          Account cluster, grouped and pushed right.
+
+          It is `hidden` below `xl` and reappears at `xl`, matching the main nav
+          above and the rule this file has always described: below `xl` the bar
+          collapses into the hamburger panel instead of squashing.
+
+          Every control in here is ALSO in that panel — notifications, profile,
+          drives, dashboard, logout, and for a signed-out visitor the two auth
+          links — so nothing is lost on a phone, and the profile switcher remains
+          reachable on /profile. That duplication is what makes it safe to hide
+          the cluster rather than let it push the bar wider than the screen.
+        */}
+        <div className="ml-auto hidden shrink-0 items-center gap-0.5 xl:flex">
           {authed ? (
             <>
               {/* Identity, not a link: an initial chip plus the name. */}
@@ -140,6 +171,23 @@ export function Navbar({
               <Link href="/profile" className={navLinkClass("/profile")}>
                 Profile
               </Link>
+
+              {/*
+                The profile switcher, in the account cluster. It offers only the
+                profiles this account actually holds (plus any public profile it
+                could still add), and every choice is re-checked server-side.
+                A single-role account with nothing to add sees nothing here.
+              */}
+              {showRoleSwitcher && (
+                <div className="hidden lg:block">
+                  <RoleSwitcher
+                    activeRole={profile!.role}
+                    roles={profile!.roles}
+                    variant="compact"
+                  />
+                </div>
+              )}
+
               <Link href="/drives" className={navLinkClass("/drives")}>
                 Drives
               </Link>
@@ -197,7 +245,17 @@ export function Navbar({
       </div>
 
       {open && (
-        <div className="border-t border-ink-200 px-4 pb-6 pt-2 xl:hidden">
+        /*
+          The panel is a dropdown under a sticky bar, so on a SHORT screen (a
+          phone in landscape, a low laptop window) it can be taller than the
+          space below the bar. It therefore scrolls inside itself and is capped
+          to the remaining viewport height, which keeps every control reachable
+          instead of pushing the page footer out of sight.
+        */
+        <div
+          className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-ink-200 px-4 pb-6 pt-2 xl:hidden"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           <nav aria-label="Mobile navigation" className="flex flex-col gap-1">
             {MAIN_NAV_ITEMS.map((item) => (
               <Link
@@ -237,6 +295,21 @@ export function Navbar({
                 >
                   My profile
                 </ButtonLink>
+                {/*
+                  The profile switcher lives in the desktop account cluster, which
+                  is hidden below `xl`. It is offered here as well so switching
+                  roles works on a phone without a detour — the same component,
+                  the same server action, the same validation.
+                */}
+                {showRoleSwitcher && (
+                  <div className="px-1 py-1">
+                    <RoleSwitcher
+                      activeRole={profile!.role}
+                      roles={profile!.roles}
+                      variant="compact"
+                    />
+                  </div>
+                )}
                 <LogoutButton />
               </>
             ) : (

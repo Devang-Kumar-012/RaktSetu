@@ -11,6 +11,15 @@ export interface SessionInfo {
   configured: boolean;
   user: AuthenticatedUser | null;
   profile: Profile | null;
+  /**
+   * Every role the signed-in account holds, and which one it is ACTING as.
+   *
+   * Read straight from the session the server resolved, so the switcher can
+   * offer exactly the profiles that exist and no others. The browser may display
+   * these; it may not assert them — every guard re-reads the same server state.
+   */
+  roles: AccountRole[];
+  activeRole: AccountRole | null;
 }
 
 /**
@@ -18,7 +27,8 @@ export interface SessionInfo {
  *
  * A second query is deliberately avoided: the session lookup returns every
  * field `Profile` needs, so the profile can never disagree with the identity it
- * belongs to.
+ * belongs to. The role memberships ride along on the same row for the same
+ * reason — the profile's roles are the account's roles, by construction.
  */
 function profileOf(user: AuthenticatedUser): Profile {
   return {
@@ -26,6 +36,7 @@ function profileOf(user: AuthenticatedUser): Profile {
     full_name: user.full_name,
     email: user.email,
     role: user.role,
+    roles: user.roles,
     status: user.status,
     created_at: user.created_at,
     updated_at: user.updated_at,
@@ -61,11 +72,19 @@ export const getSessionInfo = cache(async (): Promise<SessionInfo> => {
     // build never opens the database file.
     const token = await readSessionToken();
     const user = getUserForToken(token);
-    if (!user) return { configured: true, user: null, profile: null };
+    if (!user) {
+      return { configured: true, user: null, profile: null, roles: [], activeRole: null };
+    }
 
-    return { configured: true, user, profile: profileOf(user) };
+    return {
+      configured: true,
+      user,
+      profile: profileOf(user),
+      roles: user.roles,
+      activeRole: user.role,
+    };
   } catch {
-    return { configured: true, user: null, profile: null };
+    return { configured: true, user: null, profile: null, roles: [], activeRole: null };
   }
 });
 

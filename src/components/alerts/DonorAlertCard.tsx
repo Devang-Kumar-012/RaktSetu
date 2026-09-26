@@ -28,13 +28,13 @@ function acceptedNextAction(alert: DonorAlertRow): string {
     case "expired":
       return "This request's deadline passed — no donation is needed for it.";
     default:
-      return `Coordinate with the requester above and reach ${alert.hospital_name} before ${formatDateTime(alert.required_by)}. After you donate, your coordinator records it — it appears in your donation history below.`;
+      return `Coordinate with the requester above and reach the area in ${alert.locality} before ${formatDateTime(alert.required_by)}. After you donate, your coordinator records it — it appears in your donation history below.`;
   }
 }
 
 /**
  * One emergency alert for the signed-in donor: the request facts needed to
- * decide (group, component, units, hospital area, approximate distance,
+ * decide (group, component, units, request area, approximate distance,
  * urgency, deadline, respond-by window with time left), large mobile-first
  * accept/decline buttons wired to respondToAlert → mark_alert_responded
  * (atomic, first-valid-acceptance-wins), and — only after THIS donor's own
@@ -110,8 +110,7 @@ export function DonorAlertCard({
         </div>
 
         <p className="mt-3 text-lg font-bold text-ink-900">
-          {alert.hospital_name}
-          <span className="font-medium text-ink-600"> — {alert.hospital_locality}</span>
+          {alert.locality}
         </p>
         <p className="mt-1 text-base text-ink-600">
           Needed by {formatDateTime(alert.required_by)}

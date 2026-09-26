@@ -12,6 +12,31 @@ import type { PlatformSafetyLimits, PlatformSettings } from "@/types";
 export const metadata = { title: "Platform settings — admin" };
 
 /**
+ * NORMALISE THE STORED RING LIST.
+ *
+ * `alert_rings_km` is an integer ARRAY in the Postgres schema, but the SQLite
+ * store has no array type and keeps it as TEXT — the row really holds the string
+ * "3,7,15". Casting that row straight to `PlatformSettings` therefore produces a
+ * `string` where the type promises `number[]`, and the first `.join()` on it
+ * throws — which is how this page used to fail with a 500 before anyone had
+ * opened it in a browser.
+ *
+ * Normalising at the data boundary keeps the array type an honest promise to
+ * every consumer, rather than making each one defend against the storage detail.
+ */
+function toRingList(value: unknown): number[] {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+        .split(",")
+        .map((s) => s.trim());
+  const rings = parts
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return rings.length > 0 ? rings : [3, 7, 15];
+}
+
+/**
  * Coordination settings (ring distances, wait window, alert offset, donation
  * interval). Admin-only: requireRolePage in the layout + RLS write policy.
  */
@@ -23,9 +48,12 @@ export default async function AdminSettingsPage() {
     .eq("id", 1)
     .maybeSingle();
 
-  const settings =
-    (data as PlatformSettings | null) ??
-    ({
+  const row = data as (Omit<PlatformSettings, "alert_rings_km"> & {
+    alert_rings_km: unknown;
+  }) | null;
+
+  const settings: PlatformSettings = {
+    ...(row ?? {
       id: 1,
       alert_rings_km: [3, 7, 15],
       alert_window_minutes: 10,
@@ -36,7 +64,9 @@ export default async function AdminSettingsPage() {
       donor_alert_reminder_hours: SETTINGS_DEFAULTS.donorAlertReminderHours,
       drive_reminder_window_hours: SETTINGS_DEFAULTS.driveReminderWindowHours,
       updated_at: new Date().toISOString(),
-    } satisfies PlatformSettings);
+    } as Omit<PlatformSettings, "alert_rings_km"> & { alert_rings_km: unknown }),
+    alert_rings_km: toRingList(row?.alert_rings_km),
+  };
 
   // Readable by any authenticated user (RLS "Anyone authenticated can read
   // safety limits"), but only an admin may change it. Defaults here mirror the

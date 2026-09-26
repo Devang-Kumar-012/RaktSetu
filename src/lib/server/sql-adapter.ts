@@ -80,7 +80,7 @@ const COLUMNS: Record<string, string[]> = {
   volunteer_profiles: ["user_id", "phone", "locality", "available", "created_at", "updated_at"],
   blood_requests: [
     "id", "requester_id", "requester_name", "requester_phone", "blood_group",
-    "blood_component", "units", "hospital_name", "hospital_locality", "urgency",
+    "blood_component", "units", "locality", "urgency",
     "required_by", "note", "status", "latitude", "longitude", "created_at", "updated_at",
     "cancelled_at", "fulfilled_at",
   ],

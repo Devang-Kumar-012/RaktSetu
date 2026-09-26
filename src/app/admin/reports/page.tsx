@@ -98,7 +98,7 @@ export default async function AdminReportsPage({
   const { data: requestRows } = requestIds.length
     ? await supabase
       .from("blood_requests")
-      .select("id, blood_group, units, hospital_name, hospital_locality, urgency, status, created_at")
+      .select("id, blood_group, units, locality, urgency, status, created_at")
       .in("id", requestIds)
     : { data: [] as unknown[] };
   const requestById = new Map(
@@ -106,8 +106,7 @@ export default async function AdminReportsPage({
       id: string;
       blood_group: string;
       units: number;
-      hospital_name: string;
-      hospital_locality: string;
+  locality: string;
       urgency: string;
       status: string;
       created_at: string;
@@ -282,7 +281,7 @@ export default async function AdminReportsPage({
                           Hospital
                         </dt>
                         <dd className="mt-1 text-ink-800">
-                          {request.hospital_name}, {request.hospital_locality}
+                          {request.locality}
                         </dd>
                       </div>
                       <div>

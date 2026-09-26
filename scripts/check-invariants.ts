@@ -37,7 +37,7 @@ import {
   validateBloodComponent,
   validateBloodGroup,
   validateFullName,
-  validateHospitalName,
+  validateRequestLocality,
   validateLastDonationDate,
   validateLocality,
   validatePhone,
@@ -231,11 +231,11 @@ for (const u of URGENCY_OPTIONS) {
 rejects("urgency rejects 'emergency'", validateUrgency("emergency"));
 rejects("urgency rejects empty", validateUrgency(""));
 
-accepts("hospital accepts a normal name", validateHospitalName("City General Hospital"));
-rejects("hospital rejects empty", validateHospitalName("  "));
-rejects("hospital rejects a newline (injection-shaped)", validateHospitalName("A\nB"));
-rejects("hospital rejects a carriage return", validateHospitalName("A\rB"));
-rejects("hospital rejects over-long", validateHospitalName("H".repeat(200)));
+accepts("request locality accepts a normal area", validateRequestLocality("Indiranagar, Bengaluru"));
+rejects("request locality rejects empty", validateRequestLocality("  "));
+rejects("request locality rejects a newline (injection-shaped)", validateRequestLocality("A\nB"));
+rejects("request locality rejects a carriage return", validateRequestLocality("A\rB"));
+rejects("request locality rejects over-long", validateRequestLocality("L".repeat(200)));
 
 
 // The deadline validator reads a datetime-LOCAL value ("YYYY-MM-DDTHH:mm"),
@@ -1092,7 +1092,7 @@ eq(
     ok(
       "a requester id from the browser is never used to authorise a request",
       !/p_requester_id:\s*(formData|session|args)/.test(seam) &&
-        !/\.eq\(\s*"requester_id"\s*,\s*(formData|args)/.test(requestAction),
+      !/\.eq\(\s*"requester_id"\s*,\s*(formData|args)/.test(requestAction),
     );
 
     // The lifecycle is a guarded, transactional transition — not a check
@@ -1100,7 +1100,7 @@ eq(
     ok(
       "the request lifecycle is one transactional, guarded transition",
       workflow.includes("BEGIN IMMEDIATE") &&
-        workflow.includes("WHERE id = ? AND requester_id = ? AND status = 'active'"),
+      workflow.includes("WHERE id = ? AND requester_id = ? AND status = 'active'"),
     );
     // First-valid-donor-wins must be the DATABASE's decision, so the index has
     // to be scoped to the request alone.
@@ -1113,7 +1113,7 @@ eq(
     ok(
       "no 'accepted' request status is introduced anywhere",
       !/status\s*[:=]\s*"accepted"/.test(workflow) &&
-        !/BloodRequestStatus[^;]*accepted/.test(requestAction),
+      !/BloodRequestStatus[^;]*accepted/.test(requestAction),
     );
 
     // The donor's action must go through the workflow, and the requester's
@@ -1125,12 +1125,130 @@ eq(
     ok(
       "cancelling and fulfilling go through the guarded transition, not a raw update",
       (requestAction.match(/rpc\("set_request_status"/g) ?? []).length === 2 &&
-        !/from\("blood_requests"\)\s*\n?\s*\.update/.test(requestAction),
+      !/from\("blood_requests"\)\s*\n?\s*\.update/.test(requestAction),
     );
     // A request's fields are validated server-side before anything is written.
     ok(
       "request fields are re-validated on the server before the write",
       requestAction.includes("bloodRequestFieldErrors("),
+    );
+  }
+
+  // --- The request form's own guarantees -------------------------------------
+  // The form used to lose everything the user had typed whenever the optional
+  // area section submitted its lookup, because that is a second action on the
+  // same <form> and React resets the fields around a form action. These assert
+  // the STRUCTURAL properties that make that impossible now, since a behavioural
+  // test here would need a browser.
+  {
+    const form = readFileSync(
+      join(ROOT, "src/components/requests/BloodRequestForm.tsx"),
+      "utf8",
+    );
+    const actions = readFileSync(join(ROOT, "src/lib/actions/requests.ts"), "utf8");
+    const cancel = readFileSync(
+      join(ROOT, "src/components/requests/RequestActions.tsx"),
+      "utf8",
+    );
+    const requestPage = readFileSync(join(ROOT, "src/app/request-blood/page.tsx"), "utf8");
+    const dbSrc = readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8");
+
+    // NO HOSPITAL FIELDS, ANYWHERE IN THE REQUEST PATH.
+    ok(
+      "the request form has no hospital fields",
+      !/hospitalName|hospital_name|hospitalLocality|hospital_locality/.test(form),
+    );
+    ok(
+      "the request form labels its location as where blood is needed",
+      /Blood needed near/.test(form) &&
+        /where the patient needs blood/i.test(form),
+    );
+    // A request must never ask the donor's own location.
+    ok(
+      "the request form never asks for a donor's own location",
+      !/name="(donorLatitude|donorLongitude|myLocation|donorLocation)"/.test(form),
+    );
+    ok(
+      "the request action writes locality, not a hospital",
+      actions.includes("locality,") && !actions.includes("hospital_name:"),
+    );
+    ok(
+      "the SQLite request table stores one locality and no hospital",
+      /locality\s+TEXT NOT NULL/.test(dbSrc) &&
+        !/hospital_name\s+TEXT/.test(dbSrc) &&
+        !/hospital_locality\s+TEXT/.test(dbSrc),
+    );
+
+    // FORM STATE IS OWNED BY REACT, AND MERGED — NEVER REPLACED.
+    ok(
+      "the form keeps its values in React state",
+      /useState<RequestFormValues>\(\(\) => initialValues/.test(form),
+    );
+    ok(
+      "every update MERGES into the previous values",
+      form.includes("setValues((prev) => ({ ...prev,"),
+    );
+    ok(
+      "the form never replaces the whole values object with a partial one",
+      // Every setValues CALL must be the merging functional form. Comments are
+      // stripped first, or this matches the prose that explains the rule.
+      (() => {
+        const code = stripJsComments(form);
+        return !/setValues\(\s*\{/.test(code) && !/setValues\(next\)/.test(code);
+      })(),
+    );
+    // The deadline must be computed once, not re-based on every render.
+    ok(
+      "the default deadline is computed once, not on every render",
+      !/defaultValue=\{defaultDeadline\(\)\}/.test(form) &&
+        form.includes("requiredBy: defaultDeadline()"),
+    );
+    // The lookup re-submits the form, so it must be excluded from request
+    // validation, and picking a candidate must merge ONLY the coordinates.
+    ok(
+      "the area lookup does not validate as a request submission",
+      form.includes("submitter?.dataset.lookup") && form.includes('data-lookup="true"'),
+    );
+    ok(
+      "picking a map point merges only the coordinates",
+      /setField\("latitude", c.lat\)/.test(form) && !/setValues\(\{\s*latitude/.test(form),
+    );
+    // No browser storage is used to keep the form alive.
+    ok(
+      "the form keeps no draft in browser storage",
+      !/localStorage|sessionStorage|indexedDB/i.test(form),
+    );
+
+    // BLOOD GROUPS ARE INFORMATIONAL, NOT A CONTROL.
+    ok(
+      "the blood-group list is static and non-interactive",
+      requestPage.includes("These are the blood groups RaktSetu supports") &&
+        /<ul[^>]*aria-label="Supported blood groups"/.test(requestPage) &&
+        !/cursor-pointer/.test(requestPage),
+    );
+    ok(
+      "the blood-group list has no button, input or focus behaviour",
+      !/<button/.test(requestPage) && !/<input/.test(requestPage),
+    );
+
+    // CANCELLATION MUST BE CONFIRMED.
+    ok(
+      "cancelling opens a confirmation instead of cancelling immediately",
+      /onClick=\{\(\) => setConfirmingCancel\(true\)\}/.test(cancel) &&
+        /Are you sure you want to cancel this request\?/.test(cancel),
+    );
+    ok(
+      "the confirmation offers both outcomes and is dismissible",
+      cancel.includes("Keep request") &&
+        cancel.includes("Yes, cancel request") &&
+        cancel.includes('role="alertdialog"'),
+    );
+    // The requester's own lifecycle actions still go through the server.
+    ok(
+      "confirmed cancellation still calls the server action",
+      /<form action=\{cancelAction\} onSubmit=\{\(\) => setConfirmingCancel\(false\)\}/.test(
+        cancel,
+      ) && (cancel.match(/action=\{cancelAction\}/g) ?? []).length === 2,
     );
   }
 
@@ -1231,6 +1349,97 @@ eq(
   ok(
     "netlify.toml assigns no environment variables",
     !/NEXT_PUBLIC_|SUPABASE_|CRON_SECRET\s*=/.test(netlify),
+  );
+}
+
+// ===========================================================================
+// MULTI-ROLE ACCOUNTS
+//
+// One email is one identity that may hold several roles at once. The rules
+// below are the ones a regression would quietly break, so they are asserted
+// against the source that actually enforces them.
+// ===========================================================================
+{
+  const sessionSrc = readFileSync(join(ROOT, "src/lib/server/session.ts"), "utf8");
+  const authActions = readFileSync(join(ROOT, "src/lib/actions/auth.ts"), "utf8");
+  const profileSrc = readFileSync(join(ROOT, "src/lib/profile.ts"), "utf8");
+  const dbSrc = readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8");
+  const middlewareSrc = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
+  const switcherSrc = readFileSync(
+    join(ROOT, "src/components/auth/RoleSwitcher.tsx"),
+    "utf8",
+  );
+
+  ok(
+    "roles live in a membership table, not a single column on the account",
+    /CREATE TABLE IF NOT EXISTS user_roles/.test(dbSrc) &&
+      /PRIMARY KEY \(user_id, role\)/.test(dbSrc),
+  );
+  ok(
+    "one account can hold several roles, and user_roles is the only authority",
+    /export function getUserRoles/.test(sessionSrc) &&
+      /FROM user_roles/.test(sessionSrc) &&
+      !/SELECT[\s\S]{0,200}\bu\.role\b[\s\S]{0,200}FROM sessions/.test(sessionSrc),
+  );
+  ok(
+    "the active role is server-side session state, never a cookie value",
+    /active_role/.test(dbSrc) && /active_role/.test(sessionSrc) &&
+      !/activeRole|active_role/.test(middlewareSrc),
+  );
+  ok(
+    "the active role is only accepted if the account really holds it",
+    /getUserRoles\(userId\)\.includes\(role\)/.test(sessionSrc),
+  );
+  ok(
+    "a session with no active role is repaired to a real membership, then persisted",
+    /const active = valid \?\? roles\[0\]/.test(sessionSrc) &&
+      /UPDATE sessions SET active_role = \? WHERE id = \?/.test(sessionSrc),
+  );
+  ok(
+    "switching roles never creates an account or changes the email",
+    /UPDATE sessions SET active_role/.test(sessionSrc) &&
+      !/switchActiveRole[\s\S]{0,300}createUser/.test(authActions) &&
+      !/switchActiveRole[\s\S]{0,300}INSERT INTO users/.test(authActions),
+  );
+  ok(
+    "switching roles does not end the session",
+    !/switchActiveRole[\s\S]{0,600}revokeSession\(/.test(authActions) &&
+      !/switchActiveRole[\s\S]{0,600}clearSessionCookie/.test(authActions),
+  );
+  ok(
+    "admin can never be granted from the browser",
+    // The allow-list every public action filters through is built from
+    // REGISTER_ROLES, so the real assertion is that admin is absent from it,
+    // and that nothing grants or switches to admin from a submitted value.
+    /const PUBLIC_ROLE_VALUES[\s\S]{0,120}= REGISTER_ROLES/.test(authActions) &&
+      !/addRoleToCurrentAccount[\s\S]{0,700}grantRole\([^)]*["']admin["']/.test(authActions) &&
+      !/switchActiveRole[\s\S]{0,700}(grantRole|INSERT INTO user_roles)/.test(authActions) &&
+      // The list the register form renders must not offer admin either.
+      !/REGISTER_ROLES[^=]*=\s*\[[^\]]*admin/.test(
+        readFileSync(join(ROOT, "src/lib/constants.ts"), "utf8"),
+      ),
+  );
+  ok(
+    "the switcher is driven by the server's roles, not by anything stored in the browser",
+    /useState|useTransition/.test(switcherSrc) &&
+      !/localStorage|sessionStorage|document\.cookie/.test(switcherSrc),
+  );
+  ok(
+    "no client storage anywhere holds the role",
+    !/localStorage\.setItem\([^)]*role/.test(sessionSrc + switcherSrc) &&
+      !/sessionStorage\.setItem\([^)]*role/.test(sessionSrc + switcherSrc),
+  );
+  ok(
+    "getSessionInfo exposes both the available roles and the active one",
+    /roles: AccountRole\[\]/.test(profileSrc) && /activeRole: AccountRole \| null/.test(profileSrc),
+  );
+  ok(
+    "the demo admin is seeded with a membership, not just the legacy column",
+    /INSERT OR IGNORE INTO user_roles[\s\S]{0,200}'admin'/.test(dbSrc),
+  );
+  ok(
+    "the role backfill is idempotent, so it is safe on every boot",
+    (dbSrc.match(/INSERT OR IGNORE INTO user_roles/g) ?? []).length >= 1,
   );
 }
 

@@ -41,7 +41,7 @@ export default async function AdminRequestsPage({
   let query = supabase
     .from("blood_requests")
     .select(
-      "id, blood_group, blood_component, units, hospital_name, hospital_locality, urgency, required_by, note, status, requester_id, created_at",
+      "id, blood_group, blood_component, units, locality, urgency, required_by, note, status, requester_id, created_at",
       { count: "exact" }
     );
   if (filters.status !== "all") query = query.eq("status", filters.status);
@@ -58,7 +58,7 @@ export default async function AdminRequestsPage({
     if (safe.trim()) {
       const like = `%${safe.trim()}%`;
       query = query.or(
-        `hospital_name.ilike.${like},hospital_locality.ilike.${like}`
+        `locality.ilike.${like}`
       );
     }
   }

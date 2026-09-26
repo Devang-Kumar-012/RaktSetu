@@ -21,7 +21,12 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   full_name: string;
+  /** The profile THIS session is acting as, resolved from the account's
+   * memberships. Never a role the account does not hold. */
   role: AccountRole;
+  /** Every role the account holds. The account keeps all of them when the
+   * active one changes — switching never removes a capability. */
+  roles: AccountRole[];
   status: AccountStatus;
   created_at: string;
   updated_at: string;
@@ -32,7 +37,12 @@ export interface Profile {
   id: string;
   full_name: string;
   email: string;
+  /** The profile THIS session is acting as, resolved from the account's
+   * memberships. Never a role the account does not hold. */
   role: AccountRole;
+  /** Every role the account holds. The account keeps all of them when the
+   * active one changes — switching never removes a capability. */
+  roles: AccountRole[];
   status: AccountStatus;
   created_at: string;
   updated_at: string;
@@ -100,8 +110,7 @@ export interface VolunteerRequestView {
   blood_group: string;
   blood_component: BloodComponent;
   units: number;
-  hospital_name: string;
-  hospital_locality: string;
+  locality: string;
   urgency: RequestUrgency;
   required_by: string;
   status: BloodRequestStatus;
@@ -133,8 +142,7 @@ export interface BloodRequest {
   blood_group: string;
   blood_component: BloodComponent;
   units: number;
-  hospital_name: string;
-  hospital_locality: string;
+  locality: string;
   urgency: RequestUrgency;
   /** ISO timestamptz — the deadline for donors to respond. */
   required_by: string;
@@ -358,8 +366,7 @@ export interface AdminAlertRow {
   responded_at: string | null;
   accepted_at: string | null;
   blood_group: string;
-  hospital_name: string;
-  hospital_locality: string;
+  locality: string;
 }
 
 /** Row shape returned by public.donor_active_alerts() (migration 0011).
@@ -382,8 +389,7 @@ export interface DonorAlertRow {
   blood_group: string;
   blood_component: BloodComponent;
   units: number;
-  hospital_name: string;
-  hospital_locality: string;
+  locality: string;
   urgency: RequestUrgency;
   required_by: string;
   note: string | null;
@@ -400,8 +406,7 @@ export interface DonorDonationRow {
   donation_date: string;
   units: number;
   blood_component: BloodComponent | null;
-  hospital_name: string | null;
-  hospital_locality: string | null;
+  locality: string | null;
   request_status: BloodRequestStatus | null;
   request_id: string | null;
   /** 0015: set when this donation was collected at a campus drive. Request
@@ -444,8 +449,7 @@ export interface AdminRingProgressRow {
   outcome: string | null;
   request_status: string;
   blood_group: string;
-  hospital_name: string;
-  hospital_locality: string;
+  locality: string;
   required_by: string;
 }
 

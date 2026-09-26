@@ -73,11 +73,11 @@ export function RequestTable({
                 {!r.note && <span className="block text-sm text-ink-400">No note added</span>}
               </td>
               <td className="max-w-[240px] px-4 py-4 text-base text-ink-900">
-                <span className="block max-w-[240px] truncate font-semibold" title={r.hospital_name}>
-                  {r.hospital_name}
+                <span className="block max-w-[240px] truncate font-semibold" title={r.locality}>
+                  {r.locality}
                 </span>
-                <span className="block truncate text-sm text-ink-600" title={r.hospital_locality}>
-                  {r.hospital_locality}
+                <span className="block truncate text-sm text-ink-600" title={r.locality}>
+                  {r.locality}
                 </span>
               </td>
               <td className="px-4 py-4">
