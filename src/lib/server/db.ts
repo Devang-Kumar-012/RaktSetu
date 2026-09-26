@@ -147,12 +147,28 @@ CREATE TABLE IF NOT EXISTS blood_requests (
   latitude          REAL,
   longitude         REAL,
   created_at        TEXT NOT NULL,
-  updated_at        TEXT NOT NULL
+  updated_at        TEXT NOT NULL,
+  -- When the request reached its terminal state. Kept separate from
+  -- updated_at so "closed, and closed WHEN" survives later edits.
+  cancelled_at      TEXT,
+  fulfilled_at      TEXT
 );
 CREATE INDEX IF NOT EXISTS blood_requests_requester_idx
   ON blood_requests(requester_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS blood_requests_active_idx
   ON blood_requests(status, required_by);
+
+-- Terminal states are terminal. Enforced by the DATABASE, not by a button:
+-- a row may only leave 'active' once, and a closed request can never be
+-- reopened or re-closed. This is the same rule the Postgres CHECK/trigger
+-- pair expressed, and it is what makes a racing cancel/fulfil/expiry lose
+-- cleanly instead of double-writing a terminal state.
+CREATE TRIGGER IF NOT EXISTS blood_requests_terminal_guard
+BEFORE UPDATE OF status ON blood_requests
+FOR EACH ROW WHEN OLD.status <> 'active' AND NEW.status <> OLD.status
+BEGIN
+  SELECT RAISE(ABORT, 'a closed request cannot change status');
+END;
 
 CREATE TABLE IF NOT EXISTS ring_progress (
   request_id       TEXT PRIMARY KEY REFERENCES blood_requests(id) ON DELETE CASCADE,
@@ -163,6 +179,14 @@ CREATE TABLE IF NOT EXISTS ring_progress (
   outcome          TEXT
 );
 
+`;
+
+/**
+ * `donor_alerts`, kept as its own constant because `migrate()` rebuilds the
+ * table in place when the status vocabulary changes — SQLite cannot ALTER a
+ * CHECK constraint, so the corrected DDL has to be available on its own.
+ */
+const SCHEMA_ALERTS = `
 CREATE TABLE IF NOT EXISTS donor_alerts (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   request_id       TEXT NOT NULL REFERENCES blood_requests(id) ON DELETE CASCADE,
@@ -170,7 +194,13 @@ CREATE TABLE IF NOT EXISTS donor_alerts (
   ring_index       INTEGER NOT NULL,
   ring_km          REAL NOT NULL,
   status           TEXT NOT NULL DEFAULT 'sent'
-                     CHECK (status IN ('sent','opened','accepted','declined','expired')),
+                     -- 'responded' is the state once the donor has answered,
+                     -- whichever way they answered; the ANSWER itself is the
+                     -- separate response column. Keeping the two apart is what
+                     -- lets a declined alert stay declined without being
+                     -- reopened. This mirrors LocalDonorAlert's vocabulary, so
+                     -- the two engines cannot drift.
+                     CHECK (status IN ('sent','opened','responded','expired')),
   response         TEXT CHECK (response IS NULL OR response IN ('accepted','declined')),
   due_at           TEXT NOT NULL,
   responded_at     TEXT,
@@ -179,14 +209,23 @@ CREATE TABLE IF NOT EXISTS donor_alerts (
   UNIQUE (request_id, donor_id)
 );
 CREATE INDEX IF NOT EXISTS donor_alerts_donor_idx ON donor_alerts(donor_id, status);
-
--- A donor may answer ONCE. This partial unique index IS the atomic
--- first-valid-donor-wins guarantee: two donors racing to accept produce one
--- winner and one constraint failure, decided by the database rather than by
--- any application-level check.
-CREATE UNIQUE INDEX IF NOT EXISTS donor_alerts_one_acceptance_idx
-  ON donor_alerts(request_id, donor_id) WHERE response = 'accepted';
 `;
+
+/*
+ * FIRST-VALID-DONOR-WINS.
+ *
+ * A donor may answer ONCE — that is the table's own UNIQUE(request_id,
+ * donor_id). This partial index is a SEPARATE guarantee, on `request_id` ALONE.
+ * Scoping it to (request_id, donor_id) as well would merely restate the UNIQUE
+ * above and would let TWO DIFFERENT donors each hold an acceptance for the same
+ * request, because (req1,donorA) and (req1,donorB) are distinct rows. This
+ * index is what makes the second acceptance a constraint failure, so the race is
+ * decided by the database rather than by any application-level "has someone
+ * accepted yet?" check.
+ *
+ * It is created in `migrate()` rather than in either schema constant, because it
+ * has to be dropped and recreated whenever the table above is rebuilt.
+ */
 
 const SCHEMA_TAIL = `
 CREATE TABLE IF NOT EXISTS donations (
@@ -326,6 +365,71 @@ function migrate(conn: DatabaseSync): void {
   conn.exec(SCHEMA_HEAD);
   conn.exec(SCHEMA_TAIL);
   const now = new Date().toISOString();
+
+  conn.exec(SCHEMA_ALERTS);
+
+  // The acceptance index is dropped and recreated on every boot. That is what
+  // upgrades a database written before the index was scoped to request_id alone:
+  // `CREATE UNIQUE INDEX IF NOT EXISTS` would silently keep the old, weaker
+  // definition and two different donors could both be accepted for one request.
+  conn.exec("DROP INDEX IF EXISTS donor_alerts_one_acceptance_idx");
+
+  // Columns added after the first release. `CREATE TABLE IF NOT EXISTS` skips a
+  // table that already exists, so a database created by an older build keeps
+  // its original shape unless the new columns are added here. Each ALTER is
+  // guarded by a check against PRAGMA table_info, so re-running is free.
+  for (const [table, column, ddl] of [
+    ["blood_requests", "cancelled_at", "ALTER TABLE blood_requests ADD COLUMN cancelled_at TEXT"],
+    ["blood_requests", "fulfilled_at", "ALTER TABLE blood_requests ADD COLUMN fulfilled_at TEXT"],
+  ] as const) {
+    const present = conn
+      .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
+      .get(table, column);
+    if (!present) conn.exec(ddl);
+  }
+
+  // `donor_alerts.status` also changed vocabulary: an answer is recorded as
+  // 'responded' with the outcome in `response`, so a declined alert stays
+  // declined. The old CHECK accepted 'accepted'/'declined' as STATUSES, which
+  // mixed the state with the answer and left the workflow unable to mark an
+  // answered alert. CHECK constraints cannot be altered in place, and a
+  // migrated table must keep its rows, so the rows are normalised to the new
+  // vocabulary first and the table is then rebuilt. Guarded by a probe of the
+  // live constraint text, so a database already on the new shape is untouched.
+  const statusCheck = String(
+    (
+      conn
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='donor_alerts'",
+        )
+        .get() as { sql?: string } | undefined
+    )?.sql ?? "",
+  );
+  if (statusCheck.includes("'accepted'")) {
+    // The rows are translated in the SELECT, not by an UPDATE first: the OLD
+    // CHECK is still in force at that point and would refuse the new
+    // 'responded' value outright. Renaming the old table out of the way,
+    // creating the corrected one, and copying across is what makes this safe.
+    conn.exec("ALTER TABLE donor_alerts RENAME TO donor_alerts_legacy");
+    conn.exec(SCHEMA_ALERTS);
+    conn.exec(
+      `INSERT INTO donor_alerts
+         (id, request_id, donor_id, ring_index, ring_km, status, response,
+          due_at, responded_at, reminder_sent_at, created_at)
+       SELECT id, request_id, donor_id, ring_index, ring_km,
+              CASE WHEN response IS NOT NULL THEN 'responded' ELSE status END,
+              response, due_at, responded_at, reminder_sent_at, created_at
+         FROM donor_alerts_legacy`,
+    );
+    conn.exec("DROP TABLE donor_alerts_legacy");
+  }
+
+  // Created last, once donor_alerts is guaranteed to be in its final shape.
+  conn.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS donor_alerts_one_acceptance_idx
+       ON donor_alerts(request_id) WHERE response = 'accepted'`,
+  );
+
   conn
     .prepare("INSERT OR IGNORE INTO platform_settings (id, updated_at) VALUES (1, ?)")
     .run(now);

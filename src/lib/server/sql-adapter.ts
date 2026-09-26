@@ -82,6 +82,7 @@ const COLUMNS: Record<string, string[]> = {
     "id", "requester_id", "requester_name", "requester_phone", "blood_group",
     "blood_component", "units", "hospital_name", "hospital_locality", "urgency",
     "required_by", "note", "status", "latitude", "longitude", "created_at", "updated_at",
+    "cancelled_at", "fulfilled_at",
   ],
   ring_progress: [
     "request_id", "ring_index", "started_at", "last_advanced_at", "finished_at", "outcome",

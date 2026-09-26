@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionInfo } from "@/lib/profile";
+import { tickAlertRings } from "@/lib/ring-engine";
 import type { ProfileActionState } from "@/lib/actions/action-state";
 import { bloodRequestFieldErrors } from "@/lib/validation";
 import type { BloodComponent, RequestUrgency } from "@/types";
@@ -20,21 +21,6 @@ import { safetyLimitMessage } from "@/lib/safety";
  *  which of the two happened. */
 const RACE_MESSAGE =
   "This request changed just now — it may already be closed. Refresh the page to see its current state.";
-
-/**
- * How many rows an UPDATE actually changed.
- *
- * The SQLite adapter answers `{ updated: n }`; the legacy local adapter
- * answered an array of the rows it touched. The race guard is a COUNT, so it
- * has to accept either shape: testing `data.length === 0` alone meant the
- * SQLite path looked like a successful write even when it matched zero rows,
- * and "someone closed this first" could never be shown.
- */
-function affectedRows(data: unknown): number {
-  if (Array.isArray(data)) return data.length;
-  const updated = (data as { updated?: unknown } | null)?.updated;
-  return typeof updated === "number" ? updated : 0;
-}
 
 /**
  * Creates a blood request. Server-side auth + role enforcement: only an
@@ -102,6 +88,9 @@ export async function createBloodRequest(
   }
 
   const supabase = await createSupabaseServerClient();
+  // The request id is generated HERE, on the server. It is never taken from the
+  // form, and the requester is always the session's own user.
+  const requestId = randomUUID();
   // The payload is written in the STORE's column names, not the form's.
   // `blood_requests` keeps the requester's own contact as requester_name /
   // requester_phone and the approximate hospital pin as latitude / longitude,
@@ -110,7 +99,7 @@ export async function createBloodRequest(
   // every one of these columns — the NOT NULLs then refused the row outright
   // and "create a request" could never succeed.
   const { error: dbError } = await supabase.from("blood_requests").insert({
-    id: randomUUID(),
+    id: requestId,
     requester_id: session.user.id,
     requester_name: contactName,
     requester_phone: contactPhone,
@@ -137,7 +126,22 @@ export async function createBloodRequest(
     return { ok: false, error: "Could not create the request. Please try again." };
   }
 
+  // The request exists; now start its alerting. This is the same ring engine the
+  // dashboards and the donor action tick — one implementation, so the first ring
+  // is not a special case. Best-effort by design: a failure here must not lose a
+  // request the requester has already had accepted, and the next tick would raise
+  // the same alerts anyway.
+  try {
+    await tickAlertRings();
+  } catch (tickError) {
+    console.error("createBloodRequest: ring tick failed:", tickError);
+  }
+
   revalidatePath("/dashboard/requester");
+  // The request's own details page and the matching preview both read the alert
+  // progress this tick has just created, so neither may serve a cached empty one.
+  revalidatePath(`/requests/${requestId}`);
+  revalidatePath(`/requests/${requestId}/matches`);
   redirect("/dashboard/requester");
 }
 
@@ -162,20 +166,23 @@ export async function cancelBloodRequest(
     return { ok: false, error: "Invalid request reference." };
   }
 
+  // One guarded transition, server-side: the write is scoped to this session's
+  // own user AND to a still-active request, so another requester's id matches
+  // no rows. The closure (retiring open alerts, notifying) happens in the same
+  // transaction, so the request and its ring can never disagree.
   const supabase = await createSupabaseServerClient();
-  const { data, error: dbError } = await supabase
-    .from("blood_requests")
-    .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("requester_id", session.user.id)
-    .eq("status", "active")
-    .select("id");
+  const { data, error: dbError } = await supabase.rpc("set_request_status", {
+    p_request_id: requestId,
+    p_status: "cancelled",
+  });
 
   if (dbError) {
     console.error("cancelBloodRequest failed:", dbError.message);
     return { ok: false, error: "Could not cancel the request. Please try again." };
   }
-  if (affectedRows(data) === 0) {
+  // A request that is gone, or already closed, gets the same plain-language
+  // message — never a hint about which of the two it was.
+  if (data !== "ok") {
     return { ok: false, error: RACE_MESSAGE };
   }
 
@@ -207,26 +214,27 @@ export async function fulfillBloodRequest(
     return { ok: false, error: "Invalid request reference." };
   }
 
+  // One guarded transition, server-side: the write is scoped to this session's
+  // own user AND to a still-active request, so another requester's id matches
+  // no rows. The closure (retiring open alerts, notifying) happens in the same
+  // transaction, so the request and its ring can never disagree.
   const supabase = await createSupabaseServerClient();
-  const { data, error: dbError } = await supabase
-    .from("blood_requests")
-    .update({ status: "fulfilled", fulfilled_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("requester_id", session.user.id)
-    .eq("status", "active")
-    .select("id");
+  const { data, error: dbError } = await supabase.rpc("set_request_status", {
+    p_request_id: requestId,
+    p_status: "fulfilled",
+  });
 
   if (dbError) {
-    // 0017: a fulfilment with no accepted donor raises RS003 with a full
-    // sentence. Surface it rather than flattening it into "Could not update",
-    // because the requester needs to know WHY and what to do instead (cancel).
+    // RS003: a fulfilment with no accepted donor arrives with a full sentence.
+    // Surface it rather than flattening it into "Could not update", because the
+    // requester needs to know WHY and what to do instead (cancel).
     if (dbError.code === "RS003" && typeof dbError.message === "string") {
       return { ok: false, error: dbError.message };
     }
     console.error("fulfillBloodRequest failed:", dbError.message);
     return { ok: false, error: "Could not update the request. Please try again." };
   }
-  if (affectedRows(data) === 0) {
+  if (data !== "ok") {
     return { ok: false, error: RACE_MESSAGE };
   }
 

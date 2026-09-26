@@ -1050,6 +1050,90 @@ eq(
     sqliteLoadsUnflagged,
   );
 
+  // --- The blood-request workflow is SERVER-authoritative -------------------
+  // The request workflow used to be served by the browser adapter, whose store
+  // is `localStorage`. A Server Action has no `localStorage`, so creating a
+  // request, a donor accepting one, and the cancel/fulfil transitions each
+  // silently resolved against an empty database and changed nothing — a live
+  // site that looked fine and persisted nothing. These assert the request path
+  // is executed by the SQLite module, with the caller taken from the session.
+  {
+    const seam = readFileSync(join(ROOT, "src/lib/supabase/server.ts"), "utf8");
+    const requestAction = readFileSync(
+      join(ROOT, "src/lib/actions/requests.ts"),
+      "utf8",
+    );
+    const alertAction = readFileSync(join(ROOT, "src/lib/actions/alerts.ts"), "utf8");
+    const workflow = readFileSync(
+      join(ROOT, "src/lib/server/sql-requests.ts"),
+      "utf8",
+    );
+
+    // Every request-workflow function is routed to SQLite, and the requester /
+    // donor identity comes from the session rather than from the arguments.
+    for (const fn of [
+      "mark_alert_responded",
+      "set_request_status",
+      "record_donation",
+      "match_donors_for_request",
+      "matching_donor_stats",
+      "expand_alert_rings",
+    ]) {
+      ok(
+        `the request workflow routes ${fn} through SQLite`,
+        new RegExp(`case "${fn}"`).test(seam),
+      );
+    }
+    ok(
+      "the server seam resolves the caller from the session, not the arguments",
+      seam.includes("getSessionInfo()") && seam.includes("const caller: RequestCaller"),
+    );
+    // The requester id is never read off the payload in the lifecycle calls.
+    ok(
+      "a requester id from the browser is never used to authorise a request",
+      !/p_requester_id:\s*(formData|session|args)/.test(seam) &&
+        !/\.eq\(\s*"requester_id"\s*,\s*(formData|args)/.test(requestAction),
+    );
+
+    // The lifecycle is a guarded, transactional transition — not a check
+    // followed by a write, which is what lets two writers both succeed.
+    ok(
+      "the request lifecycle is one transactional, guarded transition",
+      workflow.includes("BEGIN IMMEDIATE") &&
+        workflow.includes("WHERE id = ? AND requester_id = ? AND status = 'active'"),
+    );
+    // First-valid-donor-wins must be the DATABASE's decision, so the index has
+    // to be scoped to the request alone.
+    ok(
+      "first-valid-donor-wins is enforced by an index on the request, not the pair",
+      /ON donor_alerts\(request_id\) WHERE response = 'accepted'/.test(
+        readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8"),
+      ),
+    );
+    ok(
+      "no 'accepted' request status is introduced anywhere",
+      !/status\s*[:=]\s*"accepted"/.test(workflow) &&
+        !/BloodRequestStatus[^;]*accepted/.test(requestAction),
+    );
+
+    // The donor's action must go through the workflow, and the requester's
+    // lifecycle actions must not be a bare table write any more.
+    ok(
+      "a donor's response is recorded by the server workflow",
+      alertAction.includes('rpc("mark_alert_responded"'),
+    );
+    ok(
+      "cancelling and fulfilling go through the guarded transition, not a raw update",
+      (requestAction.match(/rpc\("set_request_status"/g) ?? []).length === 2 &&
+        !/from\("blood_requests"\)\s*\n?\s*\.update/.test(requestAction),
+    );
+    // A request's fields are validated server-side before anything is written.
+    ok(
+      "request fields are re-validated on the server before the write",
+      requestAction.includes("bloodRequestFieldErrors("),
+    );
+  }
+
   // The redirect target must come from the incoming request, never a baked-in
   // localhost, or every production email link would point at a developer's
   // machine.
