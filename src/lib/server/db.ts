@@ -1,9 +1,11 @@
 /**
  * Server-side SQLite — the single source of truth.
  *
- * Uses Node's BUILT-IN `node:sqlite` (Node >= 22.5), so RaktSetu needs no
- * database driver, no connection string and no external service. The database
- * is a single file on the server's disk; the browser never sees it.
+ * Uses Node's BUILT-IN `node:sqlite` (Node >= 22.13, the first release that
+ * loads it without the `--experimental-sqlite` flag this module never passes),
+ * so RaktSetu needs no database driver, no connection string and no external
+ * service. The database is a single file on the server's disk; the browser
+ * never sees it.
  *
  * The schema mirrors the entity model the application already uses, so the
  * data-access layer maps one-to-one and existing pages/actions keep working

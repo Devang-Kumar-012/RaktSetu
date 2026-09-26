@@ -23,7 +23,7 @@ import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/utils";
 import { useClientAuth } from "@/components/local/useClientAuth";
 import { LiveRefresh } from "@/components/notifications/LiveRefresh";
-import type { LocalClient } from "@/lib/local/adapter";
+import type { BrowserDataClient } from "@/lib/supabase/client";
 import type { AuthenticatedUser } from "@/types";
 import type {
   CampusDrive,
@@ -34,9 +34,10 @@ import type {
   DriveRegistration,
 } from "@/types";
 
-// NOTE: this page is a Client Component (the data lives in the visitor's
-// localStorage), so it cannot export `metadata` itself — a client module may
-// not export it. The title lives in ./layout.tsx instead.
+// NOTE: this page is a Client Component (it runs its loader after sign-in,
+// once the session guard has resolved), so it cannot export `metadata`
+// itself — a client module may not export it. The title lives in
+// ./layout.tsx instead.
 
 type AlertCard = {
   row: DonorAlertRow;
@@ -58,16 +59,16 @@ interface DonorDashboardData {
 }
 
 /**
- * Reads the donor's own dashboard data from the local store, in the BROWSER.
+ * Reads the donor's own dashboard data, in the BROWSER.
  *
- * This used to be a Server Component awaiting `createSupabaseServerClient()`.
- * That could never work once the data moved into localStorage: the server has no
- * localStorage, so every query returned empty and the page rendered its empty
- * state forever. The server still re-checks every donor action; this only
- * decides what the screen shows.
+ * The chain below is unchanged from when it read the visitor's localStorage,
+ * but it now crosses a server action: the queries are collected and executed
+ * against SQLite by a caller derived from the HTTP-only session cookie. The
+ * server still re-checks every donor action; this only decides what the
+ * screen shows.
  */
 async function loadDonorDashboard(
-  supabase: LocalClient,
+  supabase: BrowserDataClient,
   user: AuthenticatedUser
 ): Promise<DonorDashboardData> {
   const { data: donor } = await supabase

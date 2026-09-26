@@ -91,6 +91,7 @@ import {
   ELIGIBILITY_DISCLAIMER,
 } from "../src/lib/donation-config";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import type { DonorProfile, NotificationRow } from "../src/types";
 
@@ -1017,6 +1018,37 @@ eq(
   ok("netlify.toml builds with the project build command", netlify.includes('command = "npm run build"'));
   ok("netlify.toml publishes the Next.js output", netlify.includes('publish = ".next"'));
   ok("netlify.toml installs the Next.js runtime plugin", netlify.includes("@netlify/plugin-nextjs"));
+
+  // --- The runtime that can open the database --------------------------------
+  // The whole server data layer is Node's builtin `node:sqlite`, resolved by a
+  // bare `require` in src/lib/server/db.ts with NO --experimental-sqlite flag,
+  // because nothing in a serverless request path can set one. The builtin
+  // exists from 22.5.0 but is only available UNFLAGGED from 22.13.0, so the
+  // pinned runtime sets the floor. This shipped broken once already: the pin
+  // read "20", so every authenticated page threw on first database access in
+  // production while `next dev` on a modern local Node kept working and hid it.
+  const pinnedNode = /NODE_VERSION\s*=\s*"([^"]+)"/.exec(netlify)?.[1] ?? "";
+  const pinnedMajor = Number(/^v?(\d+)/.exec(pinnedNode)?.[1] ?? Number.NaN);
+  ok(
+    `netlify.toml pins a Node major with node:sqlite unflagged — needs >= 22, found "${pinnedNode || "nothing"}"`,
+    Number.isFinite(pinnedMajor) && pinnedMajor >= 22,
+  );
+  // And the interpreter running this suite is the thing a contributor, the
+  // Netlify build and `next start` all use, so probe the exact resolution path
+  // db.ts takes. This asserts the RUNTIME, not the database: check-sqlite.ts
+  // is the suite that covers the database itself.
+  let sqliteLoadsUnflagged = false;
+  try {
+    sqliteLoadsUnflagged =
+      typeof createRequire(join(ROOT, "scripts") + "/")("node:sqlite")
+        .DatabaseSync === "function";
+  } catch {
+    sqliteLoadsUnflagged = false;
+  }
+  ok(
+    `node:sqlite loads with no flag on the running Node — needs >= 22.13, found ${process.version}`,
+    sqliteLoadsUnflagged,
+  );
 
   // The redirect target must come from the incoming request, never a baked-in
   // localhost, or every production email link would point at a developer's

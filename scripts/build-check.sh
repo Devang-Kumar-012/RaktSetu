@@ -13,7 +13,7 @@ echo "RULE_CHECKS=PASS"
 
 echo ""
 echo "== SQL/TS compatibility checks =="
-if ! sh scripts/check-sql-sync.sh; then
+if ! npx tsx scripts/check-sql-sync.ts; then
   echo "SQL_SYNC=FAIL"
   exit 1
 fi

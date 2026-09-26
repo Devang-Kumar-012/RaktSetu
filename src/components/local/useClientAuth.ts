@@ -73,8 +73,9 @@ export function useClientAuth<T>(
           setState({ status: "suspended" });
           return;
         }
-        // These pages' own payloads still come from the local adapter;
-        // migrating them is a separate step that this guard must not block on.
+        // The payload read below crosses a server action, which re-derives
+        // the caller from the session cookie. This guard decides WHO is
+        // signed in; the server decides what they may read.
         const supabase = createSupabaseBrowserClient();
         const loaded = await load(supabase, user);
         if (live) setState({ status: "ready", user, data: loaded });

@@ -15,6 +15,7 @@ const require_sha = (t: string) => createHash("sha256").update(t).digest("hex");
 
 import { getDb, closeDb, DB_FILE } from "../src/lib/server/db";
 import { createSqlClient } from "../src/lib/server/sql-adapter";
+import { runDashboardRpc } from "../src/lib/server/sql-dashboard";
 import { hashPassword, verifyPassword } from "../src/lib/server/password";
 import {
   createUser, authenticate, createSession, getUserForToken, revokeSession,
@@ -254,6 +255,99 @@ async function sessionChecks() {
   });
 }
 
+
+/**
+ * The ACTION-BOUNDARY shape guard.
+ *
+ * `node:sqlite` hands back rows with a NULL prototype, which React's flight
+ * serializer refuses to cross into a Client Component ("Classes or null
+ * prototypes are not supported"). A projection returning raw `.all()` rows
+ * passes every value assertion and then dies on the wire ONLY once it has
+ * real data — so this runs all five projections with data present and checks
+ * the shape, which is exactly where the browser breaks.
+ */
+async function projectionShapeChecks() {
+  /** Every row must be rooted on Object.prototype or flight rejects it. */
+  const plain = (rows: unknown, label: string) => {
+    assert.ok(Array.isArray(rows), `${label} must return an array`);
+    for (const row of rows) {
+      assert.equal(
+        Object.getPrototypeOf(row),
+        Object.prototype,
+        `${label} returned a null-prototype row — the action wire refuses it`,
+      );
+    }
+  };
+
+  await check("donor_active_alerts rows are plain objects (flight-safe)", async () => {
+    const r = await runDashboardRpc("donor_active_alerts", { p_limit: 50 }, { id: DN, role: "donor" });
+    assert.equal(r.error, null);
+    plain(r.data, "donor_active_alerts");
+    assert.ok((r.data as unknown[]).length >= 1, "the seeded accepted alert must appear");
+  });
+
+  await check("donor_donation_history rows are plain objects (flight-safe)", async () => {
+    getDb()
+      .prepare(
+        `INSERT INTO donations (id, donor_id, request_id, drive_id, donated_on, blood_component, units, created_at)
+         VALUES ('don-shape-1', ?, 'req-1', NULL, ?, 'whole_blood', 2, ?)`,
+      )
+      .run(DN, now().slice(0, 10), now());
+    const r = await runDashboardRpc("donor_donation_history", { p_limit: 20 }, { id: DN, role: "donor" });
+    assert.equal(r.error, null);
+    plain(r.data, "donor_donation_history");
+    assert.ok((r.data as unknown[]).length >= 1, "the seeded donation must appear");
+  });
+
+  await check("donor_recognition rows are plain objects (flight-safe)", async () => {
+    const r = await runDashboardRpc("donor_recognition", {}, { id: DN, role: "donor" });
+    assert.equal(r.error, null);
+    plain(r.data, "donor_recognition");
+    const rows = r.data as Record<string, unknown>[];
+    assert.ok(rows.length >= 1, "recognition must return its summary row");
+    assert.ok(Number(rows[0].total_donations) >= 1, "recognition counts the seeded donation");
+  });
+
+  await check("reveal_accepted_donors rows are plain objects (flight-safe)", async () => {
+    // The reveal projection joins the donor's profile — the fixture donor has
+    // no profile row until this one exists.
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO donor_profiles
+           (user_id, blood_group, locality, phone, latitude, longitude,
+            last_donation_date, availability, donation_count, created_at, updated_at)
+         VALUES (?, 'O+', 'Central', '9000000000', NULL, NULL, NULL, 'available', 0, ?, ?)`,
+      )
+      .run(DN, now(), now());
+    const r = await runDashboardRpc(
+      "reveal_accepted_donors",
+      { p_request_ids: ["req-1"] },
+      { id: RQ, role: "requester" },
+    );
+    assert.equal(r.error, null);
+    plain(r.data, "reveal_accepted_donors");
+    assert.equal((r.data as unknown[]).length, 1, "the accepted donor must be revealed");
+  });
+
+  await check("requester_ring_status rows are plain objects (flight-safe)", async () => {
+    getDb()
+      .prepare(
+        `INSERT OR REPLACE INTO ring_progress
+           (request_id, ring_index, started_at, last_advanced_at, finished_at, outcome)
+         VALUES ('req-1', 1, ?, ?, NULL, NULL)`,
+      )
+      .run(now(), now());
+    const r = await runDashboardRpc(
+      "requester_ring_status",
+      { p_request_ids: ["req-1"] },
+      { id: RQ, role: "requester" },
+    );
+    assert.equal(r.error, null);
+    plain(r.data, "requester_ring_status");
+    assert.equal((r.data as unknown[]).length, 1, "ring progress must appear");
+  });
+}
+
 async function report() {
   closeDb();
   for (const s of ["", "-wal", "-shm"]) if (existsSync(DB + s)) rmSync(DB + s);
@@ -353,6 +447,7 @@ async function main() {
 
   await dataChecks();
   await raceChecks();
+  await projectionShapeChecks();
   await sessionChecks();
   await report();
 }

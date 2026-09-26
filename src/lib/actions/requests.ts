@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -18,6 +20,21 @@ import { safetyLimitMessage } from "@/lib/safety";
  *  which of the two happened. */
 const RACE_MESSAGE =
   "This request changed just now — it may already be closed. Refresh the page to see its current state.";
+
+/**
+ * How many rows an UPDATE actually changed.
+ *
+ * The SQLite adapter answers `{ updated: n }`; the legacy local adapter
+ * answered an array of the rows it touched. The race guard is a COUNT, so it
+ * has to accept either shape: testing `data.length === 0` alone meant the
+ * SQLite path looked like a successful write even when it matched zero rows,
+ * and "someone closed this first" could never be shown.
+ */
+function affectedRows(data: unknown): number {
+  if (Array.isArray(data)) return data.length;
+  const updated = (data as { updated?: unknown } | null)?.updated;
+  return typeof updated === "number" ? updated : 0;
+}
 
 /**
  * Creates a blood request. Server-side auth + role enforcement: only an
@@ -85,8 +102,18 @@ export async function createBloodRequest(
   }
 
   const supabase = await createSupabaseServerClient();
+  // The payload is written in the STORE's column names, not the form's.
+  // `blood_requests` keeps the requester's own contact as requester_name /
+  // requester_phone and the approximate hospital pin as latitude / longitude,
+  // and its `id` has no default. The adapter drops keys the table does not
+  // have, so a payload naming contact_name / hospital_latitude silently lost
+  // every one of these columns — the NOT NULLs then refused the row outright
+  // and "create a request" could never succeed.
   const { error: dbError } = await supabase.from("blood_requests").insert({
+    id: randomUUID(),
     requester_id: session.user.id,
+    requester_name: contactName,
+    requester_phone: contactPhone,
     blood_group: bloodGroup,
     blood_component: bloodComponent as BloodComponent,
     units: Number(units),
@@ -94,11 +121,9 @@ export async function createBloodRequest(
     hospital_locality: hospitalLocality,
     urgency: urgency as RequestUrgency,
     required_by: new Date(requiredBy).toISOString(),
-    contact_name: contactName,
-    contact_phone: contactPhone,
     note: note === "" ? null : note,
-    hospital_latitude: hospitalCoords?.lat ?? null,
-    hospital_longitude: hospitalCoords?.lng ?? null,
+    latitude: hospitalCoords?.lat ?? null,
+    longitude: hospitalCoords?.lng ?? null,
   });
 
   if (dbError) {
@@ -150,7 +175,7 @@ export async function cancelBloodRequest(
     console.error("cancelBloodRequest failed:", dbError.message);
     return { ok: false, error: "Could not cancel the request. Please try again." };
   }
-  if (!data || data.length === 0) {
+  if (affectedRows(data) === 0) {
     return { ok: false, error: RACE_MESSAGE };
   }
 
@@ -201,7 +226,7 @@ export async function fulfillBloodRequest(
     console.error("fulfillBloodRequest failed:", dbError.message);
     return { ok: false, error: "Could not update the request. Please try again." };
   }
-  if (!data || data.length === 0) {
+  if (affectedRows(data) === 0) {
     return { ok: false, error: RACE_MESSAGE };
   }
 

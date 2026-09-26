@@ -26,13 +26,13 @@ import {
 import { RequestCountdown } from "@/components/requests/RequestCountdown";
 import { ALERT_RINGS_KM, ALERT_WINDOW_MINUTES } from "@/lib/constants";
 import { useClientAuth } from "@/components/local/useClientAuth";
-import type { LocalClient } from "@/lib/local/adapter";
+import type { BrowserDataClient } from "@/lib/supabase/client";
 import type { AuthenticatedUser } from "@/types";
 import type { AcceptedDonor, BloodRequest, RequesterRingStatus } from "@/types";
 
 // NOTE: a Client Component may not export `metadata` or `dynamic`; the route
-// title lives in ./layout.tsx. This page must be a client component because the
-// data lives in the visitor's localStorage, which the server cannot read.
+// title lives in ./layout.tsx. This page must be a client component because it
+// runs its loader after the client session guard has resolved.
 
 interface RequesterDashboardData {
   firstName: string;
@@ -50,14 +50,51 @@ interface RequesterDashboardData {
 }
 
 /**
- * Reads the requester's OWN requests from the local store, in the browser.
+ * A stored request row as the dashboard's `BloodRequest` contract.
  *
- * The `.eq("requester_id", user.id)` on every query is what keeps one requester
- * from ever seeing another's rows: the store scopes every read to the signed-in
- * user, and the filter is stated explicitly rather than relied on implicitly.
+ * The store keeps the requester's own contact as `requester_name` /
+ * `requester_phone` and the hospital pin as `latitude` / `longitude`, while
+ * the UI and the `BloodRequest` interface name them `contact_*` /
+ * `hospital_*`. Translating in ONE place is what stops the card from reading
+ * `undefined` — which is `!== null`, so it would claim every request carries
+ * a map pin when it does not.
+ *
+ * `fulfilled_at` / `cancelled_at` are null because SQLite records the outcome
+ * in `status` alone; nothing on this page reads them, and inventing a
+ * timestamp would be worse than showing none.
+ */
+type StoredRequestRow = Omit<
+  BloodRequest,
+  "contact_name" | "contact_phone" | "hospital_latitude" | "hospital_longitude" | "fulfilled_at" | "cancelled_at"
+> & {
+  requester_name?: string | null;
+  requester_phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+function toBloodRequest(row: StoredRequestRow): BloodRequest {
+  return {
+    ...row,
+    contact_name: row.requester_name ?? "",
+    contact_phone: row.requester_phone ?? "",
+    hospital_latitude: row.latitude ?? null,
+    hospital_longitude: row.longitude ?? null,
+    fulfilled_at: null,
+    cancelled_at: null,
+  };
+}
+
+/**
+ * Reads the requester's OWN requests, in the browser.
+ *
+ * The chain is unchanged from when it read the visitor's localStorage: it now
+ * crosses a server action, where the caller is derived from the HTTP-only
+ * session cookie and `.eq("requester_id", user.id)` is ANDed in again by the
+ * server — so the scope holds even if this payload said otherwise.
  */
 async function loadRequesterDashboard(
-  supabase: LocalClient,
+  supabase: BrowserDataClient,
   user: AuthenticatedUser
 ): Promise<RequesterDashboardData> {
   const firstName = user.full_name.trim().split(" ")[0];
@@ -81,9 +118,9 @@ async function loadRequesterDashboard(
     .order("created_at", { ascending: false })
     .limit(10);
 
-  const active = ((activeRows as BloodRequest[]) ?? []).filter(
-    (r) => r.status === "active"
-  );
+  const active = ((activeRows as StoredRequestRow[]) ?? [])
+    .filter((r) => r.status === "active")
+    .map(toBloodRequest);
 
   // History: filtered, sorted and paginated over the caller's OWN rows only.
   let historyQuery = supabase
@@ -105,7 +142,7 @@ async function loadRequesterDashboard(
 
   // "Most urgent first" ranks critical > urgent > routine within the page
   // (small bounded set — the store already filtered and paginated it).
-  const historyAll = ((historyRows as BloodRequest[]) ?? []).slice();
+  const historyAll = ((historyRows as StoredRequestRow[]) ?? []).map(toBloodRequest);
   if (filters.sort === "urgent") {
     historyAll.sort(
       (a, b) =>
@@ -166,8 +203,11 @@ async function loadRequesterDashboard(
     active,
     historyAll,
     historyCount,
-    fulfilledCount,
-    totalCount,
+    // A head-count is `null` only when the read failed. The sidebar must
+    // still render a number, and "0" is the honest answer for a store with
+    // no matching rows.
+    fulfilledCount: fulfilledCount ?? 0,
+    totalCount: totalCount ?? 0,
     filters,
     filtering,
     acceptedByRequest,

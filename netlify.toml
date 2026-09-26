@@ -13,7 +13,15 @@
   publish = ".next"
 
 [build.environment]
-  NODE_VERSION = "20"
+  # The server data layer is Node's built-in `node:sqlite`
+  # (src/lib/server/db.ts), resolved with a bare require and NO
+  # --experimental-sqlite flag — nothing in a serverless request path can set
+  # one. That builtin exists from Node 22.5.0 but is only available UNFLAGGED
+  # from 22.13.0, so this pin must never drop below 22: on an older runtime
+  # every authenticated page throws on first database access, while `next dev`
+  # on a modern local Node keeps working and hides it until deploy.
+  # scripts/check-invariants.ts asserts the floor; keep the two in step.
+  NODE_VERSION = "22"
 
 # Next.js on Netlify needs this so client-side navigation requests are rewritten
 # to the SSR server instead of 404ing, and middleware runs at the edge.
