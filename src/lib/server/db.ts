@@ -268,6 +268,86 @@ export async function initializeDatabase(): Promise<{ ok: true }> {
   return { ok: true };
 }
 
+let schemaPromise: Promise<void> | null = null;
+
+/**
+ * MAKE SURE THE SCHEMA EXISTS, ONCE PER PROCESS, BEFORE ANY QUERY RUNS.
+ *
+ * WHY THIS EXISTS — this is a production bug that shipped.
+ *
+ * On the hosted deployment the database was NEVER migrated, so the first write
+ * failed with
+ *
+ *   SQLITE_ERROR: no such table: users
+ *
+ * and registration returned a generic "an unexpected server error occurred"
+ * (REG-…) to the user. The cause was structural, not a bad query: the only code
+ * that ran the migration was `scripts/db-init.ts` behind the `db:init` npm
+ * script, and the only thing that invoked it was the Dockerfile
+ * (`db-init` before `next start`). When the deployment moved to a serverless
+ * host whose `buildCommand` is just `next build`, that step vanished and
+ * nothing replaced it. A brand-new hosted database is empty, and an empty
+ * database plus a plain `INSERT` is a RUNTIME error, not a build error — so the
+ * deployment looked completely healthy while being unable to register anyone.
+ *
+ * The lesson: schema creation cannot depend on a build or start hook that some
+ * future host may not have. It must be a property of CONNECTING, so the driver
+ * now performs it, exactly once, before the first query reaches the caller.
+ *
+ * WHY THE FAST PATH
+ *
+ * Re-running the full migration on every cold start would add several round
+ * trips to the first request of every serverless instance. `migrate()` seeds
+ * `platform_settings` at its very END, after all DDL, so that row is a reliable
+ * "the migration completed" marker. One primary-key read skips the work; any
+ * less-complete database falls through to the full idempotent migration.
+ *
+ * WHY A MEMOISED PROMISE
+ *
+ * Concurrent cold starts must share ONE migration instead of racing to run the
+ * same DDL. On failure the memo is cleared so a transient error cannot
+ * permanently poison the instance.
+ *
+ * WHY `db` IS A PARAMETER
+ *
+ * `driver.ts` calls this during connection setup and cannot statically import
+ * this module (that would be a cycle). Passing the already-open driver lets the
+ * bootstrap finish without re-entering `getDriver()`.
+ */
+export async function ensureSchema(db?: Driver): Promise<void> {
+  if (!schemaPromise) {
+    schemaPromise = (async () => {
+      const conn = db ?? (await getDriver());
+      // Fast path. This MUST tolerate the table being absent: on a brand-new
+      // hosted database the probe itself raises "no such table:
+      // platform_settings", and treating that as fatal would merely replace one
+      // failure ("no such table: users") with another instead of migrating.
+      // "Table missing" is the answer "not migrated yet", not an error.
+      let migrated = false;
+      try {
+        const seeded = await conn.queryOne<{ id: number }>(
+          "SELECT id FROM platform_settings WHERE id = 1",
+        );
+        migrated = !!seeded;
+      } catch {
+        migrated = false;
+      }
+      if (migrated) return;
+      await migrate(conn);
+    })().catch((err) => {
+      // Do not cache a failure: the next request should get a real attempt.
+      schemaPromise = null;
+      throw err;
+    });
+  }
+  await schemaPromise;
+}
+
+/** Forget the memoised migration. For tests that reset the database. */
+export function resetSchemaMemo(): void {
+  schemaPromise = null;
+}
+
 /** True when the configured database answers. Used by /api/health. */
 export async function isDatabaseOperational(): Promise<boolean> {
   try {

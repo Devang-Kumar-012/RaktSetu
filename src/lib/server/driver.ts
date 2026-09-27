@@ -344,11 +344,9 @@ export function getDriver(): Promise<Driver> {
   if (!url) {
     // The local file backend is synchronous to construct, but it is returned
     // through a promise so every caller has exactly one shape to await.
-    active ??= Promise.resolve(getLocalDriver());
-    return active;
-  }
-  if (!active) {
-    active = getRemoteDriver(url).catch((err) => {
+    active ??= Promise.resolve(getLocalDriver()).then(bootstrapSchema);
+  } else if (!active) {
+    active = getRemoteDriver(url).then(bootstrapSchema).catch((err) => {
       // A failed attempt must not be cached forever, or one transient outage at
       // boot would brick the process with no way to recover.
       active = null;
@@ -356,6 +354,26 @@ export function getDriver(): Promise<Driver> {
     });
   }
   return active;
+}
+
+/**
+ * Create the schema before the first query reaches the caller.
+ *
+ * A hosted database arrives EMPTY, and an empty database turns the first write
+ * into `SQLITE_ERROR: no such table: users` — a RUNTIME error, so the build stays
+ * green and the deployment looks healthy while registration is broken. Doing it
+ * here makes "connected" mean "connected to a usable schema", which is the only
+ * way that stays true on a host with no start-up hook of its own.
+ *
+ * `./db` is imported DYNAMICALLY on purpose: `db.ts` statically imports this
+ * module for the driver type and the connection accessor, so a static
+ * back-import would be a cycle. The already-open driver is passed in, so
+ * `ensureSchema` never re-enters `getDriver()`.
+ */
+async function bootstrapSchema(d: Driver): Promise<Driver> {
+  const { ensureSchema } = await import("./db");
+  await ensureSchema(d);
+  return d;
 }
 
 /** Which backend is configured, without opening anything. */
@@ -370,5 +388,14 @@ export async function closeDriver(): Promise<void> {
   active = null;
   remoteDriver = null;
   localDriver = null;
+  // The migration memo must go with the connection. A check that deletes the
+  // database file and then reopens it would otherwise be told "already
+  // migrated" and handed a connection to an empty file.
+  try {
+    const { resetSchemaMemo } = await import("./db");
+    resetSchemaMemo();
+  } catch {
+    // db.ts may not be loaded yet (nothing has connected). Nothing to reset.
+  }
 }
 
