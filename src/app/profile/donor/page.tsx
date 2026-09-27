@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { DonorProfileForm } from "@/components/profile/DonorProfileForm";
+import { DonorMotivation } from "@/components/donor/DonorMotivation";
 import { RemoveLocationButton } from "@/components/profile/RemoveLocationButton";
 import type { DonorProfile } from "@/types";
 
@@ -41,6 +42,10 @@ export default async function DonorProfilePage() {
       />
 
       <Section className="max-w-2xl">
+        {/* The same words the donor reads on /donor, placed here so the message
+            sits directly beside the form that completes the promise it makes. */}
+        <DonorMotivation glass={false} className="mb-8" />
+
         <Card className="p-6 sm:p-8">
           <DonorProfileForm donor={donorProfile} />
         </Card>
