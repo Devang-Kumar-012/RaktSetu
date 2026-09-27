@@ -40,19 +40,15 @@ import { hashPassword } from "./password";
  *  - A WRITABLE BUT EPHEMERAL directory (a container's /tmp) is worse. Writes
  *    would succeed, the user would be told they registered, and the account
  *    would silently disappear on the next cold start. So this module NEVER
- *    silently falls back to a temporary directory: a fake success that loses
- *    people's accounts is far worse than an honest failure.
+ *    falls back to a temporary directory: a fake success that loses people's
+ *    accounts is far worse than an honest failure.
  *
- * `process.cwd()/data` is therefore the only location used, which is correct for
- * a persistent Node host (a VM, a container with a mounted volume, a laptop).
- * `getDb()` proves it can actually write there before trusting it, and raises a
- * classified `DatabaseUnavailableError` when it cannot.
- *
- * There is deliberately NO environment lookup. The application is self-contained
- * and reads no configuration at all, an invariant asserted across every file in
- * `src/` by `scripts/check-invariants.ts`. Never sent to the browser.
+ * `RAKTSETU_DATA_DIR` (see DATA_DIR below) therefore points at a MOUNTED
+ * PERSISTENT VOLUME in production, and defaults to `./data` beside the app for
+ * local development. `getDb()` proves the directory can actually be written to
+ * before trusting it, and raises a classified `DatabaseUnavailableError` when
+ * it cannot. Never sent to the browser.
  */
-const DB_PATH = join(process.cwd(), "data", "raktsetu.db");
 
 /**
  * WHY THIS EXISTS
@@ -76,6 +72,27 @@ export type DatabaseUnavailableReason =
   | "sqlite-unavailable"
   /** The driver was present but refused to open the file. */
   | "open-failed";
+
+/**
+ * THE ONE OPTIONAL ENVIRONMENT VARIABLE.
+ *
+ * `RAKTSETU_DATA_DIR` names the directory holding `raktsetu.db`. In production it
+ * points at a MOUNTED PERSISTENT VOLUME (e.g. `/data`); unset, it falls back to
+ * `./data` beside the app, which is correct for a laptop or a VM checkout.
+ *
+ * It is read here and NOWHERE else. That restriction is deliberate and enforced
+ * by `scripts/check-invariants.ts`: an application whose only configuration is
+ * "where my data lives" cannot accumulate secrets, feature flags or client-exposed
+ * variables by accident. In particular the session cookie still derives `Secure`
+ * from the request's own protocol rather than from here.
+ *
+ * It is a server-side value. Nothing under this path is ever sent to the browser.
+ */
+const DATA_DIR =
+  process.env.RAKTSETU_DATA_DIR?.trim() || join(process.cwd(), "data");
+
+/** The absolute path of the SQLite file. Authoritative for the whole app. */
+const DB_PATH = join(DATA_DIR, "raktsetu.db");
 
 export class DatabaseUnavailableError extends Error {
   readonly reason: DatabaseUnavailableReason;
@@ -194,6 +211,43 @@ export function getDb(): DatabaseSync {
 export function closeDb(): void {
   db?.close();
   db = null;
+}
+
+/**
+ * PROVE THE DATABASE IS USABLE, WITHOUT DESTROYING ANYTHING.
+ *
+ * This is the production startup step, and it is deliberately the safest thing
+ * this module can do. Run against a FRESH volume it creates the directory, opens
+ * a brand-new file and applies the whole schema and migration set. Run against
+ * an EXISTING volume it opens that same file and re-applies the migrations, all
+ * of which are idempotent (`CREATE TABLE IF NOT EXISTS`, `INSERT OR IGNORE`,
+ * guarded column rebuilds), so:
+ *
+ *   - no account, request, donation or notification is ever dropped,
+ *   - no table is ever recreated because it "looked wrong",
+ *   - the demo administrator is re-seeded only if genuinely absent, and a
+ *     password changed through the app is never reset.
+ *
+ * It is safe to run on every boot. `getDb()` is lazy and already does exactly
+ * this work on first use; calling it at startup simply moves the work earlier,
+ * turning a first-request stall into a boot-time failure that is visible in the
+ * logs instead of a user staring at a stalled page.
+ */
+export function initializeDatabase(): { ok: true } {
+  assertStorageUsable(DATA_DIR);
+  getDb();
+  return { ok: true };
+}
+
+/** True when the directory is writable and the database answers. Used by /api/health. */
+export function isDatabaseOperational(): boolean {
+  try {
+    assertStorageUsable(DATA_DIR);
+    getDb().prepare("SELECT 1").get();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

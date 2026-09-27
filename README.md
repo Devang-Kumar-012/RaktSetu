@@ -313,22 +313,111 @@ schedule the ring engine already uses; unread ones are never deleted.
 
 - Next.js (App Router) + TypeScript
 - Tailwind CSS v4
-- Supabase (authentication + PostgreSQL with Row Level Security)
+- Server-side **SQLite** via Node's built-in `node:sqlite` (no driver, no connection
+  string, no external database service)
+- Server-side authentication with HTTP-only session cookies
+
+## Deployment
+
+RaktSetu's authoritative data is a single SQLite file. That one fact determines
+where it can and cannot run.
+
+**The database must live on a persistent, writable volume.** It is never in the
+build output, never in a temp directory, and never in the browser. A function-style
+serverless platform (Netlify, Vercel, Cloudflare Workers) has a read-only, ephemeral
+filesystem and therefore **cannot** host this application — a registration there
+fails because the file cannot be created. Netlify's `netlify.toml` was removed for
+exactly this reason.
+
+### Configuration
+
+One optional environment variable, and no secrets:
+
+| Variable | Purpose |
+| --- | --- |
+| `RAKTSETU_DATA_DIR` | Directory holding `raktsetu.db`. Must be a persistent, writable volume in production. Unset, it defaults to `./data`. |
+
+`src/lib/server/db.ts` is the only file in the application that reads
+`process.env`, and that is the only variable it reads. This is asserted by
+`npm run check:invariants`.
+
+### The container
+
+`Dockerfile` builds a production image that:
+
+- runs `next start` (never `next dev`),
+- initialises the database on the mounted volume **before** serving,
+- runs as a non-root user,
+- declares `/data` as a volume and points the app at it,
+- ships a `HEALTHCHECK` against `/api/health`, so a container that cannot write
+  its database fails loudly instead of serving 500s.
+
+### Deploying
+
+`render.yaml` is a complete blueprint: one web service, one persistent disk
+mounted at `/data`, and the health check wired up. Deploying is **New → Blueprint
+→ point at this repository**; Render provisions the service and the disk from the
+file. Any host that can mount a persistent disk and run a container works too.
+
+### One instance, on purpose
+
+`numInstances: 1` is a correctness requirement, not a scaling default. Two
+processes sharing one SQLite file over a network filesystem whose locking is not
+SQLite's can silently corrupt or diverge the database. If horizontal scale is ever
+needed, the data layer must move to a client/server database first — that is a
+deliberate, separate change, never a replica count.
+
+### Health check
+
+`GET /api/health` returns `200 {"status":"ok"}` when the process is up **and** the
+database opens, and `503 {"status":"unavailable"}` otherwise. It deliberately
+returns no filesystem path, schema, version or error text.
+
+### Database initialisation
+
+`npm run db:init` is idempotent and non-destructive. On a fresh volume it creates
+the directory, the database, the full schema and the demo administrator. On an
+existing volume it re-opens the same file and re-applies the (idempotent)
+migrations — it never drops a table, never deletes an account, and never resets a
+password. It is safe on every boot, and the container runs it automatically.
+
+### Verifying persistence
+
+`npm run check:persistence` proves the invariant that actually matters, rather
+than trusting that a build passed:
+
+```
+CREATE DATA → RESTART SERVER → DATA STILL EXISTS
+```
+
+It boots the real production server against a persistent directory, registers an
+account over HTTP, stops the process, restarts it on the same directory, and
+asserts the account, its role membership and a request row are all still there,
+that login still works, that a duplicate is still refused, and that the database
+file was never recreated.
 
 ## Getting started
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in your Supabase URL and anon key
 npm run dev
 ```
+
+No credentials and no environment file are needed. The database is created and
+migrated automatically on first use.
 
 ## Scripts
 
 - `npm run dev` — start the dev server
 - `npm run build` — production build
+- `npm run start` — production server (`next start`)
+- `npm run db:init` — create/migrate the database (idempotent, non-destructive)
+- `npm run serve:production` — `db:init` then `start`; what the container runs
 - `npm run typecheck` — TypeScript check
 - `npm run lint` — lint
+- `npm run check:persistence` — proves data survives a production server restart
+- `npm run check:registration` — registration failure taxonomy and secret redaction
+- `npm run check:glass` — proves the glassmorphism renders (translucent + blurred)
 - `npm run check:rules` — application-rule checks (geo/distance, blood-group
   compatibility incl. a TS↔SQL mirror comparison, donor availability/cooldown).
   No database or credentials needed.

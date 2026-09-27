@@ -135,6 +135,24 @@ function ok(label: string, condition: boolean): void {
   else failures.push(label);
 }
 
+/**
+ * Strip comments from a config file so prose cannot satisfy — or trip — a check.
+ *
+ * The Dockerfile and the blueprint both carry long comments that deliberately
+ * MENTION the things they forbid ("never `next dev`", "no secrets"). Without
+ * this, a check for "does not contain next dev" would fail on the sentence
+ * explaining that it must not, which is exactly backwards.
+ *
+ * Only `#` comments are removed. That covers both formats, and it deliberately
+ * does NOT strip `//`, which would eat the `http://` in the health-check URL and
+ * silently turn a real check into a false failure.
+ */
+function stripNonCode(text: string): string {
+  return text
+    .replace(/#[^\n]*/g, " ") // Dockerfile and YAML line comments
+    .replace(/\/\*[\s\S]*?\*\//g, " "); // block comments, in case one is added
+}
+
 /** Asserts a validator ACCEPTS a value (returns null / no error). */
 function accepts(label: string, error: string | null): void {
   if (error === null) passed++;
@@ -876,7 +894,13 @@ eq(
 // These are the failures that produced a live site where nobody could log in.
 // They are cheap to check and expensive to discover in production.
 {
-  const netlify = readFileSync(join(ROOT, "netlify.toml"), "utf8");
+  // Deployment configuration. Netlify's netlify.toml has been REMOVED: its
+  // function runtime has a read-only, ephemeral filesystem and cannot host the
+  // app's SQLite file at all. The deployment is now a container with a mounted
+  // persistent volume, declared by the Dockerfile and render.yaml. These checks
+  // assert that arrangement cannot silently regress into an ephemeral one.
+  const dockerfile = readFileSync(join(ROOT, "Dockerfile"), "utf8");
+  const renderYaml = readFileSync(join(ROOT, "render.yaml"), "utf8");
   const envExample = readFileSync(join(ROOT, ".env.example"), "utf8");
   const middleware = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
   const callback = readFileSync(join(ROOT, "src/app/auth/callback/route.ts"), "utf8");
@@ -912,11 +936,35 @@ eq(
     "no source file reads a Supabase or cron environment variable",
     !/NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE_ROLE|CRON_SECRET/.test(ALL_SRC),
   );
-  // The app is self-contained, so NO source file may read process.env at all.
-  // This replaces an earlier check that only inspected the (now removed)
-  // src/lib/env.ts shim, which was dead code. Scanning every file is both
-  // stronger and immune to that shim coming back.
-  ok("no source file reads process.env", !/process\.env/.test(ALL_SRC));
+  // The app reads exactly ONE environment variable, in exactly ONE file, and it
+  // is not a secret. This replaces the previous blanket "no source file reads
+  // process.env", which is no longer true: production must be told WHERE THE
+  // PERSISTENT VOLUME IS MOUNTED. The restriction is now sharper rather than
+  // looser — the variable is named, the file is named, and anything else fails.
+  // That is what stops configuration, and secrets, from accumulating.
+  const envReaders = walk(join(ROOT, "src"))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .filter((f) => /process\.env/.test(stripJsComments(readFileSync(f, "utf8"))))
+    .map((f) => f.replace(`${join(ROOT, "src")}/`, "src/"));
+  ok(
+    "exactly one source file reads process.env, and it is the database module",
+    envReaders.length === 1 && envReaders[0] === "src/lib/server/db.ts",
+  );
+  if (envReaders.length !== 1 || envReaders[0] !== "src/lib/server/db.ts") {
+    failures.push(`   → env readers were: ${envReaders.join(", ") || "none"}`);
+  }
+  ok(
+    "the database module reads only RAKTSETU_DATA_DIR",
+    (readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8")
+      .match(/process\.env\.([A-Z0-9_]+)/g) ?? [])
+      .every((m) => m === "process.env.RAKTSETU_DATA_DIR") &&
+      /RAKTSETU_DATA_DIR/.test(readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8")),
+  );
+  ok(
+    "no source file ever reads a NEXT_PUBLIC_ or secret-shaped variable",
+    !/process\.env\.[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD|CREDENTIAL)/.test(ALL_SRC) &&
+      !/NEXT_PUBLIC_/.test(ALL_SRC),
+  );
   ok(
     "no source file hard-codes a localhost or loopback URL",
     !/https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)/.test(ALL_SRC),
@@ -1009,32 +1057,77 @@ eq(
     );
   }
 
-  // Deployment config must carry no credentials of any kind.
+  // Deployment config must carry no credentials of any kind. Comments are
+  // stripped first: prose that MENTIONS `next dev` or `process.env` in order to
+  // forbid them must not be mistaken for the thing being forbidden.
+  const dockerCode = stripNonCode(dockerfile);
+  const renderCode = stripNonCode(renderYaml);
   ok(
-    "netlify.toml contains no secret-like assignment",
-    !/eyJ[A-Za-z0-9_-]{10,}/.test(netlify) && // JWT-shaped anon/service key
-    !/service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(netlify),
+    "deployment config contains no secret-like assignment",
+    ![dockerCode, renderCode].some(
+      (f) =>
+        /eyJ[A-Za-z0-9_-]{10,}/.test(f) || // JWT-shaped anon/service key
+        /service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(f),
+    ),
   );
-  ok("netlify.toml builds with the project build command", netlify.includes('command = "npm run build"'));
-  ok("netlify.toml publishes the Next.js output", netlify.includes('publish = ".next"'));
-  ok("netlify.toml installs the Next.js runtime plugin", netlify.includes("@netlify/plugin-nextjs"));
+  ok("the Dockerfile builds with the project build command", dockerCode.includes("npm run build"));
+  ok("the container runs the PRODUCTION server, never next dev", !/next\s+dev/.test(dockerCode));
+  ok("the container initialises the database before serving",
+    /db-init/.test(dockerCode) &&
+      dockerCode.indexOf("db-init") < dockerCode.indexOf("next start"));
+  ok("the container mounts a data volume and points the app at it",
+    /VOLUME\s+\/data/.test(dockerCode) && /RAKTSETU_DATA_DIR=\/data/.test(dockerCode));
+  ok("the container health check hits the health endpoint",
+    dockerCode.includes("/api/health"));
+  ok("the container binds all interfaces on $PORT", /-H 0\.0\.0\.0/.test(dockerCode));
+  ok("the deployable Node base image is 22 (node:sqlite needs >= 22.13)",
+    /FROM node:22/.test(dockerCode) && !/FROM node:(1[0-9]|20)\b/.test(dockerCode));
+
+  // The platform blueprint must provision a REAL persistent disk, and must keep
+  // a single instance: two processes sharing one SQLite file over a network
+  // filesystem can silently corrupt or diverge the database.
+  ok("render.yaml mounts a persistent disk",
+    /^\s*disk:\s*$/m.test(renderCode) && /mountPath:\s*\/data/.test(renderCode) && /sizeGB:/.test(renderCode));
+  ok("render.yaml points the app at that disk",
+    /RAKTSETU_DATA_DIR/.test(renderCode) && /value:\s*\/data/.test(renderCode));
+  ok("render.yaml pins exactly ONE instance (SQLite is single-writer)",
+    /numInstances:\s*1/.test(renderCode) && !/numInstances:\s*[2-9]/.test(renderCode));
+  ok("render.yaml uses the health endpoint as the health check",
+    /healthCheckPath:\s*\/api\/health/.test(renderCode));
+  ok("render.yaml pins a Node with node:sqlite unflagged",
+    /NODE_VERSION/.test(renderCode) && /value:\s*"?2[2-9]/.test(renderCode));
+
+  // A netlify.toml must not come back: its runtime cannot persist the database.
+  ok(
+    "netlify.toml is gone — its runtime cannot persist the SQLite database",
+    !existsSync(join(ROOT, "netlify.toml")),
+  );
 
   // --- The runtime that can open the database --------------------------------
   // The whole server data layer is Node's builtin `node:sqlite`, resolved by a
-  // bare `require` in src/lib/server/db.ts with NO --experimental-sqlite flag,
-  // because nothing in a serverless request path can set one. The builtin
-  // exists from 22.5.0 but is only available UNFLAGGED from 22.13.0, so the
-  // pinned runtime sets the floor. This shipped broken once already: the pin
-  // read "20", so every authenticated page threw on first database access in
+  // bare `require` in src/lib/server/db.ts with NO --experimental-sqlite flag.
+  // The builtin exists from 22.5.0 but is only available UNFLAGGED from 22.13.0,
+  // so the deployed runtime sets the floor. This shipped broken once already: the
+  // pin read "20", so every authenticated page threw on first database access in
   // production while `next dev` on a modern local Node kept working and hid it.
-  const pinnedNode = /NODE_VERSION\s*=\s*"([^"]+)"/.exec(netlify)?.[1] ?? "";
-  const pinnedMajor = Number(/^v?(\d+)/.exec(pinnedNode)?.[1] ?? Number.NaN);
+  // The floor is now asserted in THREE places, and all three must agree.
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+    engines?: { node?: string };
+  };
+  const engineFloor = Number(/(\d+)\./.exec(pkg.engines?.node ?? "")?.[1] ?? Number.NaN);
   ok(
-    `netlify.toml pins a Node major with node:sqlite unflagged — needs >= 22, found "${pinnedNode || "nothing"}"`,
-    Number.isFinite(pinnedMajor) && pinnedMajor >= 22,
+    `package.json engines.node requires Node >= 22 — found "${pkg.engines?.node ?? "nothing"}"`,
+    Number.isFinite(engineFloor) && engineFloor >= 22,
+  );
+  const renderNodeBlock = /NODE_VERSION[\s\S]{0,80}/.exec(renderYaml)?.[0] ?? "";
+  const renderNode = /"?([0-9][0-9.]*)/.exec(renderNodeBlock.replace(/NODE_VERSION[^\n]*/, ""))?.[1] ?? "";
+  const renderNodeMajor = Number(/^(\d+)/.exec(renderNode)?.[1] ?? Number.NaN);
+  ok(
+    `render.yaml pins a Node major with node:sqlite unflagged — needs >= 22, found "${renderNode || "nothing"}"`,
+    Number.isFinite(renderNodeMajor) && renderNodeMajor >= 22,
   );
   // And the interpreter running this suite is the thing a contributor, the
-  // Netlify build and `next start` all use, so probe the exact resolution path
+  // container build and `next start` all use, so probe the exact resolution path
   // db.ts takes. This asserts the RUNTIME, not the database: check-sqlite.ts
   // is the suite that covers the database itself.
   let sqliteLoadsUnflagged = false;
@@ -1337,18 +1430,30 @@ eq(
     !/Join RaktSetu|Sign\s?up|Sign\s?in/i.test(navbar),
   );
 
-  // The strongest deployment guarantee is that there is nothing to configure.
+  // The strongest deployment guarantee is that the ONLY configuration is WHERE
+  // THE DATA LIVES — there are still no secrets to supply.
   ok(
-    ".env.example assigns no variables",
-    !/^\s*[A-Z0-9_]+\s*=\s*\S/m.test(envExample),
+    ".env.example assigns no secret-bearing variables",
+    !/^\s*(NEXT_PUBLIC_|SUPABASE_|SECRET|PASSWORD|API_KEY|TOKEN)\S*\s*=/m.test(envExample),
   );
   ok(
-    ".env.example states the app needs no environment variables",
-    /no environment variables/i.test(envExample),
+    ".env.example documents the single data-directory variable",
+    /RAKTSETU_DATA_DIR/.test(envExample) && /persistent/i.test(envExample),
   );
   ok(
-    "netlify.toml assigns no environment variables",
-    !/NEXT_PUBLIC_|SUPABASE_|CRON_SECRET\s*=/.test(netlify),
+    "render.yaml supplies no secret-like variables",
+    !/NEXT_PUBLIC_|SUPABASE_|SECRET|PASSWORD|API_KEY|TOKEN\s*:/.test(renderYaml),
+  );
+  // The session cookie must keep deriving `Secure` from the request itself: an
+  // env-driven flag is one more thing that can be misconfigured into shipping a
+  // non-secure production cookie. Comments are stripped, because the module's own
+  // doc comment NAMES process.env in order to explain why it does not use it.
+  const cookieCode = stripJsComments(
+    readFileSync(join(ROOT, "src/lib/server/session-cookie.ts"), "utf8"),
+  );
+  ok(
+    "the session cookie still derives Secure from the request, not configuration",
+    cookieCode.includes("secure:") && !/process\.env/.test(cookieCode),
   );
 }
 

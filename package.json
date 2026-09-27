@@ -2,10 +2,15 @@
   "name": "raktsetu",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "db:init": "tsx scripts/db-init.ts",
+    "serve:production": "npm run db:init && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check:rules": "tsx scripts/check-rules.ts",
@@ -22,7 +27,8 @@
     "check:browser:cleanup": "tsx scripts/check-browser-flow.ts --cleanup",
     "check:responsive": "tsx scripts/check-responsive.ts",
     "check:glass": "tsx scripts/check-glass.ts",
-    "check:registration": "tsx scripts/repro-registration.ts"
+    "check:registration": "tsx scripts/repro-registration.ts",
+    "check:persistence": "tsx scripts/check-persistence.ts"
   },
   "dependencies": {
     "next": "^15.1.4",

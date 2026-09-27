@@ -2769,12 +2769,44 @@ check(
   "22. no HTTP scheduler endpoint is exposed",
   // Nothing to authenticate, nothing to rate-limit, nothing to leak. The
   // endpoint existed only to invoke database functions that no longer exist.
-  !existsSync(join(ROOT, "src/app/api/cron/tick/route.ts")) &&
-  !existsSync(join(ROOT, "src/app/api")) &&
+  !existsSync(join(ROOT, "src/app/api/cron")) &&
   !/CRON_SECRET/.test(
     walk(join(ROOT, "src"))
       .map((f) => readFileSync(f, "utf8"))
       .join("\n"),
+  ),
+  true
+);
+// The API routes that exist at all. A health probe is the ONE thing allowed to be
+// reachable without a session: it reports only whether the process and its
+// database are up, leaks nothing, and the deployment needs it as a liveness
+// signal. Anything else under /api is a new unauthenticated surface and must be
+// a deliberate decision rather than an accident.
+const apiRoutes = existsSync(join(ROOT, "src/app/api"))
+  ? walk(join(ROOT, "src/app/api")).filter((f) => f.endsWith("route.ts"))
+  : [];
+check(
+  "22. the only reachable API route is the health probe",
+  apiRoutes.length === 1 && /src\/app\/api\/health\/route\.ts$/.test(apiRoutes[0]),
+  true
+);
+check(
+  "22. the health probe is read-only — GET only, nothing that mutates",
+  apiRoutes.every((f) => {
+    const code = stripJsComments(readFileSync(f, "utf8"));
+    return (
+      /export\s+(?:async\s+)?function\s+GET\b/.test(code) &&
+      !/export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b/.test(code)
+    );
+  }),
+  true
+);
+check(
+  "22. the health probe returns no path, schema or error detail",
+  apiRoutes.every(
+    (f) =>
+      // It may CALL the database probe, but must never surface its location.
+      !/\b(DB_FILE|DB_PATH|DATA_DIR)\b/.test(stripJsComments(readFileSync(f, "utf8")))
   ),
   true
 );

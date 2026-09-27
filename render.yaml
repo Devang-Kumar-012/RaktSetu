@@ -1,0 +1,55 @@
+# RaktSetu — production deployment blueprint (Render).
+#
+# WHY THIS PLATFORM
+#
+# The deciding requirement is a PERSISTENT WRITABLE DISK for a single
+# long-running Node process. Serverless functions (Netlify, Vercel, Cloudflare
+# Workers) have read-only, ephemeral filesystems and cannot host a file-based
+# SQLite database at all — that is why netlify.toml has been removed. Render's
+# "Disk" is a real persistent volume attached to one service, which is exactly
+# the shape this application needs, and it is declared here in full so deploying
+# needs no console configuration.
+#
+# Deploying this is: create a Render Blueprint from this repository. Render
+# reads this file, provisions the service AND the disk, builds, and starts.
+#
+# SINGLE INSTANCE — DELIBERATE, NOT AN OMISSION
+#
+# `numInstances: 1` is a correctness requirement, not a scaling choice. Two
+# processes on different machines would hold two independent SQLite connections
+# to the same file over a network filesystem whose locking semantics are not
+# SQLite's. That can silently corrupt or diverge the database. One instance with
+# one disk on one machine is the only arrangement that is safe for SQLite, and
+# this app does not need horizontal scale. If it ever does, the data layer must
+# move to a client/server database first — that is a deliberate, separate change,
+# never a replica count.
+
+services:
+  - type: web
+    name: raktsetu
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # a paid plan is required for a persistent disk
+    region: oregon
+
+    # One instance, one disk. See the note above — do not raise this for SQLite.
+    numInstances: 1
+
+    # The persistent volume. `/data` is the mount point the image declares, and
+    # it survives every deploy, restart and rebuild.
+    disk:
+      name: raktsetu-data
+      mountPath: /data
+      sizeGB: 1
+
+    healthCheckPath: /api/health
+
+    envVars:
+      # Points the SQLite file at the mounted volume. This is the ONLY variable
+      # the application reads; there are no secrets and no connection strings,
+      # because the database is a local file.
+      - key: RAKTSETU_DATA_DIR
+        value: /data
+      # node:sqlite is only available unflagged from Node 22.13.
+      - key: NODE_VERSION
+        value: "22.13"

@@ -17,8 +17,9 @@
  *
  * It is also `SameSite=Lax` and `Path=/`, and expires with the session row.
  * `Secure` is derived from the request's own protocol rather than from
- * `process.env`, because the application reads no configuration at all — an
- * invariant asserted across every file in `src/`.
+ * `process.env`, so there is no configuration that can be mis-set into shipping
+ * a non-secure production cookie. The application reads exactly one environment
+ * variable, `RAKTSETU_DATA_DIR`, and only in the database module.
  */
 
 import { cookies, headers } from "next/headers";
