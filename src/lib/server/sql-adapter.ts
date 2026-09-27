@@ -17,12 +17,10 @@
  * component.
  */
 
-import { getDb } from "./db";
+import { getDriver, type SqlParam } from "./driver";
 
-/** Values `node:sqlite` will bind. Our params are `unknown` until bound. */
-type Bindable = Parameters<ReturnType<typeof getDb>["prepare"]>[0] extends never
-  ? never
-  : string | number | bigint | Buffer | null;
+/** Values a driver will bind. Our params are `unknown` until bound. */
+type Bindable = SqlParam;
 
 export type Row = Record<string, unknown>;
 
@@ -347,35 +345,37 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
   }
 
 
-  private runSelect(): QueryResult {
+  private async runSelect(): Promise<QueryResult> {
     const table = resolveTable(this.table);
     if (!table) return fail(`Unknown table: ${this.table}`, "42P01");
-    const db = getDb();
+    const db = await getDriver();
     const { sql: where, params } = this.where();
     const bind = params as Bindable[];
 
     let count: number | null = null;
     if (this.wantCount) {
-      const row = db
-        .prepare(`SELECT COUNT(*) AS n FROM "${table}"${where}`)
-        .get(...bind) as { n: number };
-      count = Number(row.n);
+      const row = await db.queryOne<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM "${table}"${where}`,
+        bind,
+      );
+      count = Number(row?.n ?? 0);
     }
     if (this.headOnly) return ok([] as unknown as Row, { count });
 
     const limit = this.limitTo !== null ? ` LIMIT ${Math.max(0, this.limitTo)}` : "";
     const offset = this.limitTo !== null && this.offsetTo > 0 ? ` OFFSET ${this.offsetTo}` : "";
-    const rows = db
-      .prepare(`SELECT * FROM "${table}"${where}${this.orderBy()}${limit}${offset}`)
-      .all(...bind) as Row[];
+    const rows = await db.query<Row>(
+      `SELECT * FROM "${table}"${where}${this.orderBy()}${limit}${offset}`,
+      bind,
+    );
     return ok(rows.map((r) => fromStorage(r, this.table)) as unknown as Row, { count });
   }
 
-  private runInsert(upsert: boolean): QueryResult {
+  private async runInsert(upsert: boolean): Promise<QueryResult> {
     const table = resolveTable(this.table);
     if (!table) return fail(`Unknown table: ${this.table}`, "42P01");
     const allowed = new Set(cols(this.table));
-    const db = getDb();
+    const db = await getDriver();
     const incoming = (Array.isArray(this.payload) ? this.payload : [this.payload ?? {}]) as Row[];
     const out: Row[] = [];
     try {
@@ -388,9 +388,10 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
         const placeholders = keys.map(() => "?").join(",");
         const stmt = `INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(",")}) VALUES (${placeholders})`;
         try {
-          const info = db
-            .prepare(stmt)
-            .run(...(keys.map((k) => toStorage(rec[k], k)) as Bindable[]));
+          const info = await db.run(
+            stmt,
+            keys.map((k) => toStorage(rec[k], k)) as Bindable[],
+          );
           if (table === "donor_alerts" && info.lastInsertRowid) {
             rec.id = Number(info.lastInsertRowid);
           }
@@ -402,11 +403,12 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
           if (!allowed.has(key)) throw err;
           const setKeys = keys.filter((k) => k !== key);
           if (setKeys.length) {
-            db.prepare(
-              `UPDATE "${table}" SET ${setKeys.map((k) => `"${k}" = ?`).join(", ")} WHERE "${key}" = ?`
-            ).run(
-              ...(setKeys.map((k) => toStorage(rec[k], k)) as Bindable[]),
-              toStorage(rec[key], key) as Bindable
+            await db.run(
+              `UPDATE "${table}" SET ${setKeys.map((k) => `"${k}" = ?`).join(", ")} WHERE "${key}" = ?`,
+              [
+                ...(setKeys.map((k) => toStorage(rec[k], k)) as Bindable[]),
+                toStorage(rec[key], key) as Bindable,
+              ],
             );
           }
           out.push(fromStorage(rec, this.table));
@@ -418,7 +420,7 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
     return ok(out as unknown as Row);
   }
 
-  private runUpdate(): QueryResult {
+  private async runUpdate(): Promise<QueryResult> {
     const table = resolveTable(this.table);
     if (!table) return fail(`Unknown table: ${this.table}`, "42P01");
     const allowed = new Set(cols(this.table));
@@ -433,30 +435,34 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
     if (sets.length === 0) return ok([] as unknown as Row);
     const { sql: where, params: wp } = this.where();
     try {
-      const info = getDb()
-        .prepare(`UPDATE "${table}" SET ${sets.join(", ")}${where}`)
-        .run(...(params as Bindable[]), ...(wp as Bindable[]));
-      return ok({ updated: Number(info.changes) } as Row);
+      const db = await getDriver();
+      const info = await db.run(
+        `UPDATE "${table}" SET ${sets.join(", ")}${where}`,
+        [...(params as Bindable[]), ...(wp as Bindable[])],
+      );
+      return ok({ updated: info.changes } as Row);
     } catch (err) {
       return sqliteError(err);
     }
   }
 
-  private runDelete(): QueryResult {
+  private async runDelete(): Promise<QueryResult> {
     const table = resolveTable(this.table);
     if (!table) return fail(`Unknown table: ${this.table}`, "42P01");
     const { sql: where, params } = this.where();
     try {
-      const info = getDb()
-        .prepare(`DELETE FROM "${table}"${where}`)
-        .run(...(params as Bindable[]));
-      return ok({ deleted: Number(info.changes) } as Row);
+      const db = await getDriver();
+      const info = await db.run(
+        `DELETE FROM "${table}"${where}`,
+        params as Bindable[],
+      );
+      return ok({ deleted: info.changes } as Row);
     } catch (err) {
       return sqliteError(err);
     }
   }
 
-  private execute(): QueryResult {
+  private execute(): Promise<QueryResult> {
     switch (this.mode) {
       case "select": return this.runSelect();
       case "insert": return this.runInsert(false);
@@ -470,13 +476,14 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
     onfulfilled?: ((value: QueryResult) => R1 | PromiseLike<R1>) | null,
     onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null
   ): PromiseLike<R1 | R2> {
-    let value: QueryResult;
-    try {
-      value = this.execute();
-    } catch (err) {
-      value = sqliteError(err);
-    }
-    return Promise.resolve(value).then(onfulfilled, onrejected);
+    // The query builder is a thenable so callers can `await db.from(...)` exactly
+    // as they awaited the Supabase client before. Every failure — a rejected
+    // driver call as much as a thrown one — is funnelled through `sqliteError`
+    // here, so a constraint violation surfaces as a typed code the actions can
+    // map to a safe message rather than as an unhandled rejection.
+    return this.execute()
+      .catch((err) => sqliteError(err))
+      .then(onfulfilled, onrejected);
   }
 
   async single(): Promise<QueryResult> {

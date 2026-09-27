@@ -84,11 +84,14 @@ async function main() {
   writeOldShape();
 
   // Opening it runs the real migration, exactly as a server boot would.
-  const { getDb, closeDb } = await import("../src/lib/server/db");
-  getDb();
+  const { getDb, closeDb, initializeDatabase } = await import("../src/lib/server/db");
+  // Schema creation now goes through the driver (so a hosted database is
+  // initialised too), so the migration check asks for it explicitly instead of
+  // relying on the first connection to happen implicitly.
+  await initializeDatabase();
   const db = getDb();
 
-  await check("an existing request survives the migration", () => {
+  await check("an existing request survives the migration", async () => {
     const row = db.prepare("SELECT * FROM blood_requests WHERE id = 'old-req'").get() as
       Record<string, unknown>;
     assert.ok(row, "the pre-existing request must survive");
@@ -99,7 +102,7 @@ async function main() {
     assert.equal(row.status, "active", "its state must not be rewritten");
   });
 
-  await check("the new columns exist and are null for an untouched request", () => {
+  await check("the new columns exist and are null for an untouched request", async () => {
     const row = db
       .prepare("SELECT cancelled_at, fulfilled_at FROM blood_requests WHERE id = 'old-req'")
       .get() as Record<string, unknown>;
@@ -109,7 +112,7 @@ async function main() {
     assert.equal(row.fulfilled_at, null);
   });
 
-  await check("an alert in the old status vocabulary is normalised, not dropped", () => {
+  await check("an alert in the old status vocabulary is normalised, not dropped", async () => {
     const row = db.prepare("SELECT * FROM donor_alerts WHERE request_id = 'old-req'").get() as
       Record<string, unknown>;
     assert.ok(row, "the pre-existing alert must survive");
@@ -117,7 +120,7 @@ async function main() {
     assert.equal(row.response, "accepted", "the ANSWER is untouched");
   });
 
-  await check("the first-valid-donor-wins index is replaced, not merely kept", () => {
+  await check("the first-valid-donor-wins index is replaced, not merely kept", async () => {
     const row = db
       .prepare("SELECT sql FROM sqlite_master WHERE name = 'donor_alerts_one_acceptance_idx'")
       .get() as { sql: string };
@@ -128,7 +131,7 @@ async function main() {
     );
   });
 
-  await check("after migrating, a second donor genuinely cannot be accepted", () => {
+  await check("after migrating, a second donor genuinely cannot be accepted", async () => {
     db.prepare("INSERT INTO users VALUES (?,?,?,?,?,?,?,?)").run(
       "u2", "old2@example.com", "x", "Second", "donor", "active", "t", "t",
     );
@@ -147,7 +150,7 @@ async function main() {
     );
   });
 
-  await check("the terminal-state trigger is installed on a migrated database", () => {
+  await check("the terminal-state trigger is installed on a migrated database", async () => {
     const row = db
       .prepare("SELECT sql FROM sqlite_master WHERE name = 'blood_requests_terminal_guard'")
       .get() as { sql: string } | undefined;
@@ -169,11 +172,11 @@ async function main() {
   // Re-running must be free, which is what makes this safe on every boot. The
   // request is 'cancelled' by the check above, so this asserts that a SECOND boot
   // leaves that exactly as it found it.
-  await check("re-running the migration is a no-op", () => {
+  await check("re-running the migration is a no-op", async () => {
     const before = db.prepare("SELECT status, cancelled_at FROM blood_requests WHERE id = 'old-req'").get() as
       Record<string, unknown>;
     closeDb();
-    getDb();
+    await initializeDatabase();
     const after = getDb()
       .prepare("SELECT status, cancelled_at FROM blood_requests WHERE id = 'old-req'")
       .get() as Record<string, unknown>;
@@ -184,7 +187,7 @@ async function main() {
   // --- THE ROLE-MEMBERSHIP MIGRATION ---------------------------------------
   // A database written by the single-role era must gain memberships without
   // losing an account, a request or a session.
-  await check("a single-role account becomes exactly one membership", () => {
+  await check("a single-role account becomes exactly one membership", async () => {
     const rows = getDb()
       .prepare("SELECT role FROM user_roles WHERE user_id = 'u1' ORDER BY role")
       .all() as { role: string }[];
@@ -200,10 +203,10 @@ async function main() {
     assert.equal(Number(orphan.n), 0, "no membership may point at a missing account");
   });
 
-  await check("the membership IS the authority, not the legacy column", () => {
+  await check("the membership IS the authority, not the legacy column", async () => {
     // Granting a role does NOT touch users.role, which is what proves the single
     // legacy column is no longer consulted for authorization.
-    grantRole("u1", "donor");
+    await grantRole("u1", "donor");
     const rows = getDb()
       .prepare("SELECT role FROM user_roles WHERE user_id = 'u1' ORDER BY role")
       .all() as { role: string }[];
@@ -212,12 +215,12 @@ async function main() {
       role: string;
     };
     assert.equal(legacy.role, "requester", "the legacy column is left exactly as it was");
-    const roles = getUserRoles("u1");
+    const roles = await getUserRoles("u1");
     assert.equal(roles.length, 2);
     assert.equal(roles[0], "requester", "the original role stays primary");
   });
 
-  await check("a session predating active_role still resolves, and is given one", () => {
+  await check("a session predating active_role still resolves, and is given one", async () => {
     const token = "pre-migration-token";
     getDb()
       .prepare(
@@ -229,7 +232,7 @@ async function main() {
         new Date().toISOString(),
         new Date(Date.now() + 86_400_000).toISOString(),
       );
-    const resolved = getUserForToken(token);
+    const resolved = await getUserForToken(token);
     assert.ok(resolved, "a session created before the column existed must still resolve");
     assert.equal(resolved.id, "u1");
     assert.ok(resolved.roles.includes("donor") && resolved.roles.includes("requester"));
@@ -239,7 +242,7 @@ async function main() {
     assert.equal(row.active_role, "requester", "chosen from real memberships, then persisted");
   });
 
-  await check("a stale active role the account never held is repaired", () => {
+  await check("a stale active role the account never held is repaired", async () => {
     getDb()
       .prepare("UPDATE user_roles SET is_primary = 1 WHERE user_id = 'u1' AND role = 'donor'")
       .run();
@@ -249,19 +252,19 @@ async function main() {
     getDb()
       .prepare("UPDATE sessions SET active_role = 'admin' WHERE id = 's-pre'")
       .run();
-    const resolved = getUserForToken("pre-migration-token");
+    const resolved = await getUserForToken("pre-migration-token");
     assert.equal(resolved?.role, "donor", "an unheld admin active_role must not survive");
     assert.ok(!resolved!.roles.includes("admin"), "and admin is not among its roles");
   });
 
-  await check("the migrated request keeps its original owner", () => {
+  await check("the migrated request keeps its original owner", async () => {
     const req = getDb()
       .prepare("SELECT requester_id FROM blood_requests WHERE id = 'old-req'")
       .get() as { requester_id: string };
     assert.equal(req.requester_id, "u1", "no data moved between accounts");
   });
 
-  await check("the role backfill is idempotent across a re-boot", () => {
+  await check("the role backfill is idempotent across a re-boot", async () => {
     const before = getDb().prepare("SELECT COUNT(*) AS n FROM user_roles").get() as { n: number };
     closeDb();
     getDb();
@@ -280,7 +283,7 @@ async function main() {
 
   console.log("");
   if (failures.length) {
-    console.error(`✗ ${failures.length} migration check(s) failed:`);
+    console.error(`✗ ${failures.length} migration await check(s) failed:`);
     for (const f of failures) console.error(`  - ${f}`);
     console.error(`\n${passed} passed, ${failures.length} failed`);
     process.exit(1);

@@ -338,6 +338,8 @@ async function main() {
   }
 }
 
+// No top-level `await`: these scripts compile to CommonJS, where it is a
+// syntax error. The promise is caught instead.
 main().catch((e) => {
   console.error(e);
   process.exit(1);

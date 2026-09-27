@@ -24,16 +24,18 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export function GET() {
-  if (isDatabaseOperational()) {
+  return isDatabaseOperational().then((operational) => {
+    if (operational) {
+      return NextResponse.json(
+        { status: "ok" },
+        { status: 200, headers: { "cache-control": "no-store" } },
+      );
+    }
+    // 503 is the "retry me, I am temporarily unable" signal, which is exactly the
+    // situation. The reason is deliberately generic.
     return NextResponse.json(
-      { status: "ok" },
-      { status: 200, headers: { "cache-control": "no-store" } },
+      { status: "unavailable" },
+      { status: 503, headers: { "cache-control": "no-store" } },
     );
-  }
-  // 503 is the "retry me, I am temporarily unable" signal, which is exactly the
-  // situation. The reason is deliberately generic.
-  return NextResponse.json(
-    { status: "unavailable" },
-    { status: 503, headers: { "cache-control": "no-store" } },
-  );
+  });
 }

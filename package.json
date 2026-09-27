@@ -13,6 +13,8 @@
     "serve:production": "npm run db:init && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "check:async": "tsx scripts/check-async-trycatch.ts",
+    "check:driver": "tsx scripts/check-driver.ts",
     "check:rules": "tsx scripts/check-rules.ts",
     "check:rings": "tsx scripts/check-rings.ts",
     "check:invariants": "tsx scripts/check-invariants.ts",
@@ -20,7 +22,7 @@
     "check:migration": "tsx scripts/check-sqlite-migration.ts",
     "check:roles": "tsx scripts/check-roles.ts",
     "check:local": "tsx scripts/check-local-stack.ts",
-    "check": "npm run check:rules && npm run check:rings && npm run check:invariants && npm run check:sqlite && npm run check:migration && npm run check:roles && npm run check:local && npm run build",
+    "check": "npm run typecheck && npm run check:async && npm run check:rules && npm run check:rings && npm run check:invariants && npm run check:driver && npm run check:sqlite && npm run check:migration && npm run check:roles && npm run check:local && npm run build",
     "smoke": "sh scripts/smoke-test.sh",
     "check:live-roles": "tsx scripts/check-live-roles.ts http://localhost:3999",
     "check:browser": "tsx scripts/check-browser-flow.ts http://localhost:3999",
@@ -31,6 +33,7 @@
     "check:persistence": "tsx scripts/check-persistence.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "next": "^15.1.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

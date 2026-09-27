@@ -313,65 +313,63 @@ schedule the ring engine already uses; unread ones are never deleted.
 
 - Next.js (App Router) + TypeScript
 - Tailwind CSS v4
-- Server-side **SQLite** via Node's built-in `node:sqlite` (no driver, no connection
-  string, no external database service)
+- Server-side **SQLite** — a remote libSQL/Turso database in production, a local
+  file in development — through one driver seam, with no connection string in
+  code and no dependency beyond the official client
 - Server-side authentication with HTTP-only session cookies
 
 ## Deployment
 
-RaktSetu's authoritative data is a single SQLite file. That one fact determines
-where it can and cannot run.
+RaktSetu's authoritative data is **a remote libSQL/Turso database in production**,
+and a local SQLite file in development. That is what makes a genuinely **$0**
+deployment possible: a free hosting tier has no persistent disk, so the data
+lives in a hosted database rather than in a file beside the application.
 
-**The database must live on a persistent, writable volume.** It is never in the
-build output, never in a temp directory, and never in the browser. A function-style
-serverless platform (Netlify, Vercel, Cloudflare Workers) has a read-only, ephemeral
-filesystem and therefore **cannot** host this application — a registration there
-fails because the file cannot be created. Netlify's `netlify.toml` was removed for
-exactly this reason.
+### The architecture
+
+```
+Browser  →  Next.js on Vercel (Hobby, free)  →  Turso/libSQL over HTTPS
+```
+
+No persistent disk, no container, no paid add-on. `vercel.json` pins the Node
+runtime, the build command and the region; the database connection arrives as
+server-only environment variables.
+
+### The driver
+
+`src/lib/server/driver.ts` is the single persistence seam, with two backends:
+
+- **Local** — Node's built-in `node:sqlite` against a file under `./data`. Used
+  for development and the whole test suite. Zero dependencies.
+- **Remote** — `@libsql/client` over HTTPS against Turso. Used in production.
+
+Both speak the same SQL dialect, which is why the 18 tables, the CHECK
+constraints, the foreign keys and the request-lifecycle triggers are carried
+across **unchanged**. Transactions are `BEGIN IMMEDIATE` locally and an exclusive
+server-side write transaction remotely, so "first valid donor wins" keeps exactly
+the same guarantee on both.
+
+`src/lib/server/db.ts` owns the schema and is the only place migrations run, so
+there is one code path that can create tables — and it is the one that works
+against a hosted database.
 
 ### Configuration
 
-One optional environment variable, and no secrets:
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `RAKTSETU_DATABASE_URL` | production | Remote database URL, e.g. `libsql://your-db.turso.io`. Unset ⇒ local file. |
+| `RAKTSETU_DATABASE_TOKEN` | production | Server-only auth token. Treat as a password. |
+| `RAKTSETU_DATA_DIR` | no | Local-file directory only. Ignored when a URL is set. |
 
-| Variable | Purpose |
-| --- | --- |
-| `RAKTSETU_DATA_DIR` | Directory holding `raktsetu.db`. Must be a persistent, writable volume in production. Unset, it defaults to `./data`. |
-
-`src/lib/server/db.ts` is the only file in the application that reads
-`process.env`, and that is the only variable it reads. This is asserted by
-`npm run check:invariants`.
-
-### The container
-
-`Dockerfile` builds a production image that:
-
-- runs `next start` (never `next dev`),
-- initialises the database on the mounted volume **before** serving,
-- runs as a non-root user,
-- declares `/data` as a volume and points the app at it,
-- ships a `HEALTHCHECK` against `/api/health`, so a container that cannot write
-  its database fails loudly instead of serving 500s.
-
-### Deploying
-
-`render.yaml` is a complete blueprint: one web service, one persistent disk
-mounted at `/data`, and the health check wired up. Deploying is **New → Blueprint
-→ point at this repository**; Render provisions the service and the disk from the
-file. Any host that can mount a persistent disk and run a container works too.
-
-### One instance, on purpose
-
-`numInstances: 1` is a correctness requirement, not a scaling default. Two
-processes sharing one SQLite file over a network filesystem whose locking is not
-SQLite's can silently corrupt or diverge the database. If horizontal scale is ever
-needed, the data layer must move to a client/server database first — that is a
-deliberate, separate change, never a replica count.
+Only `db.ts` and `driver.ts` read `process.env`, no `NEXT_PUBLIC_` variable is
+read anywhere, and no client component imports a storage module. All three are
+asserted by `npm run check:invariants`.
 
 ### Health check
 
 `GET /api/health` returns `200 {"status":"ok"}` when the process is up **and** the
-database opens, and `503 {"status":"unavailable"}` otherwise. It deliberately
-returns no filesystem path, schema, version or error text.
+database answers, and `503 {"status":"unavailable"}` otherwise. It deliberately
+returns no URL, schema, version or error text.
 
 ### Database initialisation
 

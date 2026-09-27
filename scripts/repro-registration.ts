@@ -189,6 +189,12 @@ function ok(label: string, condition: boolean, detail = "") {
 // Both sections touch the database and are therefore async; the whole thing runs
 // from one entry point because these scripts compile to CommonJS.
 async function main() {
+  // Schema creation is owned by `initializeDatabase()` (it must go through the
+  // driver so a hosted database is initialised too), so a check that starts from
+  // an empty data directory has to ask for it explicitly.
+  const { initializeDatabase } = await import("../src/lib/server/db");
+  const { closeDriver } = await import("../src/lib/server/driver");
+  await initializeDatabase();
   {
   // The actual bug: a read-only working directory, exactly as a deployed
   // serverless bundle has. Reproduced for real rather than asserted about.
@@ -247,8 +253,8 @@ async function main() {
   ok("the account is active", row?.status === "active");
   ok(
     "the chosen role became a real membership",
-    row ? getUserRoles(row.id).includes("requester") : false,
-    row ? JSON.stringify(getUserRoles(row.id)) : "no row",
+    row ? (await getUserRoles(row.id)).includes("requester") : false,
+    row ? JSON.stringify(await getUserRoles(row.id)) : "no row",
   );
 
   const again = await signUpNewAccount({

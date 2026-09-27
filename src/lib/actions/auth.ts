@@ -106,13 +106,13 @@ export async function signInWithPassword(
   const secret = typeof password === "string" ? password : "";
   if (!address || !secret) return { error: "Invalid login credentials" };
 
-  const user = authenticate(address, secret);
+  const user = await authenticate(address, secret);
   if (!user) {
     // Deliberately identical for "no such account" and "wrong password".
     return { error: "Invalid login credentials" };
   }
 
-  const { token, expiresAt } = createSession(user.id);
+  const { token, expiresAt } = await createSession(user.id);
   await setSessionCookie(token, expiresAt);
   return { error: null };
 }
@@ -178,14 +178,14 @@ export async function signUpNewAccount(input: {
 
   let user: SessionUser;
   try {
-    user = createUser({ email, password, fullName, role });
+    user = await createUser({ email, password, fullName, role });
   } catch (err) {
     return fail(classifyRegistrationError(err, "create-user"), "create-user", err);
   }
 
   let session: { token: string; expiresAt: Date };
   try {
-    session = createSession(user.id);
+    session = await createSession(user.id);
   } catch (err) {
     return fail(classifyRegistrationError(err, "create-session"), "create-session", err);
   }
@@ -229,11 +229,11 @@ export async function switchActiveRole(input: { role: unknown }): Promise<{
   roles: string[];
 }> {
   const token = await readSessionToken();
-  const user = getUserForToken(token);
+  const user = await getUserForToken(token);
   if (!user) return { error: "Please sign in again.", role: null, roles: [] };
 
   const requested = typeof input?.role === "string" ? input.role : "";
-  if (!setSessionActiveRole(user.id, token ?? "", requested)) {
+  if (!(await setSessionActiveRole(user.id, token ?? "", requested))) {
     // Deliberately does not say whether the role exists or is merely not theirs.
     return {
       error: "That profile is not available on this account.",
@@ -260,7 +260,7 @@ export async function addRoleToCurrentAccount(input: { role: unknown }): Promise
   roles: string[];
 }> {
   const token = await readSessionToken();
-  const user = getUserForToken(token);
+  const user = await getUserForToken(token);
   if (!user) return { error: "Please sign in first.", role: null, roles: [] };
   if (user.status !== "active") {
     return { error: "This account is suspended.", role: null, roles: user.roles };
@@ -276,9 +276,9 @@ export async function addRoleToCurrentAccount(input: { role: unknown }): Promise
     };
   }
 
-  grantRole(user.id, requested as SessionUser["role"]);
-  if (token) setSessionActiveRole(user.id, token, requested);
-  return { error: null, role: requested, roles: getUserRoles(user.id) };
+  await grantRole(user.id, requested as SessionUser["role"]);
+  if (token) await setSessionActiveRole(user.id, token, requested);
+  return { error: null, role: requested, roles: await getUserRoles(user.id) };
 }
 
 /**
@@ -291,7 +291,7 @@ export async function addRoleToCurrentAccount(input: { role: unknown }): Promise
 export async function signOutCurrentUser(): Promise<{ error: string | null }> {
   try {
     const token = await readSessionToken();
-    if (token) revokeSession(token);
+    if (token) await revokeSession(token);
   } catch {
     // Best-effort: the cookie is still cleared below.
   } finally {
@@ -315,7 +315,7 @@ export async function signOutCurrentUser(): Promise<{ error: string | null }> {
 export async function getClientSession(): Promise<SessionUser | null> {
   try {
     const token = await readSessionToken();
-    return getUserForToken(token) ?? null;
+    return (await getUserForToken(token)) ?? null;
   } catch {
     return null;
   }

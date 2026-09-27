@@ -71,7 +71,7 @@ export const getSessionInfo = cache(async (): Promise<SessionInfo> => {
     // prerender this call is what opts the route out of generation, so the
     // build never opens the database file.
     const token = await readSessionToken();
-    const user = getUserForToken(token);
+    const user = await getUserForToken(token);
     if (!user) {
       return { configured: true, user: null, profile: null, roles: [], activeRole: null };
     }
@@ -120,7 +120,7 @@ export function sanitizeNextPath(value: unknown, fallback = "/dashboard"): strin
 async function endSessionAndReportSuspension(): Promise<never> {
   try {
     const token = await readSessionToken();
-    if (token) revokeSession(token);
+    if (token) await revokeSession(token);
   } catch {
     // Best-effort: the redirect below is still correct.
   }

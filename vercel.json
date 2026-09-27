@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci",
+  "engines": {
+    "node": "22"
+  },
+  "regions": ["bom1"],
+  "functions": {
+    "src/app/api/health/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "RAKTSETU_DATABASE_URL": "@RAKTSETU_DATABASE_URL",
+    "RAKTSETU_DATABASE_TOKEN": "@RAKTSETU_DATABASE_TOKEN"
+  }
+}

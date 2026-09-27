@@ -21,6 +21,8 @@ import { closeSync, mkdirSync, openSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
+import { driverKind, getDriver, type Driver } from "./driver";
+
 import {
   DEMO_ADMIN_EMAIL,
   DEMO_ADMIN_NAME,
@@ -71,7 +73,14 @@ export type DatabaseUnavailableReason =
   /** `node:sqlite` is not available on this runtime. */
   | "sqlite-unavailable"
   /** The driver was present but refused to open the file. */
-  | "open-failed";
+  | "open-failed"
+  /**
+   * A remote database is configured, so there is no local file to hand out.
+   * Guards against a stray call quietly writing to a throwaway local database
+   * that nobody will ever read — the exact "looks deployed, loses everything"
+   * failure this architecture exists to prevent.
+   */
+  | "remote-only";
 
 /**
  * THE ONE OPTIONAL ENVIRONMENT VARIABLE.
@@ -176,7 +185,25 @@ let db: DatabaseSync | null = null;
  * missing. Previously the raw `mkdir`/`open` error escaped and was reported as a
  * generic apology.
  */
+/**
+ * The LOCAL FILE handle, for local development and the offline checks only.
+ *
+ * This is deliberately not the application's persistence layer any more — that is
+ * `getDriver()` in `./driver`, which speaks to either this file or a remote
+ * libSQL/Turso database. Nothing in `src/` calls this; the scripts in `scripts/`
+ * do, while they are being moved onto the driver.
+ *
+ * Schema creation is NOT done here. `initializeDatabase()` is the single place
+ * migrations run, through the driver, so there is exactly one code path that can
+ * create tables — and it is the one that works against a hosted database.
+ */
 export function getDb(): DatabaseSync {
+  if (driverKind() === "libsql") {
+    throw new DatabaseUnavailableError(
+      "remote-only",
+      "a remote database is configured; use getDriver() from ./driver instead of the local file handle",
+    );
+  }
   if (db) return db;
   assertStorageUsable(dirname(DB_PATH));
   try {
@@ -203,7 +230,6 @@ export function getDb(): DatabaseSync {
     db = null;
     throw new DatabaseUnavailableError("storage-unwritable", `pragmas failed: ${detail}`);
   }
-  migrate(db);
   return db;
 }
 
@@ -233,17 +259,20 @@ export function closeDb(): void {
  * turning a first-request stall into a boot-time failure that is visible in the
  * logs instead of a user staring at a stalled page.
  */
-export function initializeDatabase(): { ok: true } {
-  assertStorageUsable(DATA_DIR);
-  getDb();
+export async function initializeDatabase(): Promise<{ ok: true }> {
+  // The driver, not `getDb()`: when `RAKTSETU_DATABASE_URL` is set the schema
+  // must be created in the REMOTE database. Initialising only a local file here
+  // would leave a hosted deployment with no tables at all.
+  const db = await getDriver();
+  await migrate(db);
   return { ok: true };
 }
 
-/** True when the directory is writable and the database answers. Used by /api/health. */
-export function isDatabaseOperational(): boolean {
+/** True when the configured database answers. Used by /api/health. */
+export async function isDatabaseOperational(): Promise<boolean> {
   try {
-    assertStorageUsable(DATA_DIR);
-    getDb().prepare("SELECT 1").get();
+    const db = await getDriver();
+    await db.queryOne("SELECT 1");
     return true;
   } catch {
     return false;
@@ -566,23 +595,23 @@ CREATE TABLE IF NOT EXISTS platform_safety_limits (
  * Idempotent migration. Every statement is CREATE ... IF NOT EXISTS, so this
  * runs on every boot and is safe to re-run. There is no separate step.
  */
-function migrate(conn: DatabaseSync): void {
-  conn.exec(SCHEMA_HEAD);
-  conn.exec(SCHEMA_TAIL);
+async function migrate(db: Driver): Promise<void> {
+  await db.exec(SCHEMA_HEAD);
+  await db.exec(SCHEMA_TAIL);
   const now = new Date().toISOString();
 
-  conn.exec(SCHEMA_REQUESTS);
-  conn.exec(SCHEMA_ALERTS);
-  conn.exec(SCHEMA_REQUESTS_GUARD);
+  await db.exec(SCHEMA_REQUESTS);
+  await db.exec(SCHEMA_ALERTS);
+  await db.exec(SCHEMA_REQUESTS_GUARD);
 
   // The session's active profile. It lives on the row rather than in a cookie so
   // it cannot be edited in the browser, and it is nullable so a session created
   // before this column existed still resolves.
   const sessionColumns = (
-    conn.prepare("SELECT name FROM pragma_table_info('sessions')").all() as { name: string }[]
+    (await db.query("SELECT name FROM pragma_table_info('sessions')", [])) as { name: string }[]
   ).map((r) => r.name);
   if (!sessionColumns.includes("active_role")) {
-    conn.exec("ALTER TABLE sessions ADD COLUMN active_role TEXT");
+    await db.exec("ALTER TABLE sessions ADD COLUMN active_role TEXT");
   }
 
   // ROLE MEMBERSHIP BACKFILL — the one-way, idempotent move off the legacy
@@ -593,7 +622,7 @@ function migrate(conn: DatabaseSync): void {
   // it again is a no-op because of the primary key, which is what makes it safe
   // on every boot. The `users.role` column itself is left in place so an older
   // binary could still open the file, but nothing reads it for authorization.
-  conn.exec(
+  await db.exec(
     `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
      SELECT id, role, 1, created_at FROM users`,
   );
@@ -601,7 +630,7 @@ function migrate(conn: DatabaseSync): void {
   // then have no dashboard at all. Anything without a membership inherits its
   // legacy role; if even that is unusable the account is pinned to 'requester',
   // the least-privileged role, which cannot be escalated from there.
-  conn.exec(
+  await db.exec(
     `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
      SELECT u.id,
             CASE WHEN u.role IN ('donor','requester','volunteer','admin')
@@ -612,7 +641,7 @@ function migrate(conn: DatabaseSync): void {
       WHERE NOT EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id)`,
   );
   // Exactly one primary per account, so "where do I land?" is never ambiguous.
-  conn.exec(
+  await db.exec(
     `UPDATE user_roles SET is_primary = 0
       WHERE is_primary = 1
         AND user_id IN (SELECT user_id FROM user_roles
@@ -623,7 +652,7 @@ function migrate(conn: DatabaseSync): void {
   // upgrades a database written before the index was scoped to request_id alone:
   // `CREATE UNIQUE INDEX IF NOT EXISTS` would silently keep the old, weaker
   // definition and two different donors could both be accepted for one request.
-  conn.exec("DROP INDEX IF EXISTS donor_alerts_one_acceptance_idx");
+  await db.exec("DROP INDEX IF EXISTS donor_alerts_one_acceptance_idx");
 
   // Columns added after the first release. `CREATE TABLE IF NOT EXISTS` skips a
   // table that already exists, so a database created by an older build keeps
@@ -633,10 +662,8 @@ function migrate(conn: DatabaseSync): void {
     ["blood_requests", "cancelled_at", "ALTER TABLE blood_requests ADD COLUMN cancelled_at TEXT"],
     ["blood_requests", "fulfilled_at", "ALTER TABLE blood_requests ADD COLUMN fulfilled_at TEXT"],
   ] as const) {
-    const present = conn
-      .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
-      .get(table, column);
-    if (!present) conn.exec(ddl);
+    const present = (await db.queryOne(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, [table, column]));
+    if (!present) await db.exec(ddl);
   }
 
   // The request's location is no longer a hospital: it is the general area where
@@ -646,17 +673,17 @@ function migrate(conn: DatabaseSync): void {
   // hospital name is kept as the locality's own text only when there is no
   // better value, so a request never silently loses its location.
   const requestColumns = (
-    conn.prepare("SELECT name FROM pragma_table_info('blood_requests')").all() as {
+    (await db.query("SELECT name FROM pragma_table_info('blood_requests')", [])) as {
       name: string;
     }[]
   ).map((r) => r.name);
   if (requestColumns.includes("hospital_locality")) {
     // A table cannot be rebuilt while a trigger on it exists, and the guard
     // below is recreated from SCHEMA_HEAD on the next boot anyway.
-    conn.exec("DROP TRIGGER IF EXISTS blood_requests_terminal_guard");
-    conn.exec("ALTER TABLE blood_requests RENAME TO blood_requests_legacy");
-    conn.exec(SCHEMA_REQUESTS);
-    conn.exec(
+    await db.exec("DROP TRIGGER IF EXISTS blood_requests_terminal_guard");
+    await db.exec("ALTER TABLE blood_requests RENAME TO blood_requests_legacy");
+    await db.exec(SCHEMA_REQUESTS);
+    await db.exec(
       `INSERT INTO blood_requests
          (id, requester_id, requester_name, requester_phone, blood_group,
           blood_component, units, locality, urgency, required_by, note, status,
@@ -668,17 +695,17 @@ function migrate(conn: DatabaseSync): void {
               created_at, updated_at, cancelled_at, fulfilled_at
          FROM blood_requests_legacy`,
     );
-    conn.exec("DROP TABLE blood_requests_legacy");
+    await db.exec("DROP TABLE blood_requests_legacy");
     // The index names are unchanged, but they went with the old table.
-    conn.exec(
+    await db.exec(
       `CREATE INDEX IF NOT EXISTS blood_requests_requester_idx
          ON blood_requests(requester_id, created_at DESC)`,
     );
-    conn.exec(
+    await db.exec(
       `CREATE INDEX IF NOT EXISTS blood_requests_active_idx
          ON blood_requests(status, required_by)`,
     );
-    conn.exec(SCHEMA_REQUESTS_GUARD);
+    await db.exec(SCHEMA_REQUESTS_GUARD);
   }
 
   // `donor_alerts.status` also changed vocabulary: an answer is recorded as
@@ -691,11 +718,7 @@ function migrate(conn: DatabaseSync): void {
   // live constraint text, so a database already on the new shape is untouched.
   const statusCheck = String(
     (
-      conn
-        .prepare(
-          "SELECT sql FROM sqlite_master WHERE type='table' AND name='donor_alerts'",
-        )
-        .get() as { sql?: string } | undefined
+      (await db.queryOne("SELECT sql FROM sqlite_master WHERE type='table' AND name='donor_alerts'", [])) as { sql?: string } | undefined
     )?.sql ?? "",
   );
   if (statusCheck.includes("'accepted'")) {
@@ -703,9 +726,9 @@ function migrate(conn: DatabaseSync): void {
     // CHECK is still in force at that point and would refuse the new
     // 'responded' value outright. Renaming the old table out of the way,
     // creating the corrected one, and copying across is what makes this safe.
-    conn.exec("ALTER TABLE donor_alerts RENAME TO donor_alerts_legacy");
-    conn.exec(SCHEMA_ALERTS);
-    conn.exec(
+    await db.exec("ALTER TABLE donor_alerts RENAME TO donor_alerts_legacy");
+    await db.exec(SCHEMA_ALERTS);
+    await db.exec(
       `INSERT INTO donor_alerts
          (id, request_id, donor_id, ring_index, ring_km, status, response,
           due_at, responded_at, reminder_sent_at, created_at)
@@ -714,21 +737,17 @@ function migrate(conn: DatabaseSync): void {
               response, due_at, responded_at, reminder_sent_at, created_at
          FROM donor_alerts_legacy`,
     );
-    conn.exec("DROP TABLE donor_alerts_legacy");
+    await db.exec("DROP TABLE donor_alerts_legacy");
   }
 
   // Created last, once donor_alerts is guaranteed to be in its final shape.
-  conn.exec(
+  await db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS donor_alerts_one_acceptance_idx
        ON donor_alerts(request_id) WHERE response = 'accepted'`,
   );
 
-  conn
-    .prepare("INSERT OR IGNORE INTO platform_settings (id, updated_at) VALUES (1, ?)")
-    .run(now);
-  conn
-    .prepare("INSERT OR IGNORE INTO platform_safety_limits (id, updated_at) VALUES (1, ?)")
-    .run(now);
+  await db.run("INSERT OR IGNORE INTO platform_settings (id, updated_at) VALUES (1, ?)", [now]);
+  await db.run("INSERT OR IGNORE INTO platform_safety_limits (id, updated_at) VALUES (1, ?)", [now]);
 
   // The one documented demo administrator (see `@/lib/demo-account`).
   //
@@ -737,27 +756,17 @@ function migrate(conn: DatabaseSync): void {
   // credentials. It is seeded ONLY when the address is absent, so a password
   // changed through the app is never reset by a restart, and re-running this
   // migration is free. Hashing happens once, on first creation.
-  const demoSeeded = conn
-    .prepare("SELECT id FROM users WHERE email = ?")
-    .get(DEMO_ADMIN_EMAIL);
+  const demoSeeded = (await db.queryOne("SELECT id FROM users WHERE email = ?", [DEMO_ADMIN_EMAIL]));
   if (!demoSeeded) {
     const { hash } = hashPassword(DEMO_ADMIN_PASSWORD);
     const id = randomUUID();
-    conn
-      .prepare(
-        `INSERT INTO users (id, email, password_hash, full_name, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?)`
-      )
-      .run(id, DEMO_ADMIN_EMAIL, hash, DEMO_ADMIN_NAME, now, now);
+    await db.run(`INSERT INTO users (id, email, password_hash, full_name, role, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?)`, [id, DEMO_ADMIN_EMAIL, hash, DEMO_ADMIN_NAME, now, now]);
     // The role-membership backfill above has already run, so the demo admin —
     // created after it — must be given its membership explicitly. Without this
     // the account would sign in with no roles at all and lose admin access.
-    conn
-      .prepare(
-        `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
-         VALUES (?, 'admin', 1, ?)`,
-      )
-      .run(id, now);
+    await db.run(`INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
+         VALUES (?, 'admin', 1, ?)`, [id, now]);
   }
 }
 

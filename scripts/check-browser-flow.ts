@@ -723,7 +723,7 @@ async function main() {
     assert.equal(row.status, "active", "another user's request must be untouched");
   });
 
-  await check("I4. no 'accepted' status is ever introduced", () => {
+  await check("I4. no 'accepted' status is ever introduced", async () => {
     const distinct = readDb(
       (db) =>
         db.prepare("SELECT DISTINCT status FROM blood_requests").all() as { status: string }[],
@@ -768,7 +768,7 @@ async function main() {
 
   console.log("");
   if (failures.length) {
-    console.error(`${failures.length} check(s) FAILED:`);
+    console.error(`${failures.length} await check(s) FAILED:`);
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
@@ -779,7 +779,7 @@ async function main() {
 if (process.argv.includes("--cleanup")) {
   cleanupRun();
 } else {
-  main().catch((e) => {
+  await main().catch((e) => {
     console.error(e);
     process.exit(1);
   });

@@ -16,7 +16,7 @@
  */
 import assert from "node:assert/strict";
 
-import { closeDb, getDb } from "../src/lib/server/db";
+import { closeDb, getDb, initializeDatabase } from "../src/lib/server/db";
 import {
   authenticate,
   createSession,
@@ -65,16 +65,16 @@ async function get(path: string, token: string) {
  * account row, then issue the same opaque HTTP-only cookie the browser gets.
  * A wrong password must be refused — that half is the security property.
  */
-function login(email: string, password: string): string {
-  const user = authenticate(email, password);
+async function login(email: string, password: string): Promise<string> {
+  const user = await authenticate(email, password);
   assert.ok(user, "a correct password must authenticate");
-  return createSession(user.id).token;
+  return (await createSession(user.id)).token;
 }
 
 
 async function main() {
   const before = getDb().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
-  const created = createUser({
+  const created = await createUser({
     email: EMAIL,
     password: PASSWORD,
     fullName: "Live Dual Role",
@@ -82,25 +82,25 @@ async function main() {
   });
   // The second role, granted the way the UI would: a membership on the SAME
   // account, not a new user.
-  grantRole(created.id, "donor");
-  const { token } = createSession(created.id);
+  await grantRole(created.id, "donor");
+  const { token } = await createSession(created.id);
   closeDb();
 
   let session = "";
-  await check("1. an existing account can log in, and a wrong password cannot", () => {
-    assert.equal(authenticate(EMAIL, "wrong-password"), null, "a bad password is refused");
-    session = login(EMAIL, PASSWORD);
+  await check("1. an existing account can log in, and a wrong password cannot", async () => {
+    assert.equal(await authenticate(EMAIL, "wrong-password"), null, "a bad password is refused");
+    session = await login(EMAIL, PASSWORD);
     assert.ok(session.length > 20, "an opaque session token is issued");
   });
-  await check("2. the account holds BOTH roles on one user id", () => {
-    const user = getUserForToken(token);
+  await check("2. the account holds BOTH roles on one user id", async () => {
+    const user = await getUserForToken(token);
     assert.equal(user?.id, created.id, "one identity");
     assert.deepEqual(bothRoles(user), ["donor", "requester"]);
   });
 
-  await check("3. switching active role keeps the SAME session and email", () => {
-    assert.equal(setSessionActiveRole(created.id, token, "requester"), true);
-    const after = getUserForToken(token);
+  await check("3. switching active role keeps the SAME session and email", async () => {
+    assert.equal(await setSessionActiveRole(created.id, token, "requester"), true);
+    const after = await getUserForToken(token);
     assert.equal(after?.id, created.id, "same user, not a second account");
     assert.equal(after?.email, EMAIL, "the email is unchanged");
     assert.equal(after?.role, "requester", "now acting as requester");
@@ -123,9 +123,9 @@ async function main() {
     assert.ok(!/donor|requester/.test(token), "no role may appear in the cookie");
   });
 
-  await check("6. switching back to donor works on the same session", () => {
-    assert.equal(setSessionActiveRole(created.id, token, "donor"), true);
-    const after = getUserForToken(token);
+  await check("6. switching back to donor works on the same session", async () => {
+    assert.equal(await setSessionActiveRole(created.id, token, "donor"), true);
+    const after = await getUserForToken(token);
     assert.equal(after?.role, "donor");
     assert.deepEqual(bothRoles(after), ["donor", "requester"]);
   });
@@ -140,33 +140,33 @@ async function main() {
     assert.equal((await get("/dashboard/donor", token)).status, 200);
   });
 
-  await check("9. logging out revokes the session", () => {
-    revokeSession(token);
-    assert.equal(getUserForToken(token), null, "the token no longer resolves");
+  await check("9. logging out revokes the session", async () => {
+    await revokeSession(token);
+    assert.equal(await getUserForToken(token), null, "the token no longer resolves");
   });
   closeDb();
 
   let fresh = "";
   await check("10. logging back in works, with both roles intact", async () => {
-    fresh = login(EMAIL, PASSWORD);
+    fresh = await login(EMAIL, PASSWORD);
 
-    const user = getUserForToken(fresh);
+    const user = await getUserForToken(fresh);
     assert.equal(user?.id, created.id, "still the SAME account");
     assert.equal(user?.email, EMAIL);
     assert.deepEqual(bothRoles(user), ["donor", "requester"]);
   });
 
-  await check("11. NO duplicate account was created for the second role", () => {
+  await check("11. NO duplicate account was created for the second role", async () => {
     const rows = getDb()
       .prepare("SELECT id FROM users WHERE email = ?")
       .all(EMAIL) as { id: string }[];
     assert.equal(rows.length, 1, "exactly one account for this email");
-    assert.equal(getUserRoles(created.id).length, 2, "two memberships on it");
+    assert.equal((await getUserRoles(created.id)).length, 2, "two memberships on it");
   });
 
-  await check("12. the account cannot gain admin by any route", () => {
-    assert.equal(setSessionActiveRole(created.id, fresh, "admin"), false);
-    assert.ok(!getUserRoles(created.id).includes("admin"), "no admin membership exists");
+  await check("12. the account cannot gain admin by any route", async () => {
+    assert.equal(await setSessionActiveRole(created.id, fresh, "admin"), false);
+    assert.ok(!(await getUserRoles(created.id)).includes("admin"), "no admin membership exists");
   });
 
   await check("13. an admin-only page is refused to this account", async () => {
@@ -175,7 +175,7 @@ async function main() {
   });
 
   closeDb();
-  await check("cleanup: the temporary account and its data are removed", () => {
+  await check("cleanup: the temporary account and its data are removed", async () => {
     getDb().prepare("DELETE FROM users WHERE email = ?").run(EMAIL);
     const after = getDb().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
     assert.equal(Number(after.n), Number(before.n), "the user count is back where it started");
@@ -188,7 +188,7 @@ async function main() {
 
   console.log("");
   if (failures.length) {
-    console.error(`${failures.length} live check(s) failed:`);
+    console.error(`${failures.length} live await check(s) failed:`);
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }

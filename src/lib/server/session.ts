@@ -12,7 +12,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import type { AuthenticatedUser } from "@/types";
-import { getDb } from "./db";
+import { getDriver } from "./driver";
 import { hashPassword, verifyPassword } from "./password";
 
 const SESSION_DAYS = 30;
@@ -47,18 +47,18 @@ function isRole(value: unknown): value is DbRole {
  * `is_primary` first, then a fixed role order, so two calls never disagree about
  * what "the first role" is.
  */
-export function getUserRoles(userId: string): DbRole[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT role FROM user_roles
+export async function getUserRoles(userId: string): Promise<DbRole[]> {
+  const db = await getDriver();
+  const rows = await db.query<{ role: string }>(
+    `SELECT role FROM user_roles
         WHERE user_id = ?
         ORDER BY is_primary DESC,
                  CASE role
                    WHEN 'admin' THEN 0 WHEN 'donor' THEN 1
                    WHEN 'requester' THEN 2 ELSE 3
                  END`,
-    )
-    .all(userId) as { role: string }[];
+    [userId],
+  );
   const roles = rows.map((r) => r.role).filter(isRole);
   // An account with no membership at all can still sign in; it simply has
   // nothing to do. Never invent a role here.
@@ -73,17 +73,26 @@ export function getUserRoles(userId: string): DbRole[] {
  * function only records a membership that is known to be permitted, and it
  * cannot create an account, change an email, or touch any other user.
  */
-export function grantRole(userId: string, role: DbRole, makePrimary = false): void {
+export async function grantRole(
+  userId: string,
+  role: DbRole,
+  makePrimary = false,
+): Promise<void> {
+  const db = await getDriver();
   const now = new Date().toISOString();
-  if (makePrimary) {
-    getDb().prepare("UPDATE user_roles SET is_primary = 0 WHERE user_id = ?").run(userId);
-  }
-  getDb()
-    .prepare(
+  // Both statements are one logical unit: clearing the old primary and writing
+  // the new one must not interleave with another request, or an account could
+  // momentarily hold two primaries.
+  await db.transaction(async (tx) => {
+    if (makePrimary) {
+      await tx.run("UPDATE user_roles SET is_primary = 0 WHERE user_id = ?", [userId]);
+    }
+    await tx.run(
       `INSERT OR IGNORE INTO user_roles (user_id, role, is_primary, created_at)
        VALUES (?, ?, ?, ?)`,
-    )
-    .run(userId, role, makePrimary ? 1 : 0, now);
+      [userId, role, makePrimary ? 1 : 0, now],
+    );
+  });
 }
 
 /**
@@ -98,34 +107,46 @@ export function grantRole(userId: string, role: DbRole, makePrimary = false): vo
  * requested role arrives from the browser, and the ONLY thing that makes it
  * legitimate is a matching row in `user_roles` for the session's own user.
  */
-export function setSessionActiveRole(userId: string, token: string, role: string): boolean {
+export async function setSessionActiveRole(
+  userId: string,
+  token: string,
+  role: string,
+): Promise<boolean> {
   if (!isRole(role)) return false;
-  if (!getUserRoles(userId).includes(role)) return false;
-  const info = getDb()
-    .prepare(
-      "UPDATE sessions SET active_role = ? WHERE user_id = ? AND token_hash = ?",
-    )
-    .run(role, userId, sha256(token));
-  return Number(info.changes) > 0;
+  if (!(await getUserRoles(userId)).includes(role)) return false;
+  const db = await getDriver();
+  const info = await db.run(
+    "UPDATE sessions SET active_role = ? WHERE user_id = ? AND token_hash = ?",
+    [role, userId, sha256(token)],
+  );
+  return info.changes > 0;
 }
 
 /** Create a user. Throws code 23505 on a duplicate email. */
-export function createUser(input: {
+export async function createUser(input: {
   email: string;
   password: string;
   fullName: string;
   role: SessionUser["role"];
-}): SessionUser {
+}): Promise<SessionUser> {
   const { hash } = hashPassword(input.password);
   const now = new Date().toISOString();
   const id = randomUUID();
+  const db = await getDriver();
   try {
-    getDb()
-      .prepare(
-        `INSERT INTO users (id, email, password_hash, full_name, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`
-      )
-      .run(id, input.email.toLowerCase().trim(), hash, input.fullName.trim(), input.role, now, now);
+    await db.run(
+      `INSERT INTO users (id, email, password_hash, full_name, role, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`,
+      [
+        id,
+        input.email.toLowerCase().trim(),
+        hash,
+        input.fullName.trim(),
+        input.role,
+        now,
+        now,
+      ],
+    );
   } catch (err) {
     const e = err as { message?: string; code?: string };
     if (/UNIQUE constraint failed/i.test(e.message ?? "")) {
@@ -137,7 +158,7 @@ export function createUser(input: {
   // The role the account was created with becomes its membership AND its primary.
   // `users.role` is written once here purely so the legacy column stays coherent
   // for an older binary; it is never read for authorization.
-  grantRole(id, input.role, true);
+  await grantRole(id, input.role, true);
   return {
     id,
     email: input.email.toLowerCase().trim(),
@@ -151,19 +172,22 @@ export function createUser(input: {
 }
 
 /** Verify credentials. Returns the user, or null. Never reveals which part failed. */
-export function authenticate(email: string, password: string): SessionUser | null {
-  const row = getDb()
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email.toLowerCase().trim()) as
-    | (Record<string, unknown> & { password_hash: string })
-    | undefined;
+export async function authenticate(
+  email: string,
+  password: string,
+): Promise<SessionUser | null> {
+  const db = await getDriver();
+  const row = await db.queryOne<Record<string, unknown> & { password_hash: string }>(
+    "SELECT * FROM users WHERE email = ?",
+    [email.toLowerCase().trim()],
+  );
   if (!row) {
     // Still burn comparable time so a missing account is not detectable by timing.
     verifyPassword(password, "scrypt$16384$8$1$00$00");
     return null;
   }
   if (!verifyPassword(password, row.password_hash)) return null;
-  const roles = getUserRoles(String(row.id));
+  const roles = await getUserRoles(String(row.id));
   return {
     id: String(row.id),
     email: String(row.email),
@@ -182,16 +206,18 @@ export function authenticate(email: string, password: string): SessionUser | nul
  * Start a session. Each call is a separate device, so a user can be signed in
  * on several devices at once.
  */
-export function createSession(userId: string): { token: string; expiresAt: Date } {
+export async function createSession(
+  userId: string,
+): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString("base64url");
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_DAYS * 86_400_000);
-  getDb()
-    .prepare(
-      `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    .run(randomUUID(), userId, sha256(token), now.toISOString(), expiresAt.toISOString());
+  const db = await getDriver();
+  await db.run(
+    `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    [randomUUID(), userId, sha256(token), now.toISOString(), expiresAt.toISOString()],
+  );
   return { token, expiresAt };
 }
 
@@ -214,22 +240,25 @@ export function createSession(userId: string): { token: string; expiresAt: Date 
  * Either way the result is a role the account genuinely holds, and the account
  * keeps every membership — this only chooses which one this device is using.
  */
-export function getUserForToken(token: string | undefined): SessionUser | null {
+export async function getUserForToken(
+  token: string | undefined,
+): Promise<SessionUser | null> {
   if (!token) return null;
-  const row = getDb()
-    .prepare(
-      `SELECT u.id, u.email, u.full_name, u.status,
-              u.created_at, u.updated_at, s.id AS session_id, s.active_role
-         FROM sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`,
-    )
-    .get(sha256(token), new Date().toISOString()) as
-    | (Record<string, unknown> & { active_role: string | null; session_id: string })
-    | undefined;
+  const db = await getDriver();
+  const row = await db.queryOne<Record<string, unknown> & {
+    active_role: string | null;
+    session_id: string;
+  }>(
+    `SELECT u.id, u.email, u.full_name, u.status,
+            u.created_at, u.updated_at, s.id AS session_id, s.active_role
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`,
+    [sha256(token), new Date().toISOString()],
+  );
   if (!row) return null;
 
   const userId = String(row.id);
-  const roles = getUserRoles(userId);
+  const roles = await getUserRoles(userId);
   const stored = row.active_role;
   const valid = isRole(stored) && roles.includes(stored) ? stored : undefined;
   const active = valid ?? roles[0];
@@ -250,9 +279,10 @@ export function getUserForToken(token: string | undefined): SessionUser | null {
   }
 
   if (!valid) {
-    getDb()
-      .prepare("UPDATE sessions SET active_role = ? WHERE id = ?")
-      .run(active, row.session_id);
+    await db.run("UPDATE sessions SET active_role = ? WHERE id = ?", [
+      active,
+      row.session_id,
+    ]);
   }
 
   return {
@@ -267,10 +297,12 @@ export function getUserForToken(token: string | undefined): SessionUser | null {
   };
 }
 /** Revoke ONE session. Other devices are untouched. */
-export function revokeSession(token: string): void {
+export async function revokeSession(token: string): Promise<void> {
   if (!token) return;
-  getDb()
-    .prepare("UPDATE sessions SET revoked_at = ? WHERE token_hash = ?")
-    .run(new Date().toISOString(), sha256(token));
+  const db = await getDriver();
+  await db.run("UPDATE sessions SET revoked_at = ? WHERE token_hash = ?", [
+    new Date().toISOString(),
+    sha256(token),
+  ]);
 }
 

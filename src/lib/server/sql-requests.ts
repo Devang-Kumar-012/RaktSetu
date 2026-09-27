@@ -37,13 +37,21 @@
 
 import { randomUUID } from "node:crypto";
 
-import { getDb } from "./db";
+import { getDriver, type Tx } from "./driver";
 import { isBloodCompatible } from "@/lib/blood-compat";
 import { haversineKm } from "@/lib/geo";
 import { ALERT_RINGS_KM } from "@/lib/constants";
 
 type Row = Record<string, unknown>;
-type Db = ReturnType<typeof getDb>;
+/**
+ * A handle for running statements.
+ *
+ * This is the driver seam, not a `node:sqlite` connection: a local file and a
+ * remote libSQL database are reached the same way. Because the remote backend is
+ * reached over the network, every method here is async — that is the one
+ * behaviour change this migration forced, and it is confined to awaiting.
+ */
+type Db = Tx;
 
 /** The signed-in account, as resolved from the HTTP-only session cookie. */
 export interface RequestCaller {
@@ -80,20 +88,16 @@ export type RespondOutcome =
  * documented defaults. Mirrors the local engine, so an admin's settings change
  * takes effect on the next call.
  */
-function settings(): {
+async function settings(): Promise<{
   rings: number[];
   windowMinutes: number;
   dueOffsetMinutes: number;
   cooldownDays: number;
   maxRings: number;
-} {
-  const row = getDb()
-    .prepare(
-      `SELECT alert_rings_km, alert_window_minutes, alert_due_at_offset_minutes,
+}> {
+  const row = (await (await getDriver()).queryOne(`SELECT alert_rings_km, alert_window_minutes, alert_due_at_offset_minutes,
               donation_interval_days, max_alert_rings
-         FROM platform_settings WHERE id = 1`,
-    )
-    .get() as Row | undefined;
+         FROM platform_settings WHERE id = 1`, [])) as Row | undefined;
   const rings = String(row?.alert_rings_km ?? ALERT_RINGS_KM.join(","))
     .split(",")
     .map((n) => Number(n.trim()))
@@ -118,21 +122,14 @@ function settings(): {
  * safe here. Any throw rolls the whole thing back, so a partial fan-out can
  * never be observed.
  */
-function transaction<T>(fn: (db: Db) => T): T {
-  const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const out = fn(db);
-    db.exec("COMMIT");
-    return out;
-  } catch (err) {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // A failed rollback must not mask the original error.
-    }
-    throw err;
-  }
+function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
+  // The driver supplies IMMEDIATE/write semantics on BOTH backends: a local
+  // `BEGIN IMMEDIATE`, and an exclusive server-side write transaction on
+  // libSQL. Both take the write lock up front, so two concurrent acceptances
+  // serialise at BEGIN rather than failing late with SQLITE_BUSY. That is what
+  // makes "re-read the current winner, then write mine" safe here. Any throw
+  // rolls the whole thing back, so a partial fan-out can never be observed.
+  return getDriver().then((d) => d.transaction(fn));
 }
 
 /** SQLite's unique-constraint failure, in either the message or code form. */
@@ -147,7 +144,7 @@ function isUniqueViolation(err: unknown): boolean {
  * The dedupe key (and the `notifications_event_once_idx` unique index) is what
  * stops a repeated tick or a second loser from notifying the same person twice.
  */
-function notify(
+async function notify(
   db: Db,
   args: {
     userId: string;
@@ -159,22 +156,10 @@ function notify(
     dedupeKey?: string | null;
     link?: string | null;
   },
-): void {
-  db.prepare(
-    `INSERT OR IGNORE INTO notifications
+): Promise<void> {
+  await db.run(`INSERT OR IGNORE INTO notifications
        (user_id, kind, title, body, request_id, alert_id, link, read_at, created_at, dedupe_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
-  ).run(
-    args.userId,
-    args.kind,
-    args.title,
-    args.body,
-    args.requestId ?? null,
-    args.alertId ?? null,
-    args.link ?? null,
-    nowIso(),
-    args.dedupeKey ?? null,
-  );
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`, [args.userId, args.kind, args.title, args.body, args.requestId ?? null, args.alertId ?? null, args.link ?? null, nowIso(), args.dedupeKey ?? null]);
 }
 
 
@@ -184,22 +169,18 @@ function notify(
  * Mirrors `closeProcessForRequest` in the local engine: once a request is
  * settled, nothing may remain actionable on it.
  */
-function closeProcess(
+async function closeProcess(
   db: Db,
   requestId: string,
   outcome: "accepted" | "request_closed" | "rings_exhausted",
-): void {
+): Promise<void> {
   const at = nowIso();
-  db.prepare(
-    `UPDATE ring_progress
+  await db.run(`UPDATE ring_progress
         SET finished_at = ?, outcome = ?, last_advanced_at = ?
-      WHERE request_id = ? AND finished_at IS NULL`,
-  ).run(at, outcome, at, requestId);
-  db.prepare(
-    `UPDATE donor_alerts
+      WHERE request_id = ? AND finished_at IS NULL`, [at, outcome, at, requestId]);
+  await db.run(`UPDATE donor_alerts
         SET status = 'expired'
-      WHERE request_id = ? AND response IS NULL AND status IN ('sent','opened')`,
-  ).run(requestId);
+      WHERE request_id = ? AND response IS NULL AND status IN ('sent','opened')`, [requestId]);
 }
 
 /**
@@ -248,30 +229,22 @@ function donorIsEligible(
  * terminal, so an already-closed request is never re-expired and a fulfilled one
  * is never downgraded to expired.
  */
-export function expireStaleRequests(): number {
+export async function expireStaleRequests(): Promise<number> {
   const at = nowIso();
-  return transaction((db) => {
-    const stale = db
-      .prepare(
-        `SELECT id, requester_id, units, blood_group, locality
+  return transaction(async (db) => {
+    const stale = (await db.query(`SELECT id, requester_id, units, blood_group, locality
            FROM blood_requests
-          WHERE status = 'active' AND required_by <= ?`,
-      )
-      .all(at) as Row[];
+          WHERE status = 'active' AND required_by <= ?`, [at])) as Row[];
 
     for (const r of stale) {
       // The `status = 'active'` predicate makes this a compare-and-set: whoever
       // changes the row first wins and the loser closes nothing.
-      const closed = db
-        .prepare(
-          `UPDATE blood_requests
+      const closed = await db.run(`UPDATE blood_requests
               SET status = 'expired', updated_at = ?
-            WHERE id = ? AND status = 'active'`,
-        )
-        .run(at, r.id as string);
+            WHERE id = ? AND status = 'active'`, [at, r.id as string]);
       if (Number(closed.changes) === 0) continue;
-      closeProcess(db, r.id as string, "request_closed");
-      notify(db, {
+      await closeProcess(db, r.id as string, "request_closed");
+      await notify(db, {
         userId: r.requester_id as string,
         kind: "request_expired",
         title: "Your blood request expired",
@@ -306,19 +279,17 @@ export function expireStaleRequests(): number {
  *
  * Idempotent and safe to call from any server render.
  */
-export function expandAlertRings(): number {
-  expireStaleRequests();
-  const cfg = settings();
+export async function expandAlertRings(): Promise<number> {
+  await expireStaleRequests();
+  const cfg = await settings();
 
-  return transaction((db) => {
+  return transaction(async (db) => {
     const now = Date.now();
     const at = nowIso();
     let created = 0;
-    const requests = db
-      .prepare("SELECT * FROM blood_requests WHERE status = 'active' AND required_by > ?")
-      .all(at) as Row[];
+    const requests = (await db.query("SELECT * FROM blood_requests WHERE status = 'active' AND required_by > ?", [at])) as Row[];
     for (const request of requests) {
-      created += advanceRequestRings(db, request, cfg, now, at);
+      created += await advanceRequestRings(db, request, cfg, now, at);
     }
     return created;
   });
@@ -330,38 +301,30 @@ export function expandAlertRings(): number {
  * Split out of the transaction body so `expandAlertRings` above reads as the
  * rule list, and this reads as the mechanics.
  */
-function advanceRequestRings(
+async function advanceRequestRings(
   db: Db,
   request: Row,
-  cfg: ReturnType<typeof settings>,
+  cfg: Awaited<ReturnType<typeof settings>>,
   now: number,
   at: string,
-): number {
+): Promise<number> {
   const id = request.id as string;
   let created = 0;
 
   // A winner stops every future ring.
-  const won = db
-    .prepare(
-      `SELECT 1 FROM donor_alerts
-        WHERE request_id = ? AND response = 'accepted' LIMIT 1`,
-    )
-    .get(id);
+  const won = (await db.queryOne(`SELECT 1 FROM donor_alerts
+        WHERE request_id = ? AND response = 'accepted' LIMIT 1`, [id]));
   if (won) {
-    closeProcess(db, id, "accepted");
+    await closeProcess(db, id, "accepted");
     return 0;
   }
 
-  const last = db
-    .prepare(
-      `SELECT ring_index, started_at FROM ring_progress
-        WHERE request_id = ? ORDER BY ring_index DESC LIMIT 1`,
-    )
-    .get(id) as Row | undefined;
+  const last = (await db.queryOne(`SELECT ring_index, started_at FROM ring_progress
+        WHERE request_id = ? ORDER BY ring_index DESC LIMIT 1`, [id])) as Row | undefined;
 
   const targetIndex = last ? Math.min(Number(last.ring_index), cfg.rings.length) : 0;
   if (targetIndex >= cfg.rings.length || targetIndex >= cfg.maxRings) {
-    closeProcess(db, id, "rings_exhausted");
+    await closeProcess(db, id, "rings_exhausted");
     return 0;
   }
   if (last) {
@@ -373,19 +336,15 @@ function advanceRequestRings(
   const ringKm = cfg.rings[targetIndex];
   // Never alert the same donor twice for one request, however far we widen.
   const already = new Set(
-    (db.prepare("SELECT donor_id FROM donor_alerts WHERE request_id = ?").all(id) as Row[]).map(
+    ((await db.query("SELECT donor_id FROM donor_alerts WHERE request_id = ?", [id])) as Row[]).map(
       (r) => r.donor_id as string,
     ),
   );
 
-  const candidates = db
-    .prepare(
-      `SELECT dp.user_id, dp.blood_group, dp.availability, dp.last_donation_date,
+  const candidates = (await db.query(`SELECT dp.user_id, dp.blood_group, dp.availability, dp.last_donation_date,
               dp.latitude, dp.longitude, u.status, u.role
          FROM donor_profiles dp
-         JOIN users u ON u.id = dp.user_id`,
-    )
-    .all() as Row[];
+         JOIN users u ON u.id = dp.user_id`, [])) as Row[];
 
   for (const c of candidates) {
     const donorId = c.user_id as string;
@@ -423,18 +382,14 @@ function advanceRequestRings(
     const deadline = new Date(String(request.required_by)).getTime();
     const due = Math.min(deadline - cfg.dueOffsetMinutes * 60_000, deadline);
 
-    const info = db
-      .prepare(
-        `INSERT INTO donor_alerts
+    const info = await db.run(`INSERT INTO donor_alerts
            (request_id, donor_id, ring_index, ring_km, status, response, due_at, created_at)
-         VALUES (?, ?, ?, ?, 'sent', NULL, ?, ?)`,
-      )
-      .run(id, donorId, targetIndex + 1, ringKm, new Date(due).toISOString(), at);
+         VALUES (?, ?, ?, ?, 'sent', NULL, ?, ?)`, [id, donorId, targetIndex + 1, ringKm, new Date(due).toISOString(), at]);
     const alertId = Number(info.lastInsertRowid);
     already.add(donorId);
     created += 1;
 
-    notify(db, {
+    await notify(db, {
       userId: donorId,
       kind: "alert_received",
       title: `Blood needed nearby — ${request.blood_group}`,
@@ -446,19 +401,13 @@ function advanceRequestRings(
     });
   }
 
-  const progress = db
-    .prepare("SELECT 1 FROM ring_progress WHERE request_id = ? AND ring_index = ?")
-    .get(id, targetIndex + 1);
+  const progress = (await db.queryOne("SELECT 1 FROM ring_progress WHERE request_id = ? AND ring_index = ?", [id, targetIndex + 1]));
   if (progress) {
-    db.prepare(
-      "UPDATE ring_progress SET last_advanced_at = ? WHERE request_id = ? AND ring_index = ?",
-    ).run(at, id, targetIndex + 1);
+    await db.run("UPDATE ring_progress SET last_advanced_at = ? WHERE request_id = ? AND ring_index = ?", [at, id, targetIndex + 1]);
   } else {
-    db.prepare(
-      `INSERT INTO ring_progress
+    await db.run(`INSERT INTO ring_progress
          (request_id, ring_index, started_at, last_advanced_at, finished_at, outcome)
-       VALUES (?, ?, ?, ?, NULL, NULL)`,
-    ).run(id, targetIndex + 1, at, at);
+       VALUES (?, ?, ?, ?, NULL, NULL)`, [id, targetIndex + 1, at, at]);
   }
   return created;
 }
@@ -483,19 +432,19 @@ function advanceRequestRings(
  *
  * Returns the outcome code the UI already knows how to render.
  */
-export function markAlertResponded(
+export async function markAlertResponded(
   caller: RequestCaller,
   alertId: number,
   response: string,
-): RespondOutcome {
+): Promise<RespondOutcome> {
   if (response !== "accepted" && response !== "declined") return "invalid_response";
   // A non-donor holds no alerts, so this leaks nothing about any request.
   if (caller.role !== "donor") return "not_your_alert";
 
-  const cfg = settings();
-  const resolve = (): RespondOutcome =>
-    transaction((db) => {
-      const alert = db.prepare("SELECT * FROM donor_alerts WHERE id = ?").get(alertId) as
+  const cfg = await settings();
+  const resolve = async (): Promise<RespondOutcome> =>
+    transaction(async (db) => {
+      const alert = (await db.queryOne("SELECT * FROM donor_alerts WHERE id = ?", [alertId])) as
         | Row
         | undefined;
       if (!alert) return "not_found" as RespondOutcome;
@@ -503,22 +452,16 @@ export function markAlertResponded(
       if (alert.donor_id !== caller.id) return "not_your_alert";
       if (alert.response !== null) return "already_responded";
 
-      const request = db
-        .prepare("SELECT * FROM blood_requests WHERE id = ?")
-        .get(alert.request_id as string) as Row | undefined;
+      const request = (await db.queryOne("SELECT * FROM blood_requests WHERE id = ?", [alert.request_id as string])) as Row | undefined;
       if (!request || request.status !== "active") return "request_closed";
       if (new Date(String(request.required_by)).getTime() <= Date.now()) {
         return "request_closed";
       }
       if (alert.status !== "sent" && alert.status !== "opened") return "request_closed";
 
-      const donor = db
-        .prepare(
-          `SELECT dp.blood_group, dp.availability, dp.last_donation_date, u.status, u.role
+      const donor = (await db.queryOne(`SELECT dp.blood_group, dp.availability, dp.last_donation_date, u.status, u.role
              FROM donor_profiles dp JOIN users u ON u.id = dp.user_id
-            WHERE dp.user_id = ?`,
-        )
-        .get(caller.id) as Row | undefined;
+            WHERE dp.user_id = ?`, [caller.id])) as Row | undefined;
       if (
         !donor ||
         !donorIsEligible(
@@ -542,22 +485,24 @@ export function markAlertResponded(
 
       // THE WRITE. If another donor already holds the acceptance this raises a
       // constraint error; it is caught below and reported as already_taken.
-      db.prepare(
-        `UPDATE donor_alerts
+      await db.run(`UPDATE donor_alerts
             SET response = ?, status = 'responded', responded_at = ?
-          WHERE id = ? AND response IS NULL`,
-      ).run(response, nowIso(), alertId);
+          WHERE id = ? AND response IS NULL`, [response, nowIso(), alertId]);
 
       if (response === "declined") return "declined" as RespondOutcome;
 
       // Accepted. Stop the ring, then tell everyone still waiting.
-      closeProcess(db, String(request.id), "accepted");
-      announceAcceptance(db, request, alertId, caller.id);
+      await closeProcess(db, String(request.id), "accepted");
+      await announceAcceptance(db, request, alertId, caller.id);
       return "accepted" as RespondOutcome;
     });
 
   try {
-    return resolve();
+    // The `await` is load-bearing, not stylistic: without it the rejection
+    // escapes this `try` entirely, the unique violation is never converted to
+    // "already_taken", and a losing donor in a genuine race sees a raw
+    // constraint error instead of the correct outcome.
+    return await resolve();
   } catch (err) {
     if (isUniqueViolation(err)) return "already_taken";
     throw err;
@@ -570,15 +515,11 @@ export function markAlertResponded(
  * requester, and an audit row. Runs inside the same transaction as the write, so
  * a rollback takes the notifications with it.
  */
-function announceAcceptance(db: Db, request: Row, alertId: number, donorId: string): void {
+async function announceAcceptance(db: Db, request: Row, alertId: number, donorId: string): Promise<void> {
   const requestId = String(request.id);
-  for (const other of db
-    .prepare(
-      `SELECT id, donor_id FROM donor_alerts
-        WHERE request_id = ? AND id <> ? AND response IS NULL`,
-    )
-    .all(requestId, alertId) as Row[]) {
-    notify(db, {
+  for (const other of (await db.query(`SELECT id, donor_id FROM donor_alerts
+        WHERE request_id = ? AND id <> ? AND response IS NULL`, [requestId, alertId])) as Row[]) {
+    await notify(db, {
       userId: other.donor_id as string,
       kind: "already_accepted",
       title: "Another donor responded first",
@@ -590,7 +531,7 @@ function announceAcceptance(db: Db, request: Row, alertId: number, donorId: stri
     });
   }
 
-  notify(db, {
+  await notify(db, {
     userId: donorId,
     kind: "acceptance_confirmed",
     title: "You accepted this request",
@@ -600,7 +541,7 @@ function announceAcceptance(db: Db, request: Row, alertId: number, donorId: stri
     dedupeKey: `acceptance-${alertId}`,
     link: "/dashboard/donor",
   });
-  notify(db, {
+  await notify(db, {
     userId: request.requester_id as string,
     kind: "donor_accepted",
     title: "A donor accepted your blood request",
@@ -610,10 +551,8 @@ function announceAcceptance(db: Db, request: Row, alertId: number, donorId: stri
     dedupeKey: `donor-accepted-${alertId}`,
     link: "/dashboard/requester",
   });
-  db.prepare(
-    `INSERT INTO audit_events (id, actor_id, action, entity, entity_id, metadata, created_at)
-     VALUES (?, ?, 'accept_request', 'blood_request', ?, NULL, ?)`,
-  ).run(`audit-${randomUUID()}`, donorId, requestId, nowIso());
+  await db.run(`INSERT INTO audit_events (id, actor_id, action, entity, entity_id, metadata, created_at)
+     VALUES (?, ?, 'accept_request', 'blood_request', ?, NULL, ?)`, [`audit-${randomUUID()}`, donorId, requestId, nowIso()]);
 }
 
 /* ------------------------------------------------------ requester lifecycle */
@@ -633,21 +572,19 @@ function announceAcceptance(db: Db, request: Row, alertId: number, donorId: stri
  * Terminal states stay terminal: the `status = 'active'` predicate together with
  * the `blood_requests_terminal_guard` trigger refuse any second transition.
  */
-export function closeRequestAsRequester(
+export async function closeRequestAsRequester(
   caller: RequestCaller,
   requestId: string,
   status: RequesterClosable,
-): {
+): Promise<{
   ok: boolean;
   /** `no_accepted_donor` is the RS003 refusal, which carries `message` verbatim. */
   reason?: "not_found" | "already_closed" | "no_accepted_donor";
   message?: string;
-} {
+}> {
   const at = nowIso();
-  return transaction((db) => {
-    const existing = db
-      .prepare("SELECT status FROM blood_requests WHERE id = ?")
-      .get(requestId) as Row | undefined;
+  return transaction(async (db) => {
+    const existing = (await db.queryOne("SELECT status FROM blood_requests WHERE id = ?", [requestId])) as Row | undefined;
     // A row that exists but is not the caller's is reported exactly like one
     // that does not exist, so this cannot be used to probe for other people's
     // request ids.
@@ -668,12 +605,8 @@ export function closeRequestAsRequester(
     // the UPDATE: returning afterwards would still COMMIT the status change,
     // which is exactly the outcome the rule forbids.
     if (status === "fulfilled") {
-      const accepted = db
-        .prepare(
-          `SELECT 1 FROM donor_alerts
-            WHERE request_id = ? AND response = 'accepted' LIMIT 1`,
-        )
-        .get(requestId);
+      const accepted = (await db.queryOne(`SELECT 1 FROM donor_alerts
+            WHERE request_id = ? AND response = 'accepted' LIMIT 1`, [requestId]));
       if (!accepted) {
         return {
           ok: false,
@@ -685,24 +618,18 @@ export function closeRequestAsRequester(
     }
 
     const stampColumn = status === "cancelled" ? "cancelled_at" : "fulfilled_at";
-    const info = db
-      .prepare(
-        `UPDATE blood_requests
+    const info = await db.run(`UPDATE blood_requests
             SET status = ?, updated_at = ?, ${stampColumn} = ?
-          WHERE id = ? AND requester_id = ? AND status = 'active'`,
-      )
-      .run(status, at, at, requestId, caller.id);
+          WHERE id = ? AND requester_id = ? AND status = 'active'`, [status, at, at, requestId, caller.id]);
 
     // A live request that matched no rows means the caller does not own it.
     if (Number(info.changes) === 0) return { ok: false, reason: "not_found" };
 
-    closeProcess(db, requestId, "request_closed");
+    await closeProcess(db, requestId, "request_closed");
 
-    const request = db
-      .prepare("SELECT * FROM blood_requests WHERE id = ?")
-      .get(requestId) as Row;
+    const request = (await db.queryOne("SELECT * FROM blood_requests WHERE id = ?", [requestId])) as Row;
 
-    notify(db, {
+    await notify(db, {
       userId: caller.id,
       kind: `request_${status}`,
       title: `Your blood request was ${status}`,
@@ -711,13 +638,9 @@ export function closeRequestAsRequester(
       dedupeKey: `${status}-${requestId}`,
       link: "/dashboard/requester",
     });
-    for (const a of db
-      .prepare(
-        `SELECT id, donor_id FROM donor_alerts
-          WHERE request_id = ? AND response IS NULL`,
-      )
-      .all(requestId) as Row[]) {
-      notify(db, {
+    for (const a of (await db.query(`SELECT id, donor_id FROM donor_alerts
+          WHERE request_id = ? AND response IS NULL`, [requestId])) as Row[]) {
+      await notify(db, {
         userId: a.donor_id as string,
         kind: "request_closed",
         title: "A request you were alerted about is closed",
@@ -742,23 +665,17 @@ export function closeRequestAsRequester(
  * accepted donor, and the donor/day guard is what stops a repeated submission
  * from inflating recognition.
  */
-export function recordDonation(
+export async function recordDonation(
   caller: RequestCaller,
   requestId: string,
   units: number,
-): { ok: true } | { ok: false; error: string } {
-  return transaction((db) => {
-    const request = db
-      .prepare("SELECT * FROM blood_requests WHERE id = ?")
-      .get(requestId) as Row | undefined;
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return transaction(async (db) => {
+    const request = (await db.queryOne("SELECT * FROM blood_requests WHERE id = ?", [requestId])) as Row | undefined;
     if (!request) return { ok: false as const, error: "That request could not be found." };
 
-    const winner = db
-      .prepare(
-        `SELECT donor_id FROM donor_alerts
-          WHERE request_id = ? AND response = 'accepted' LIMIT 1`,
-      )
-      .get(requestId) as Row | undefined;
+    const winner = (await db.queryOne(`SELECT donor_id FROM donor_alerts
+          WHERE request_id = ? AND response = 'accepted' LIMIT 1`, [requestId])) as Row | undefined;
     if (!winner) {
       return {
         ok: false as const,
@@ -770,9 +687,7 @@ export function recordDonation(
     }
 
     const donatedOn = nowIso().slice(0, 10);
-    const duplicate = db
-      .prepare("SELECT 1 FROM donations WHERE donor_id = ? AND donated_on = ? LIMIT 1")
-      .get(caller.id, donatedOn);
+    const duplicate = (await db.queryOne("SELECT 1 FROM donations WHERE donor_id = ? AND donated_on = ? LIMIT 1", [caller.id, donatedOn]));
     if (duplicate) {
       return {
         ok: false as const,
@@ -781,30 +696,18 @@ export function recordDonation(
     }
 
     const count = Number.isFinite(units) && units > 0 ? Math.floor(units) : 1;
-    db.prepare(
-      `INSERT INTO donations
+    await db.run(`INSERT INTO donations
          (id, donor_id, request_id, drive_id, donated_on, blood_component, units, created_at)
-       VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`,
-    ).run(
-      `don-${randomUUID()}`,
-      caller.id,
-      requestId,
-      donatedOn,
-      String(request.blood_component),
-      count,
-      nowIso(),
-    );
+       async VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`, [`don-${randomUUID()}`, caller.id, requestId, donatedOn, String(request.blood_component), count, nowIso()]);
 
     // Keep the donor's own eligibility tracking in step with the ledger.
-    db.prepare(
-      `UPDATE donor_profiles
+    await db.run(`UPDATE donor_profiles
           SET last_donation_date = ?,
               donation_count = COALESCE(donation_count, 0) + 1,
               updated_at = ?
-        WHERE user_id = ?`,
-    ).run(donatedOn, nowIso(), caller.id);
+        WHERE user_id = ?`, [donatedOn, nowIso(), caller.id]);
 
-    notify(db, {
+    await notify(db, {
       userId: caller.id,
       kind: "recognition_milestone",
       title: "Your donation was recorded",
@@ -813,10 +716,8 @@ export function recordDonation(
       dedupeKey: `donation-${requestId}`,
       link: "/dashboard/donor",
     });
-    db.prepare(
-      `INSERT INTO audit_events (id, actor_id, action, entity, entity_id, metadata, created_at)
-       VALUES (?, ?, 'record_donation', 'blood_request', ?, NULL, ?)`,
-    ).run(`audit-${randomUUID()}`, caller.id, requestId, nowIso());
+    await db.run(`INSERT INTO audit_events (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'record_donation', 'blood_request', ?, NULL, ?)`, [`audit-${randomUUID()}`, caller.id, requestId, nowIso()]);
 
     return { ok: true as const };
   });
@@ -836,10 +737,8 @@ export interface MatchedDonorRow {
 }
 
 /** A request the caller is allowed to match against, or null. */
-function ownableRequest(caller: RequestCaller, requestId: string): Row | null {
-  const request = getDb()
-    .prepare("SELECT * FROM blood_requests WHERE id = ?")
-    .get(requestId) as Row | undefined;
+async function ownableRequest(caller: RequestCaller, requestId: string): Promise<Row | null> {
+  const request = (await (await getDriver()).queryOne("SELECT * FROM blood_requests WHERE id = ?", [requestId])) as Row | undefined;
   if (!request) return null;
   // A request belonging to somebody else resolves to the SAME "no such request"
   // answer as one that does not exist, so this cannot be used to discover other
@@ -860,17 +759,17 @@ function ownableRequest(caller: RequestCaller, requestId: string): Row | null {
  * plus distance is what a donor needs in order to decide; contact details are
  * revealed only after a valid acceptance, and only to the requester.
  */
-export function matchDonorsForRequest(
+export async function matchDonorsForRequest(
   caller: RequestCaller,
   requestId: string,
   radiusKm: number | null,
   limit: number,
-): { data: MatchedDonorRow[] | null; error: { message: string } | null } {
-  const request = ownableRequest(caller, requestId);
+): Promise<{ data: MatchedDonorRow[] | null; error: { message: string } | null }> {
+  const request = await ownableRequest(caller, requestId);
   if (!request) return { data: null, error: { message: "No such request." } };
   if (request.status !== "active") return { data: [], error: null };
 
-  const cfg = settings();
+  const cfg = await settings();
   const now = Date.now();
   const maxKm =
     typeof radiusKm === "number" && Number.isFinite(radiusKm) && radiusKm > 0
@@ -878,14 +777,10 @@ export function matchDonorsForRequest(
       : Math.max(...cfg.rings);
   const cap = Math.min(Math.max(Math.floor(limit) || 50, 1), 200);
 
-  const candidates = getDb()
-    .prepare(
-      `SELECT dp.user_id, dp.blood_group, dp.availability, dp.last_donation_date,
+  const candidates = (await (await getDriver()).query(`SELECT dp.user_id, dp.blood_group, dp.availability, dp.last_donation_date,
               dp.latitude, dp.longitude, dp.locality, u.full_name, u.status, u.role
          FROM donor_profiles dp
-         JOIN users u ON u.id = dp.user_id`,
-    )
-    .all() as Row[];
+         JOIN users u ON u.id = dp.user_id`, [])) as Row[];
 
   const matched: MatchedDonorRow[] = candidates
     .filter((c) =>
@@ -935,14 +830,15 @@ export function matchDonorsForRequest(
  * Same ownership rule as above, so a request belonging to somebody else resolves
  * to no row at all and the caller cannot learn that it exists.
  */
-export function matchingDonorStats(
+export async function matchingDonorStats(
   caller: RequestCaller,
   requestId: string,
-): { data: Row[] | null; error: { message: string } | null } {
-  const request = ownableRequest(caller, requestId);
+): Promise<{ data: Row[] | null; error: { message: string } | null }> {
+  const request = await ownableRequest(caller, requestId);
   if (!request) return { data: null, error: { message: "No such request." } };
 
-  const rows = (matchDonorsForRequest(caller, requestId, null, 200).data ?? []) as MatchedDonorRow[];
+  const rows = ((await matchDonorsForRequest(caller, requestId, null, 200)).data ??
+    []) as MatchedDonorRow[];
   const within = (km: number): number =>
     rows.filter((r) => r.distance_km !== null && r.distance_km <= km).length;
 

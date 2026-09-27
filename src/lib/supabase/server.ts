@@ -64,7 +64,7 @@ async function requestWorkflowRpc(
       // NOTE the requester id is taken from the SESSION, never from
       // `p_requester_id` — a caller cannot close somebody else's request by
       // naming them.
-      const result = closeRequestAsRequester(caller, requestId, status as RequesterClosable);
+      const result = await closeRequestAsRequester(caller, requestId, status as RequesterClosable);
       if (result.ok) return { data: "ok", error: null };
       // RS003 keeps its SQLSTATE so `fulfillBloodRequest` can surface the full
       // sentence to the requester rather than flattening it into a generic
@@ -81,7 +81,7 @@ async function requestWorkflowRpc(
       return { data: "ok", error: null };
 
     case "record_donation": {
-      const result = recordDonation(
+      const result = await recordDonation(
         caller,
         String(args.p_request_id ?? ""),
         Number(args.p_units ?? 1),

@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 /** Matches the hashing session.ts uses, so a test token resolves. */
 const require_sha = (t: string) => createHash("sha256").update(t).digest("hex");
 
-import { getDb, closeDb, DB_FILE } from "../src/lib/server/db";
+import { getDb, closeDb, DB_FILE, initializeDatabase } from "../src/lib/server/db";
 import { createSqlClient } from "../src/lib/server/sql-adapter";
 import {
   closeRequestAsRequester,
@@ -217,7 +217,7 @@ async function raceChecks() {
     ]);
 
     // Both respond through the REAL workflow, not a raw UPDATE.
-    const first = markAlertResponded({ id: DN, role: "donor" }, alertIdOf("req-race", DN), "accepted");
+    const first = await markAlertResponded({ id: DN, role: "donor" }, alertIdOf("req-race", DN), "accepted");
     assert.equal(first, "accepted", "the first valid donor wins");
 
     // The loser is refused. Sequentially that refusal is 'request_closed',
@@ -225,7 +225,7 @@ async function raceChecks() {
     // legacy engine used, where the alert-state check also precedes the
     // "someone already won" check. What matters is that it is a refusal and
     // that the request still has exactly one accepted donor.
-    const second = markAlertResponded(
+    const second = await markAlertResponded(
       { id: "donor-2", role: "donor" },
       alertIdOf("req-race", "donor-2"),
       "accepted",
@@ -270,7 +270,7 @@ async function raceChecks() {
     ]);
 
     assert.equal(
-      markAlertResponded({ id: DN, role: "donor" }, alertIdOf(id, DN), "accepted"),
+      await markAlertResponded({ id: DN, role: "donor" }, alertIdOf(id, DN), "accepted"),
       "accepted",
     );
     // Put the loser's alert back to 'sent': that is the state it was read in
@@ -280,7 +280,7 @@ async function raceChecks() {
       .prepare("UPDATE donor_alerts SET status = 'sent' WHERE request_id = ? AND donor_id = ?")
       .run(id, "donor-2");
 
-    const second = markAlertResponded(
+    const second = await markAlertResponded(
       { id: "donor-2", role: "donor" },
       alertIdOf(id, "donor-2"),
       "accepted",
@@ -296,7 +296,7 @@ async function raceChecks() {
 
   await check("a donor cannot answer somebody else's alert", async () => {
     // donor-2 holds an open alert on req-race; donor-3 must not be able to use it.
-    const out = markAlertResponded(
+    const out = await markAlertResponded(
       { id: "donor-3", role: "donor" },
       alertIdOf("req-race-2", "donor-2"),
       "accepted",
@@ -305,7 +305,7 @@ async function raceChecks() {
   });
 
   await check("a non-donor cannot respond to any alert", async () => {
-    const out = markAlertResponded({ id: RQ, role: "requester" }, alertIdOf("req-race", DN), "accepted");
+    const out = await markAlertResponded({ id: RQ, role: "requester" }, alertIdOf("req-race", DN), "accepted");
     assert.equal(out, "not_your_alert", "only a donor holds alerts");
   });
 
@@ -353,7 +353,7 @@ async function raceChecks() {
       "a report must not cancel or hide the request");
   });
 
-  await check("a failure inside a transaction rolls back", () => {
+  await check("a failure inside a transaction rolls back", async () => {
     const d = getDb();
     d.exec("BEGIN");
     try {
@@ -481,7 +481,7 @@ async function workflowChecks() {
     );
 
     // The scoped UPDATE is the authorisation: zero rows, so nothing changed.
-    const attempt = closeRequestAsRequester({ id: RQ2, role: "requester" }, REQ, "cancelled");
+    const attempt = await closeRequestAsRequester({ id: RQ2, role: "requester" }, REQ, "cancelled");
     assert.equal(attempt.ok, false, "a non-owner must not close it");
     assert.equal(attempt.reason, "not_found");
 
@@ -490,20 +490,20 @@ async function workflowChecks() {
     assert.equal(still.status, "active", "the request must be untouched");
 
     // And they must not be able to learn that it exists by asking about it.
-    const match = matchDonorsForRequest({ id: RQ2, role: "requester" }, REQ, null, 50);
+    const match = await matchDonorsForRequest({ id: RQ2, role: "requester" }, REQ, null, 50);
     assert.equal(match.error?.message, "No such request.", "matching must not leak it");
     assert.equal(match.data, null);
   });
 
   // --- STEP 4: donor matching finds the eligible donor -----------------------
   await check("matching finds the eligible donor, and exposes no contact details", async () => {
-    const stats = matchingDonorStats({ id: RQ, role: "requester" }, REQ);
+    const stats = await matchingDonorStats({ id: RQ, role: "requester" }, REQ);
     const row = (stats.data as Record<string, unknown>[])[0];
     assert.equal(stats.error, null);
     assert.equal(row.is_active, true);
     assert.ok(Number(row.total_compatible) >= 1, "the eligible donor must be counted");
 
-    const donors = matchDonorsForRequest({ id: RQ, role: "requester" }, REQ, null, 50);
+    const donors = await matchDonorsForRequest({ id: RQ, role: "requester" }, REQ, null, 50);
     const list = donors.data as unknown as Record<string, unknown>[];
     assert.ok(list.length >= 1, "the donor must be listed");
     assert.equal(list[0].donor_id, DN);
@@ -519,7 +519,7 @@ async function workflowChecks() {
 
   // --- STEP 5: the ring engine alerts the donor ------------------------------
   await check("the ring engine raises a real alert for the persisted request", async () => {
-    const created = expandAlertRings();
+    const created = await expandAlertRings();
     assert.ok(created >= 1, "the eligible donor must be alerted");
     const alert = alertIdOf(REQ, DN);
     assert.ok(Number.isInteger(alert) && alert > 0);
@@ -533,7 +533,7 @@ async function workflowChecks() {
 
   // --- STEP 6: a donor responds, and only one can win -----------------------
   await check("first valid donor wins; the request STAYS active", async () => {
-    const out = markAlertResponded({ id: DN, role: "donor" }, alertIdOf(REQ, DN), "accepted");
+    const out = await markAlertResponded({ id: DN, role: "donor" }, alertIdOf(REQ, DN), "accepted");
     assert.equal(out, "accepted");
 
     // THE key lifecycle rule: acceptance is a donor<->request relationship, NOT
@@ -560,7 +560,7 @@ async function workflowChecks() {
       urgency: "routine", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
-    const refused = closeRequestAsRequester({ id: RQ, role: "requester" }, bare, "fulfilled");
+    const refused = await closeRequestAsRequester({ id: RQ, role: "requester" }, bare, "fulfilled");
     assert.equal(refused.ok, false, "fulfilment without a donor must be refused");
     assert.equal(refused.reason, "no_accepted_donor");
     assert.match(
@@ -574,7 +574,7 @@ async function workflowChecks() {
   });
 
   await check("an accepted request can be fulfilled by its owner", async () => {
-    const done = closeRequestAsRequester({ id: RQ, role: "requester" }, REQ, "fulfilled");
+    const done = await closeRequestAsRequester({ id: RQ, role: "requester" }, REQ, "fulfilled");
     assert.equal(done.ok, true, "the requester must be able to fulfil an accepted request");
     const row = (await db.from("blood_requests").eq("id", REQ).single())
       .data as Record<string, unknown>;
@@ -587,7 +587,7 @@ async function workflowChecks() {
     // database trigger is what refuses them, and reopening to 'active' is
     // covered by dataChecks' terminal-state check.
     for (const status of ["cancelled", "fulfilled"] as const) {
-      const again = closeRequestAsRequester({ id: RQ, role: "requester" }, REQ, status);
+      const again = await closeRequestAsRequester({ id: RQ, role: "requester" }, REQ, status);
       assert.equal(again.ok, false, `a fulfilled request must not become ${status}`);
     }
     const row = (await db.from("blood_requests").eq("id", REQ).single())
@@ -607,12 +607,12 @@ async function workflowChecks() {
       urgency: "urgent", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
-    expandAlertRings();
+    await expandAlertRings();
     assert.equal(
-      markAlertResponded({ id: DN, role: "donor" }, alertIdOf(id, DN), "accepted"),
+      await markAlertResponded({ id: DN, role: "donor" }, alertIdOf(id, DN), "accepted"),
       "accepted",
     );
-    const cancelled = closeRequestAsRequester({ id: RQ, role: "requester" }, id, "cancelled");
+    const cancelled = await closeRequestAsRequester({ id: RQ, role: "requester" }, id, "cancelled");
     assert.equal(cancelled.ok, true, "cancellation must remain possible after acceptance");
     const row = (await db.from("blood_requests").eq("id", id).single())
       .data as Record<string, unknown>;
@@ -630,13 +630,13 @@ async function workflowChecks() {
       urgency: "routine", required_by: new Date(Date.now() - 3_600_000).toISOString(),
       status: "active", created_at: now(), updated_at: now(),
     });
-    expireStaleRequests();
+    await expireStaleRequests();
     const row = (await db.from("blood_requests").eq("id", id).single())
       .data as Record<string, unknown>;
     assert.equal(row.status, "expired", "a request past its deadline must expire");
 
     // And it is terminal: a late cancellation must not revive it.
-    const late = closeRequestAsRequester({ id: RQ, role: "requester" }, id, "cancelled");
+    const late = await closeRequestAsRequester({ id: RQ, role: "requester" }, id, "cancelled");
     assert.equal(late.ok, false, "an expired request must not be cancelled");
   });
 
@@ -649,7 +649,7 @@ async function workflowChecks() {
       urgency: "routine", required_by: soon(), status: "active",
       created_at: now(), updated_at: now(),
     });
-    expireStaleRequests();
+    await expireStaleRequests();
     const row = (await db.from("blood_requests").eq("id", id).single())
       .data as Record<string, unknown>;
     assert.equal(row.status, "active", "a request before its deadline must stay active");
@@ -657,7 +657,7 @@ async function workflowChecks() {
 
   await check("expiry never downgrades a closed request", async () => {
     // req-workflow is fulfilled by now; a stale-clock tick must leave it alone.
-    expireStaleRequests();
+    await expireStaleRequests();
     const row = (await db.from("blood_requests").eq("id", REQ).single())
       .data as Record<string, unknown>;
     assert.equal(row.status, "fulfilled", "terminal states are never downgraded");
@@ -666,19 +666,19 @@ async function workflowChecks() {
 }
 
 async function sessionChecks() {
-  await check("two devices signed in at once; logging out of one leaves the other", () => {
-    const a = createSession(RQ);
-    const b = createSession(RQ);
+  await check("two devices signed in at once; logging out of one leaves the other", async () => {
+    const a = await createSession(RQ);
+    const b = await createSession(RQ);
     assert.notEqual(a.token, b.token, "each login gets its own token");
-    assert.equal(getUserForToken(a.token)?.id, RQ);
-    assert.equal(getUserForToken(b.token)?.id, RQ);
+    assert.equal((await getUserForToken(a.token))?.id, RQ);
+    assert.equal((await getUserForToken(b.token))?.id, RQ);
 
-    revokeSession(a.token);
-    assert.equal(getUserForToken(a.token), null, "device A is signed out");
-    assert.equal(getUserForToken(b.token)?.id, RQ, "device B is still signed in");
+    await revokeSession(a.token);
+    assert.equal(await getUserForToken(a.token), null, "device A is signed out");
+    assert.equal((await getUserForToken(b.token))?.id, RQ, "device B is still signed in");
   });
 
-  await check("raw session tokens are never stored", () => {
+  await check("raw session tokens are never stored", async () => {
     const rows = getDb().prepare("SELECT token_hash FROM sessions").all() as {
       token_hash: string;
     }[];
@@ -688,7 +688,7 @@ async function sessionChecks() {
     }
   });
 
-  await check("an expired session authenticates nobody", () => {
+  await check("an expired session authenticates nobody", async () => {
     const token = "expired-test-token";
     getDb()
       .prepare(
@@ -701,19 +701,19 @@ async function sessionChecks() {
         new Date(Date.now() - 60_000).toISOString(),
         new Date(Date.now() - 1000).toISOString()
       );
-    assert.equal(getUserForToken(token), null);
+    assert.equal(await getUserForToken(token), null);
   });
 
-  await check("an unknown token authenticates nobody", () => {
-    assert.equal(getUserForToken("not-a-real-token"), null);
-    assert.equal(getUserForToken(undefined), null);
+  await check("an unknown token authenticates nobody", async () => {
+    assert.equal(await getUserForToken("not-a-real-token"), null);
+    assert.equal(await getUserForToken(undefined), null);
   });
 
-  await check("a suspended account's session reports suspended", () => {
+  await check("a suspended account's session reports suspended", async () => {
     getDb().prepare("UPDATE users SET status = 'suspended' WHERE id = ?").run(RQ);
     try {
       assert.equal(
-        getUserForToken(createSession(RQ).token)?.status,
+        (await getUserForToken((await createSession(RQ)).token))?.status,
         "suspended",
         "status must travel with the session so guards can reject it"
       );
@@ -848,10 +848,11 @@ async function projectionShapeChecks() {
 
 async function report() {
   closeDb();
+  await initializeDatabase();
   for (const s of ["", "-wal", "-shm"]) if (existsSync(DB + s)) rmSync(DB + s);
   console.log("");
   if (failures.length) {
-    console.error(`✗ ${failures.length} SQLite migration check(s) failed:`);
+    console.error(`✗ ${failures.length} SQLite migration await check(s) failed:`);
     for (const f of failures) console.error(`  - ${f}`);
     console.error(`\n${passed} passed, ${failures.length} failed`);
     process.exit(1);
@@ -862,8 +863,9 @@ async function report() {
 async function main() {
   for (const s of ["", "-wal", "-shm"]) if (existsSync(DB + s)) rmSync(DB + s);
   closeDb();
+  await initializeDatabase();
 
-  await check("a fresh database is created automatically with the expected tables", () => {
+  await check("a fresh database is created automatically with the expected tables", async () => {
     const tables = (
       getDb().prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {
         name: string;
@@ -878,14 +880,14 @@ async function main() {
     }
   });
 
-  await check("foreign keys and WAL are actually enabled", () => {
+  await check("foreign keys and WAL are actually enabled", async () => {
     const fk = getDb().prepare("PRAGMA foreign_keys").get() as { foreign_keys: number };
     assert.equal(Number(fk.foreign_keys), 1, "foreign keys must be enforced");
     const j = getDb().prepare("PRAGMA journal_mode").get() as { journal_mode: string };
     assert.match(String(j.journal_mode), /wal/i, "WAL must be enabled");
   });
 
-  await check("passwords hash, verify, and are salted", () => {
+  await check("passwords hash, verify, and are salted", async () => {
     const a = hashPassword("correct horse battery staple");
     assert.ok(verifyPassword("correct horse battery staple", a.hash));
     assert.ok(!verifyPassword("wrong password", a.hash));
@@ -894,10 +896,10 @@ async function main() {
     assert.ok(!a.hash.includes("correct horse"), "plaintext must not appear in the hash");
   });
 
-  await check("registration writes a user and never returns the hash", () => {
+  await check("registration writes a user and never returns the hash", async () => {
     // The real generated id is what every later check must use, so the session
     // and request rows satisfy their foreign keys.
-    const created = createUser({
+    const created = await createUser({
       email: "rq@example.com", password: "correct horse battery staple",
       fullName: "Rita Requester", role: "requester",
     });
@@ -914,19 +916,19 @@ async function main() {
     });
   });
 
-  await check("login reads the user from SQLite", () => {
-    const good = authenticate("rq@example.com", "correct horse battery staple");
+  await check("login reads the user from SQLite", async () => {
+    const good = await authenticate("rq@example.com", "correct horse battery staple");
     assert.ok(good, "correct credentials must sign in");
     assert.equal(good?.role, "requester");
-    assert.equal(authenticate("rq@example.com", "nope"), null);
-    assert.equal(authenticate("nobody@example.com", "nope"), null,
+    assert.equal(await authenticate("rq@example.com", "nope"), null);
+    assert.equal(await authenticate("nobody@example.com", "nope"), null,
       "a missing account must fail without revealing anything");
   });
 
-  await check("a duplicate email is refused by the database", () => {
+  await check("a duplicate email is refused by the database", async () => {
     let code: string | undefined;
     try {
-      createUser({
+      await createUser({
         email: "rq@example.com", password: "another password",
         fullName: "Impostor", role: "donor",
       });
@@ -936,7 +938,7 @@ async function main() {
     assert.equal(code, "23505");
   });
 
-  await check("public registration cannot produce an admin", () => {
+  await check("public registration cannot produce an admin", async () => {
     assert.throws(
       () => getDb().prepare("UPDATE users SET role = 'owner' WHERE email = ?").run("rq@example.com"),
       "an unknown role must be refused by the CHECK constraint"
@@ -951,4 +953,6 @@ async function main() {
   await report();
 }
 
+// No top-level `await` here: these scripts are transformed to CommonJS, where
+// it is a syntax error. The promise is caught instead.
 main().catch((e) => { console.error(e); process.exit(1); });

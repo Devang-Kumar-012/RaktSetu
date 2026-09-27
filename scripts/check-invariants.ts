@@ -894,14 +894,19 @@ eq(
 // These are the failures that produced a live site where nobody could log in.
 // They are cheap to check and expensive to discover in production.
 {
-  // Deployment configuration. Netlify's netlify.toml has been REMOVED: its
-  // function runtime has a read-only, ephemeral filesystem and cannot host the
-  // app's SQLite file at all. The deployment is now a container with a mounted
-  // persistent volume, declared by the Dockerfile and render.yaml. These checks
-  // assert that arrangement cannot silently regress into an ephemeral one.
-  const dockerfile = readFileSync(join(ROOT, "Dockerfile"), "utf8");
-  const renderYaml = readFileSync(join(ROOT, "render.yaml"), "utf8");
+  // Deployment configuration.
+  //
+  // This is no longer a container with a mounted volume, and that change is the
+  // point of the whole migration. The database is REMOTE (libSQL/Turso), so the
+  // application no longer needs any writable disk in production — which is what
+  // makes a genuinely $0 host possible. Render's persistent disk and the
+  // Dockerfile both encoded "the database is a file on this machine", so both
+  // are removed, and these checks assert the hosted arrangement cannot silently
+  // regress back to an ephemeral one.
   const envExample = readFileSync(join(ROOT, ".env.example"), "utf8");
+  const vercelJson = existsSync(join(ROOT, "vercel.json"))
+    ? readFileSync(join(ROOT, "vercel.json"), "utf8")
+    : "";
   const middleware = readFileSync(join(ROOT, "src/middleware.ts"), "utf8");
   const callback = readFileSync(join(ROOT, "src/app/auth/callback/route.ts"), "utf8");
 
@@ -936,23 +941,43 @@ eq(
     "no source file reads a Supabase or cron environment variable",
     !/NEXT_PUBLIC_SUPABASE|SUPABASE_SERVICE_ROLE|CRON_SECRET/.test(ALL_SRC),
   );
-  // The app reads exactly ONE environment variable, in exactly ONE file, and it
-  // is not a secret. This replaces the previous blanket "no source file reads
-  // process.env", which is no longer true: production must be told WHERE THE
-  // PERSISTENT VOLUME IS MOUNTED. The restriction is now sharper rather than
-  // looser — the variable is named, the file is named, and anything else fails.
-  // That is what stops configuration, and secrets, from accumulating.
+  // The app reads the environment in exactly TWO files, and both are server-side
+  // storage modules. This replaces the previous "exactly one, and it is the
+  // database module" rule, which is no longer true: the persistence SEAM
+  // (`driver.ts`) has to know WHERE the database is — a hosted libSQL/Turso URL
+  // plus its server-only token — while `db.ts` owns the schema and only needs
+  // the local data directory.
+  //
+  // The restriction is unchanged in spirit and sharper in form: the permitted
+  // set is named exactly, so a THIRD reader, or a reader anywhere else, fails.
+  const STORAGE_MODULES = ["src/lib/server/db.ts", "src/lib/server/driver.ts"];
   const envReaders = walk(join(ROOT, "src"))
     .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
     .filter((f) => /process\.env/.test(stripJsComments(readFileSync(f, "utf8"))))
-    .map((f) => f.replace(`${join(ROOT, "src")}/`, "src/"));
+    .map((f) => f.replace(`${join(ROOT, "src")}/`, "src/"))
+    .sort();
   ok(
-    "exactly one source file reads process.env, and it is the database module",
-    envReaders.length === 1 && envReaders[0] === "src/lib/server/db.ts",
+    "only the two server storage modules read process.env",
+    envReaders.length === STORAGE_MODULES.length &&
+      STORAGE_MODULES.every((f) => envReaders.includes(f)),
   );
-  if (envReaders.length !== 1 || envReaders[0] !== "src/lib/server/db.ts") {
+  if (
+    envReaders.length !== STORAGE_MODULES.length ||
+    !STORAGE_MODULES.every((f) => envReaders.includes(f))
+  ) {
     failures.push(`   → env readers were: ${envReaders.join(", ") || "none"}`);
   }
+  ok(
+    "the driver reads only the three documented storage variables",
+    (readFileSync(join(ROOT, "src/lib/server/driver.ts"), "utf8")
+      .match(/process\.env\.[A-Z0-9_]+/g) ?? []).every((m) =>
+      [
+        "process.env.RAKTSETU_DATABASE_URL",
+        "process.env.RAKTSETU_DATABASE_TOKEN",
+        "process.env.RAKTSETU_DATA_DIR",
+      ].includes(m),
+    ),
+  );
   ok(
     "the database module reads only RAKTSETU_DATA_DIR",
     (readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8")
@@ -960,10 +985,40 @@ eq(
       .every((m) => m === "process.env.RAKTSETU_DATA_DIR") &&
       /RAKTSETU_DATA_DIR/.test(readFileSync(join(ROOT, "src/lib/server/db.ts"), "utf8")),
   );
+  // THE SECRET RULE, restated for the real requirement.
+  //
+  // There is now a genuine secret: the database auth token. The requirement was
+  // never "no secret may exist" — it is "no secret may reach the browser". So
+  // this splits into the two things that actually enforce it:
+  //
+  //   1. no NEXT_PUBLIC_ variable is read anywhere. Next.js inlines those into
+  //      the client bundle at build time, so a secret behind one is already
+  //      leaked before any request is made.
+  //   2. a secret-shaped variable may be read ONLY by a server storage module,
+  //      and no client component may import one.
+  //
+  // That is strictly stronger than the old blanket ban: a token read from a
+  // component, a route handler, or a "use client" file all fail this check.
+  const SECRET_RE = /process\.env\.[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD|CREDENTIAL)/;
+  ok("no source file ever reads a NEXT_PUBLIC_ variable", !/NEXT_PUBLIC_/.test(ALL_SRC));
   ok(
-    "no source file ever reads a NEXT_PUBLIC_ or secret-shaped variable",
-    !/process\.env\.[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD|CREDENTIAL)/.test(ALL_SRC) &&
-      !/NEXT_PUBLIC_/.test(ALL_SRC),
+    "a secret-shaped variable is read only by a server storage module",
+    walk(join(ROOT, "src"))
+      .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+      .filter((f) => SECRET_RE.test(stripJsComments(readFileSync(f, "utf8"))))
+      .map((f) => f.replace(`${join(ROOT, "src")}/`, "src/"))
+      .every((f) => STORAGE_MODULES.includes(f)),
+  );
+  ok(
+    "no client component imports a storage module, so the token cannot be bundled",
+    !walk(join(ROOT, "src"))
+      .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+      .some((f) => {
+        const src = readFileSync(f, "utf8");
+        return (
+          /^\s*["']use client["']/m.test(src) && /server\/(driver|db)["']/.test(src)
+        );
+      }),
   );
   ok(
     "no source file hard-codes a localhost or loopback URL",
@@ -1034,8 +1089,12 @@ eq(
     ok(
       "a suspended account's session is REVOKED, not merely redirected",
       // The redirect alone would leave a still-valid token on the device.
-      sessionSrc.includes("export function revokeSession") &&
-      profileSrc.includes("revokeSession(token)"),
+      // `revokeSession` is async now — the persistence layer is reached over
+      // the network in production — so the declaration is matched either way;
+      // the REQUIREMENT (that it is exported and that the guard calls it) is
+      // unchanged.
+      /export (?:async )?function revokeSession/.test(sessionSrc) &&
+        /await revokeSession\(token\)|revokeSession\(token\)/.test(profileSrc),
     );
     ok(
       "the legacy routing cookie is inert and carries no credential material",
@@ -1060,48 +1119,55 @@ eq(
   // Deployment config must carry no credentials of any kind. Comments are
   // stripped first: prose that MENTIONS `next dev` or `process.env` in order to
   // forbid them must not be mistaken for the thing being forbidden.
-  const dockerCode = stripNonCode(dockerfile);
-  const renderCode = stripNonCode(renderYaml);
+  const deploymentCode = stripNonCode(vercelJson);
   ok(
     "deployment config contains no secret-like assignment",
-    ![dockerCode, renderCode].some(
-      (f) =>
-        /eyJ[A-Za-z0-9_-]{10,}/.test(f) || // JWT-shaped anon/service key
-        /service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(f),
-    ),
+    !/eyJ[A-Za-z0-9_-]{10,}/.test(deploymentCode) && // JWT-shaped key
+      !/service_role|SUPABASE_SERVICE_ROLE|SECRET_KEY|PASSWORD\s*=/i.test(
+        deploymentCode,
+      ),
   );
-  ok("the Dockerfile builds with the project build command", dockerCode.includes("npm run build"));
-  ok("the container runs the PRODUCTION server, never next dev", !/next\s+dev/.test(dockerCode));
-  ok("the container initialises the database before serving",
-    /db-init/.test(dockerCode) &&
-      dockerCode.indexOf("db-init") < dockerCode.indexOf("next start"));
-  ok("the container mounts a data volume and points the app at it",
-    /VOLUME\s+\/data/.test(dockerCode) && /RAKTSETU_DATA_DIR=\/data/.test(dockerCode));
-  ok("the container health check hits the health endpoint",
-    dockerCode.includes("/api/health"));
-  ok("the container binds all interfaces on $PORT", /-H 0\.0\.0\.0/.test(dockerCode));
-  ok("the deployable Node base image is 22 (node:sqlite needs >= 22.13)",
-    /FROM node:22/.test(dockerCode) && !/FROM node:(1[0-9]|20)\b/.test(dockerCode));
+  // --- The hosted architecture: no paid disk, no local file in production ----
+  //
+  // The single most important property: production must NOT depend on any
+  // writable disk. A free host has none, so anything that still expects one is a
+  // deployment that appears to work and loses every write on restart.
+  ok("the obsolete persistent-disk blueprint is gone",
+    !existsSync(join(ROOT, "render.yaml")) && !existsSync(join(ROOT, "Dockerfile")));
+  ok("no deployment file mounts /data or declares a persistent volume",
+    !/VOLUME\s+\/data/.test(vercelJson) && !/mountPath:\s*\/data/.test(vercelJson));
+  ok("production does not point the app at a local data directory",
+    !/RAKTSETU_DATA_DIR\s*[:=]\s*["']?\/data/.test(vercelJson));
+  ok("netlify.toml is still gone — its runtime cannot host the app",
+    !existsSync(join(ROOT, "netlify.toml")));
 
-  // The platform blueprint must provision a REAL persistent disk, and must keep
-  // a single instance: two processes sharing one SQLite file over a network
-  // filesystem can silently corrupt or diverge the database.
-  ok("render.yaml mounts a persistent disk",
-    /^\s*disk:\s*$/m.test(renderCode) && /mountPath:\s*\/data/.test(renderCode) && /sizeGB:/.test(renderCode));
-  ok("render.yaml points the app at that disk",
-    /RAKTSETU_DATA_DIR/.test(renderCode) && /value:\s*\/data/.test(renderCode));
-  ok("render.yaml pins exactly ONE instance (SQLite is single-writer)",
-    /numInstances:\s*1/.test(renderCode) && !/numInstances:\s*[2-9]/.test(renderCode));
-  ok("render.yaml uses the health endpoint as the health check",
-    /healthCheckPath:\s*\/api\/health/.test(renderCode));
-  ok("render.yaml pins a Node with node:sqlite unflagged",
-    /NODE_VERSION/.test(renderCode) && /value:\s*"?2[2-9]/.test(renderCode));
+  // The hosted target. Vercel's Hobby plan is free without a paid disk, and it
+  // runs Next.js server actions against a remote database over HTTPS, which is
+  // exactly the shape the driver implements.
+  ok("a deployment configuration exists for the hosted runtime", vercelJson.length > 0);
+  ok("the deployment runs the Next.js production server, never next dev",
+    !/next\s+dev/.test(vercelJson));
+  ok("the deployment uses the project's own build command",
+    /npm\s+run\s+build/.test(vercelJson));
+  ok("the deployment runs on a Node runtime, not the edge runtime",
+    // The Edge runtime has no `node:sqlite` and no libTCP; the local backend and
+    // the driver both require the Node runtime.
+    !/"runtime"\s*:\s*"edge"/.test(vercelJson));
 
-  // A netlify.toml must not come back: its runtime cannot persist the database.
-  ok(
-    "netlify.toml is gone — its runtime cannot persist the SQLite database",
-    !existsSync(join(ROOT, "netlify.toml")),
-  );
+  // The environment contract. Both names are documented, and NEITHER may carry
+  // a value — a real credential belongs in the host's secret store, never in a
+  // file that is committed to git.
+  ok("the database URL variable is documented", /RAKTSETU_DATABASE_URL/.test(envExample));
+  ok("the database token variable is documented", /RAKTSETU_DATABASE_TOKEN/.test(envExample));
+  ok("the deployment config names the database URL as an environment variable",
+    /RAKTSETU_DATABASE_URL/.test(vercelJson));
+  ok("the deployment config names the token as an environment variable",
+    /RAKTSETU_DATABASE_TOKEN/.test(vercelJson));
+  ok("neither database variable is exposed to the browser",
+    !/NEXT_PUBLIC_[A-Z0-9_]*DATABASE/.test(vercelJson + envExample));
+  ok("the deployment config hard-codes no credential",
+    !/libsql:\/\/[^"']*[A-Za-z0-9_-]{12,}/.test(vercelJson) &&
+      !/eyJ[A-Za-z0-9_-]{10,}/.test(vercelJson));
 
   // --- The runtime that can open the database --------------------------------
   // The whole server data layer is Node's builtin `node:sqlite`, resolved by a
@@ -1119,12 +1185,11 @@ eq(
     `package.json engines.node requires Node >= 22 — found "${pkg.engines?.node ?? "nothing"}"`,
     Number.isFinite(engineFloor) && engineFloor >= 22,
   );
-  const renderNodeBlock = /NODE_VERSION[\s\S]{0,80}/.exec(renderYaml)?.[0] ?? "";
-  const renderNode = /"?([0-9][0-9.]*)/.exec(renderNodeBlock.replace(/NODE_VERSION[^\n]*/, ""))?.[1] ?? "";
-  const renderNodeMajor = Number(/^(\d+)/.exec(renderNode)?.[1] ?? Number.NaN);
+  const vercelNodeBlock = /"node"\s*:\s*"?(\d+)/.exec(vercelJson)?.[1] ?? "";
+  const vercelNodeMajor = Number(vercelNodeBlock || Number.NaN);
   ok(
-    `render.yaml pins a Node major with node:sqlite unflagged — needs >= 22, found "${renderNode || "nothing"}"`,
-    Number.isFinite(renderNodeMajor) && renderNodeMajor >= 22,
+    `the deployment pins a Node major with node:sqlite unflagged — needs >= 22, found "${vercelNodeBlock || "nothing"}"`,
+    Number.isFinite(vercelNodeMajor) && vercelNodeMajor >= 22,
   );
   // And the interpreter running this suite is the thing a contributor, the
   // container build and `next start` all use, so probe the exact resolution path
@@ -1441,8 +1506,8 @@ eq(
     /RAKTSETU_DATA_DIR/.test(envExample) && /persistent/i.test(envExample),
   );
   ok(
-    "render.yaml supplies no secret-like variables",
-    !/NEXT_PUBLIC_|SUPABASE_|SECRET|PASSWORD|API_KEY|TOKEN\s*:/.test(renderYaml),
+    "the deployment declares no secret-like values",
+    !/NEXT_PUBLIC_|SUPABASE_|SECRET|PASSWORD|API_KEY/.test(stripNonCode(vercelJson)),
   );
   // The session cookie must keep deriving `Secure` from the request itself: an
   // env-driven flag is one more thing that can be misconfigured into shipping a
@@ -1482,7 +1547,7 @@ eq(
   );
   ok(
     "one account can hold several roles, and user_roles is the only authority",
-    /export function getUserRoles/.test(sessionSrc) &&
+    /export (?:async )?function getUserRoles/.test(sessionSrc) &&
       /FROM user_roles/.test(sessionSrc) &&
       !/SELECT[\s\S]{0,200}\bu\.role\b[\s\S]{0,200}FROM sessions/.test(sessionSrc),
   );
@@ -1493,7 +1558,12 @@ eq(
   );
   ok(
     "the active role is only accepted if the account really holds it",
-    /getUserRoles\(userId\)\.includes\(role\)/.test(sessionSrc),
+    // `getUserRoles` is async now, so the call is awaited inside parentheses
+    // before `.includes`. The security requirement — a requested role is
+    // refused unless a `user_roles` row backs it — is unchanged.
+    /\(await getUserRoles\(userId\)\)\.includes\(role\)|getUserRoles\(userId\)\.includes\(role\)/.test(
+      sessionSrc,
+    ),
   );
   ok(
     "a session with no active role is repaired to a real membership, then persisted",

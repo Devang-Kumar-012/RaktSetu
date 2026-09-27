@@ -22,7 +22,7 @@
  * SERVER ONLY: opens the database file on disk.
  */
 
-import { getDb } from "./db";
+import { getDriver } from "./driver";
 import { createSqlClient, type QueryResult, type SqlTableQuery } from "./sql-adapter";
 import type { DashboardQueryResult, TableQuerySpec } from "@/lib/dashboard-query";
 import { ALERT_RINGS_KM } from "@/lib/constants";
@@ -172,18 +172,14 @@ function requestIdList(args: Record<string, unknown>): string[] {
 const placeholders = (count: number): string => new Array(count).fill("?").join(",");
 
 /** The caller's own alert queue, joined to the request (migration 0012). */
-function donorActiveAlerts(args: Record<string, unknown>, caller: DashboardCaller): QueryResult {
+async function donorActiveAlerts(args: Record<string, unknown>, caller: DashboardCaller): Promise<QueryResult> {
   if (caller.role !== "donor") return ok([]);
   const now = new Date().toISOString();
   const limit = limitOf(args.p_limit, 20);
 
-  const profile = getDb()
-    .prepare("SELECT latitude, longitude FROM donor_profiles WHERE user_id = ?")
-    .get(caller.id) as { latitude: number | null; longitude: number | null } | undefined;
+  const profile = (await (await getDriver()).queryOne("SELECT latitude, longitude FROM donor_profiles WHERE user_id = ?", [caller.id])) as { latitude: number | null; longitude: number | null } | undefined;
 
-  const rows = getDb()
-    .prepare(
-      `SELECT a.id AS alert_id,
+  const rows = (await (await getDriver()).query(`SELECT a.id AS alert_id,
               a.request_id,
               a.ring_km,
               a.status,
@@ -215,9 +211,7 @@ function donorActiveAlerts(args: Record<string, unknown>, caller: DashboardCalle
          JOIN blood_requests r ON r.id = a.request_id
         WHERE a.donor_id = ?
         ORDER BY a.created_at DESC
-        LIMIT ?`,
-    )
-    .all(now, now, caller.id, limit) as Row[];
+        LIMIT ?`, [now, now, caller.id, limit])) as Row[];
 
   return ok(
     rows.map((row) => {
@@ -238,11 +232,9 @@ function donorActiveAlerts(args: Record<string, unknown>, caller: DashboardCalle
 }
 
 /** The caller's own recorded donations (migration 0015, drive-aware). */
-function donorDonationHistory(args: Record<string, unknown>, caller: DashboardCaller): QueryResult {
+async function donorDonationHistory(args: Record<string, unknown>, caller: DashboardCaller): Promise<QueryResult> {
   if (caller.role !== "donor") return ok([]);
-  const rows = getDb()
-    .prepare(
-      `SELECT h.donated_on AS donation_date,
+  const rows = (await (await getDriver()).query(`SELECT h.donated_on AS donation_date,
               h.units,
               COALESCE(h.blood_component, r.blood_component) AS blood_component,
               r.locality,
@@ -256,9 +248,7 @@ function donorDonationHistory(args: Record<string, unknown>, caller: DashboardCa
          LEFT JOIN campus_blood_drives d ON d.id = h.drive_id
         WHERE h.donor_id = ?
         ORDER BY h.donated_on DESC, h.created_at DESC
-        LIMIT ?`,
-    )
-    .all(caller.id, limitOf(args.p_limit, 20)) as Row[];
+        LIMIT ?`, [caller.id, limitOf(args.p_limit, 20)])) as Row[];
   return ok(rows);
 }
 
@@ -269,18 +259,14 @@ function donorDonationHistory(args: Record<string, unknown>, caller: DashboardCa
  * donor is recognised for blood actually given. Donor role checked here, own
  * rows only, and no private field is part of the returned shape.
  */
-function donorRecognition(caller: DashboardCaller): QueryResult {
+async function donorRecognition(caller: DashboardCaller): Promise<QueryResult> {
   if (caller.role !== "donor") return ok([]);
-  const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) AS total_donations,
+  const row = (await (await getDriver()).queryOne(`SELECT COUNT(*) AS total_donations,
               COALESCE(SUM(units), 0) AS total_units,
               MIN(donated_on) AS first_donation,
               MAX(donated_on) AS last_donation
          FROM donations
-        WHERE donor_id = ?`,
-    )
-    .get(caller.id) as Row;
+        WHERE donor_id = ?`, [caller.id])) as Row;
   const total = Number(row.total_donations ?? 0);
   return ok([
     {
@@ -303,13 +289,11 @@ function donorRecognition(caller: DashboardCaller): QueryResult {
  * One row per request — the newest acceptance wins, matching Postgres'
  * `distinct on (r.id) … order by a.accepted_at desc`.
  */
-function revealAcceptedDonors(args: Record<string, unknown>, caller: DashboardCaller): QueryResult {
+async function revealAcceptedDonors(args: Record<string, unknown>, caller: DashboardCaller): Promise<QueryResult> {
   const ids = requestIdList(args);
   if (ids.length === 0) return ok([]);
   const now = new Date().toISOString();
-  const rows = getDb()
-    .prepare(
-      `SELECT r.id AS request_id,
+  const rows = (await (await getDriver()).query(`SELECT r.id AS request_id,
               u.full_name AS donor_name,
               dp.phone AS donor_phone,
               dp.blood_group AS donor_blood_group,
@@ -326,9 +310,7 @@ function revealAcceptedDonors(args: Record<string, unknown>, caller: DashboardCa
                         FROM donor_alerts a2
                        WHERE a2.request_id = a.request_id
                          AND a2.response = 'accepted')
-        ORDER BY r.id`,
-    )
-    .all(caller.id, now, ...ids) as Row[];
+        ORDER BY r.id`, [caller.id, now, ...ids])) as Row[];
   return ok(rows);
 }
 
@@ -344,12 +326,10 @@ function revealAcceptedDonors(args: Record<string, unknown>, caller: DashboardCa
  * `ring_km` is derived from the ring index because SQLite's ring row does not
  * carry it; indices are 1-based (`check (ring_index >= 1)` in migration 0011).
  */
-function requesterRingStatus(args: Record<string, unknown>, caller: DashboardCaller): QueryResult {
+async function requesterRingStatus(args: Record<string, unknown>, caller: DashboardCaller): Promise<QueryResult> {
   const ids = requestIdList(args);
   if (ids.length === 0) return ok([]);
-  const rows = getDb()
-    .prepare(
-      `SELECT rp.request_id,
+  const rows = (await (await getDriver()).query(`SELECT rp.request_id,
               rp.ring_index,
               rp.started_at,
               rp.finished_at,
@@ -360,9 +340,7 @@ function requesterRingStatus(args: Record<string, unknown>, caller: DashboardCal
          JOIN blood_requests br ON br.id = rp.request_id
         WHERE rp.request_id IN (${placeholders(ids.length)})
           AND br.requester_id = ?
-        ORDER BY rp.ring_index DESC`,
-    )
-    .all(...ids, caller.id) as Row[];
+        ORDER BY rp.ring_index DESC`, [...ids, caller.id])) as Row[];
 
   const highest = ALERT_RINGS_KM.length;
   return ok(
@@ -388,15 +366,15 @@ export async function runDashboardRpc(
   try {
     switch (name) {
       case "donor_active_alerts":
-        return donorActiveAlerts(args, caller);
+        return await donorActiveAlerts(args, caller);
       case "donor_donation_history":
-        return donorDonationHistory(args, caller);
+        return await donorDonationHistory(args, caller);
       case "donor_recognition":
-        return donorRecognition(caller);
+        return await donorRecognition(caller);
       case "reveal_accepted_donors":
-        return revealAcceptedDonors(args, caller);
+        return await revealAcceptedDonors(args, caller);
       case "requester_ring_status":
-        return requesterRingStatus(args, caller);
+        return await requesterRingStatus(args, caller);
       default:
         return fail(`Unknown function: ${name}`, "42883");
     }

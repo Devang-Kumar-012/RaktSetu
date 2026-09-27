@@ -194,7 +194,7 @@ async function main() {
   }
 }
 
-main()
+await main()
   .then(() => {
     console.log(`\nall ${passed} storage-deployment checks passed`);
     process.exit(failed === 0 ? 0 : 1);

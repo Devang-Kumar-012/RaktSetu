@@ -314,7 +314,7 @@ async function main() {
   rmSync(VOLUME, { recursive: true, force: true });
 }
 
-main()
+await main()
   .then(() => {
     console.log(`\nall ${passed} persistence checks passed`);
     process.exit(failed === 0 ? 0 : 1);

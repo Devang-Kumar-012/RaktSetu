@@ -13,7 +13,8 @@ import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { getDb, closeDb } from "../src/lib/server/db";
+import { getDb, closeDb, initializeDatabase } from "../src/lib/server/db";
+import { closeDriver } from "../src/lib/server/driver";
 import {
   createSession,
   createUser,
@@ -43,34 +44,39 @@ async function check(name: string, fn: () => void | Promise<void>) {
 const PASSWORD = "role-test-password";
 
 /** A fresh account, plus the session token standing in for one device. */
-function account(email: string, role: "donor" | "requester" | "volunteer") {
-  const user = createUser({ email, password: PASSWORD, fullName: email, role });
-  const { token } = createSession(user.id);
+async function account(email: string, role: "donor" | "requester" | "volunteer") {
+  const user = await createUser({ email, password: PASSWORD, fullName: email, role });
+  const { token } = await createSession(user.id);
   return { user, token };
 }
 
 async function main() {
   for (const s of ["", "-wal", "-shm"]) if (existsSync(DB + s)) rmSync(DB + s);
+  // Schema creation lives in `initializeDatabase()` (it must go through the
+  // driver so a hosted database is initialised too), so a check that starts
+  // from an empty directory has to ask for it explicitly.
+  await closeDriver();
+  await initializeDatabase();
 
   // --- A. a single-role account ---------------------------------------------
-  await check("A. a single-role account has exactly one role, and that one active", () => {
-    const { user, token } = account("single@example.com", "requester");
-    assert.deepEqual(getUserRoles(user.id), ["requester"]);
-    const session = getUserForToken(token);
+  await check("A. a single-role account has exactly one role, and that one active", async () => {
+    const { user, token } = await account("single@example.com", "requester");
+    assert.deepEqual(await getUserRoles(user.id), ["requester"]);
+    const session = await getUserForToken(token);
     assert.equal(session?.role, "requester");
     assert.deepEqual(session?.roles, ["requester"]);
   });
 
   // --- B. one account, two roles, one session -------------------------------
-  await check("B. a second role becomes a MEMBERSHIP, never a second account", () => {
+  await check("B. a second role becomes a MEMBERSHIP, never a second account", async () => {
     const email = "dual@example.com";
-    const { user } = account(email, "requester");
-    grantRole(user.id, "donor");
+    const { user } = await account(email, "requester");
+    await grantRole(user.id, "donor");
     const users = getDb()
       .prepare("SELECT COUNT(*) AS n FROM users WHERE email = ?")
       .get(email) as { n: number };
     assert.equal(Number(users.n), 1, "there must still be exactly one account");
-    const roles = getUserRoles(user.id);
+    const roles = await getUserRoles(user.id);
     assert.equal(roles.length, 2);
     assert.ok(roles.includes("donor") && roles.includes("requester"));
     assert.equal(roles[0], "requester", "adding a role must not steal the primary");
@@ -79,82 +85,82 @@ async function main() {
   // --- B. switching, without logging out ------------------------------------
   let dualToken = "";
   let dualId = "";
-  await check("B. switching keeps the SAME session and the SAME identity", () => {
-    const { user, token } = account("switch@example.com", "donor");
+  await check("B. switching keeps the SAME session and the SAME identity", async () => {
+    const { user, token } = await account("switch@example.com", "donor");
     dualId = user.id;
     dualToken = token;
-    grantRole(user.id, "requester");
-    assert.equal(getUserForToken(token)?.role, "donor", "starts as donor");
+    await grantRole(user.id, "requester");
+    assert.equal((await getUserForToken(token))?.role, "donor", "starts as donor");
 
-    assert.equal(setSessionActiveRole(user.id, token, "requester"), true);
-    const after = getUserForToken(token);
+    assert.equal(await setSessionActiveRole(user.id, token, "requester"), true);
+    const after = await getUserForToken(token);
     assert.equal(after?.id, user.id, "same user, not a new session or account");
     assert.equal(after?.role, "requester");
     assert.equal(after?.roles.length, 2, "both roles are still held");
   });
 
-  await check("B. the active role survives a refresh (it is server-side)", () => {
-    assert.equal(getUserForToken(dualToken)?.role, "requester");
-    assert.equal(getUserForToken(dualToken)?.id, dualId);
+  await check("B. the active role survives a refresh (it is server-side)", async () => {
+    assert.equal((await getUserForToken(dualToken))?.role, "requester");
+    assert.equal((await getUserForToken(dualToken))?.id, dualId);
   });
 
-  await check("B. switching back returns to donor without logging out", () => {
-    assert.equal(setSessionActiveRole(dualId, dualToken, "donor"), true);
-    const after = getUserForToken(dualToken);
+  await check("B. switching back returns to donor without logging out", async () => {
+    assert.equal(await setSessionActiveRole(dualId, dualToken, "donor"), true);
+    const after = await getUserForToken(dualToken);
     assert.equal(after?.role, "donor");
     assert.equal(after?.roles.length, 2, "no membership was lost by switching");
   });
 
 
   // --- C. security ----------------------------------------------------------
-  await check("C. a role the account does NOT hold is refused", () => {
-    const { user, token } = account("single-donor@example.com", "donor");
-    assert.equal(setSessionActiveRole(user.id, token, "admin"), false, "no admin for a donor");
-    assert.equal(setSessionActiveRole(user.id, token, "volunteer"), false);
-    assert.equal(getUserForToken(token)?.role, "donor", "the session is unchanged");
+  await check("C. a role the account does NOT hold is refused", async () => {
+    const { user, token } = await account("single-donor@example.com", "donor");
+    assert.equal(await setSessionActiveRole(user.id, token, "admin"), false, "no admin for a donor");
+    assert.equal(await setSessionActiveRole(user.id, token, "volunteer"), false);
+    assert.equal((await getUserForToken(token))?.role, "donor", "the session is unchanged");
   });
 
-  await check("C. an unknown or forged role string is refused", () => {
-    const { user, token } = account("forged@example.com", "donor");
+  await check("C. an unknown or forged role string is refused", async () => {
+    const { user, token } = await account("forged@example.com", "donor");
     for (const attempt of ["admin", "root", "", "DONOR", "donor ", "donor; DROP TABLE users"]) {
-      assert.equal(setSessionActiveRole(user.id, token, attempt), false, `"${attempt}" refused`);
+      assert.equal(await setSessionActiveRole(user.id, token, attempt), false, `"${attempt}" refused`);
     }
-    assert.equal(getUserForToken(token)?.role, "donor");
+    assert.equal((await getUserForToken(token))?.role, "donor");
     const n = getDb().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
     assert.ok(Number(n.n) > 0, "the users table must be intact");
   });
 
-  await check("C. a REVOKED session cannot act, so it cannot switch roles", () => {
-    const { user, token } = account("revoked@example.com", "donor");
-    grantRole(user.id, "requester");
-    assert.equal(getUserForToken(token)?.id, user.id, "valid before revocation");
-    revokeSession(token);
-    assert.equal(getUserForToken(token), null, "a revoked token authenticates nobody");
+  await check("C. a REVOKED session cannot act, so it cannot switch roles", async () => {
+    const { user, token } = await account("revoked@example.com", "donor");
+    await grantRole(user.id, "requester");
+    assert.equal((await getUserForToken(token))?.id, user.id, "valid before revocation");
+    await revokeSession(token);
+    assert.equal(await getUserForToken(token), null, "a revoked token authenticates nobody");
   });
 
-  await check("C. an EXPIRED session cannot act, so it cannot switch roles", () => {
-    const { user, token } = account("expired@example.com", "donor");
-    grantRole(user.id, "requester");
+  await check("C. an EXPIRED session cannot act, so it cannot switch roles", async () => {
+    const { user, token } = await account("expired@example.com", "donor");
+    await grantRole(user.id, "requester");
     getDb()
       .prepare("UPDATE sessions SET expires_at = ?")
       .run(new Date(Date.now() - 1000).toISOString());
-    assert.equal(getUserForToken(token), null, "an expired token authenticates nobody");
+    assert.equal(await getUserForToken(token), null, "an expired token authenticates nobody");
   });
 
-  await check("C. another account's roles are not reachable", () => {
-    const a = account("mine@example.com", "donor");
-    const b = account("theirs@example.com", "requester");
+  await check("C. another account's roles are not reachable", async () => {
+    const a = await account("mine@example.com", "donor");
+    const b = await account("theirs@example.com", "requester");
     // Switching as A to a role only B holds is still refused: the check is
     // against the SESSION'S OWN user's memberships, never a supplied id.
-    assert.equal(setSessionActiveRole(b.user.id, a.token, "volunteer"), false);
-    assert.equal(getUserForToken(a.token)?.role, "donor", "A is unaffected");
-    assert.equal(getUserForToken(b.token)?.id, b.user.id, "B is unaffected");
+    assert.equal(await setSessionActiveRole(b.user.id, a.token, "volunteer"), false);
+    assert.equal((await getUserForToken(a.token))?.role, "donor", "A is unaffected");
+    assert.equal((await getUserForToken(b.token))?.id, b.user.id, "B is unaffected");
   });
 
   // --- D. data preservation -------------------------------------------------
   await check("D. donor profile and requests both survive a role switch", async () => {
     const db = createSqlClient();
-    const { user, token } = account("preserved@example.com", "donor");
+    const { user, token } = await account("preserved@example.com", "donor");
     const now = new Date().toISOString();
     const soon = new Date(Date.now() + 3_600_000).toISOString();
 
@@ -182,8 +188,8 @@ async function main() {
       updated_at: now,
     });
 
-    grantRole(user.id, "requester");
-    assert.equal(setSessionActiveRole(user.id, token, "requester"), true);
+    await grantRole(user.id, "requester");
+    assert.equal(await setSessionActiveRole(user.id, token, "requester"), true);
 
     const donor = getDb()
       .prepare("SELECT blood_group FROM donor_profiles WHERE user_id = ?")
@@ -194,19 +200,19 @@ async function main() {
     assert.ok(req, "the request survived");
     assert.equal(req.requester_id, user.id, "still owned by the same account");
 
-    assert.equal(setSessionActiveRole(user.id, token, "donor"), true);
+    assert.equal(await setSessionActiveRole(user.id, token, "donor"), true);
     const still = getDb()
       .prepare("SELECT COUNT(*) AS n FROM donor_profiles WHERE user_id = ?")
       .get(user.id) as { n: number };
     assert.equal(Number(still.n), 1, "and nothing was duplicated");
   });
 
-  await check("D. notifications stay attached to the account across a role change", () => {
-    const { user } = account("notified@example.com", "requester");
+  await check("D. notifications stay attached to the account across a role change", async () => {
+    const { user } = await account("notified@example.com", "requester");
     getDb()
       .prepare("INSERT INTO notifications (user_id, kind, title, body, created_at) VALUES (?, 't', 't', 'b', ?)")
       .run(user.id, new Date().toISOString());
-    grantRole(user.id, "donor");
+    await grantRole(user.id, "donor");
     const n = getDb()
       .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ?")
       .get(user.id) as { n: number };
@@ -214,25 +220,25 @@ async function main() {
   });
 
   // --- E. existing behaviour, unchanged -------------------------------------
-  await check("E. logging out still revokes only that device", () => {
-    const { user } = account("twodevices@example.com", "donor");
-    grantRole(user.id, "requester");
-    const a = createSession(user.id);
-    const b = createSession(user.id);
+  await check("E. logging out still revokes only that device", async () => {
+    const { user } = await account("twodevices@example.com", "donor");
+    await grantRole(user.id, "requester");
+    const a = await createSession(user.id);
+    const b = await createSession(user.id);
     // Each device has its OWN active role, so one phone switching does not
     // silently re-point the other.
-    setSessionActiveRole(user.id, a.token, "donor");
-    setSessionActiveRole(user.id, b.token, "requester");
-    assert.equal(getUserForToken(a.token)?.role, "donor");
-    assert.equal(getUserForToken(b.token)?.role, "requester");
+    await setSessionActiveRole(user.id, a.token, "donor");
+    await setSessionActiveRole(user.id, b.token, "requester");
+    assert.equal((await getUserForToken(a.token))?.role, "donor");
+    assert.equal((await getUserForToken(b.token))?.role, "requester");
 
-    revokeSession(a.token);
-    assert.equal(getUserForToken(a.token), null, "device A is signed out");
-    assert.equal(getUserForToken(b.token)?.id, user.id, "device B is still signed in");
-    assert.equal(getUserForToken(b.token)?.roles.length, 2, "and keeps both roles");
+    await revokeSession(a.token);
+    assert.equal(await getUserForToken(a.token), null, "device A is signed out");
+    assert.equal((await getUserForToken(b.token))?.id, user.id, "device B is still signed in");
+    assert.equal((await getUserForToken(b.token))?.roles.length, 2, "and keeps both roles");
   });
 
-  await check("E. the four lifecycle states are untouched by this work", () => {
+  await check("E. the four lifecycle states are untouched by this work", async () => {
     const src = require("node:fs").readFileSync(
       join(import.meta.dirname, "..", "src", "lib", "server", "db.ts"),
       "utf8",
@@ -245,11 +251,17 @@ async function main() {
   });
 
   closeDb();
+  // The driver holds its own connection. It must be closed too, or it keeps
+  // writing to the deleted inode and the schema is recreated in a file nobody
+  // will read.
+  await closeDriver();
   for (const s of ["", "-wal", "-shm"]) if (existsSync(DB + s)) rmSync(DB + s);
+  // Re-create the schema in the now-empty file, the same way a cold boot would.
+  await initializeDatabase();
 
   console.log("");
   if (failures.length) {
-    console.error(`\n${failures.length} role check(s) failed:`);
+    console.error(`\n${failures.length} role await check(s) failed:`);
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
