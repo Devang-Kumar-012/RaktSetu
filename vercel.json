@@ -3,9 +3,6 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
-  "engines": {
-    "node": "22"
-  },
   "regions": ["bom1"],
   "functions": {
     "src/app/api/health/route.ts": {

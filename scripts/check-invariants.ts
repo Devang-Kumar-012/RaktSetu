@@ -1185,11 +1185,30 @@ eq(
     `package.json engines.node requires Node >= 22 — found "${pkg.engines?.node ?? "nothing"}"`,
     Number.isFinite(engineFloor) && engineFloor >= 22,
   );
-  const vercelNodeBlock = /"node"\s*:\s*"?(\d+)/.exec(vercelJson)?.[1] ?? "";
-  const vercelNodeMajor = Number(vercelNodeBlock || Number.NaN);
+  // The deployed Node version is pinned with the two mechanisms Vercel ACTUALLY
+  // reads: `engines.node` in package.json, and `.nvmrc`.
+  //
+  // It was previously pinned as `engines` inside vercel.json, which Vercel's build
+  // settings schema does not accept — the project import failed outright with
+  // "should NOT have additional property 'engines'". The requirement is unchanged;
+  // only the mechanism is. Both are checked, and they must agree, so a future
+  // edit that moves one without the other fails here rather than in production.
+  const nvmrcPath = join(ROOT, ".nvmrc");
+  const nvmrc = existsSync(nvmrcPath) ? readFileSync(nvmrcPath, "utf8").trim() : "";
+  const nvmrcMajor = Number(/^v?(\d+)/.exec(nvmrc)?.[1] ?? Number.NaN);
   ok(
-    `the deployment pins a Node major with node:sqlite unflagged — needs >= 22, found "${vercelNodeBlock || "nothing"}"`,
-    Number.isFinite(vercelNodeMajor) && vercelNodeMajor >= 22,
+    `.nvmrc pins a Node major with node:sqlite unflagged — needs >= 22, found "${nvmrc || "nothing"}"`,
+    existsSync(nvmrcPath) && Number.isFinite(nvmrcMajor) && nvmrcMajor >= 22,
+  );
+  ok(
+    ".nvmrc and package.json agree on the Node major",
+    Number.isFinite(nvmrcMajor) &&
+      Number.isFinite(engineFloor) &&
+      nvmrcMajor === engineFloor,
+  );
+  ok(
+    "vercel.json carries no engines key — Vercel's build settings reject it",
+    !/"engines"/.test(vercelJson),
   );
   // And the interpreter running this suite is the thing a contributor, the
   // container build and `next start` all use, so probe the exact resolution path
