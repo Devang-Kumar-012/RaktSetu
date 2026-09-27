@@ -308,7 +308,7 @@ export default function DonorDashboardPage() {
               />
             ))
           ) : acceptedCards.length > 0 ? (
-            <p className="rounded-lg border border-dashed border-ink-200 bg-white px-5 py-6 text-center text-base text-ink-600">
+            <p className="glass-subtle rounded-lg border border-dashed border-white/70 px-5 py-6 text-center text-base text-ink-600">
               No open alerts right now — your accepted requests are just below.
             </p>
           ) : (
@@ -390,7 +390,7 @@ export default function DonorDashboardPage() {
             donationHistory.map((row) => (
               <div
                 key={`${row.donation_date}-${row.request_id ?? row.drive_id ?? "none"}`}
-                className="rounded-lg border border-ink-200 bg-white px-5 py-4 shadow-sm"
+                className="glass rounded-lg px-5 py-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-base font-bold text-ink-900">

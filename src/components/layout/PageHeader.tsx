@@ -13,7 +13,10 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("border-b border-ink-200 bg-white", className)}>
+    // `glass-band` rather than a flat `bg-white`: the band is translucent, so
+    // the ambient background reads continuously from the page into the band
+    // instead of being cut by an opaque strip.
+    <div className={cn("glass-band", className)}>
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
         {eyebrow && (
           <p className="text-sm font-bold uppercase tracking-widest text-blood-700">

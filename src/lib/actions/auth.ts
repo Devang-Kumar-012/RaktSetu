@@ -26,6 +26,13 @@
 
 import { REGISTER_ROLES } from "@/lib/constants";
 import {
+  classifyRegistrationError,
+  registrationFailure,
+  safeErrorSummary,
+  type RegistrationErrorCode,
+  type RegistrationFailure,
+} from "@/lib/registration-errors";
+import {
   authenticate,
   createSession,
   createUser,
@@ -52,6 +59,37 @@ import { isValidEmail } from "@/lib/utils";
 const PUBLIC_ROLE_VALUES: readonly string[] = REGISTER_ROLES.map(
   (option) => option.value
 );
+
+/**
+ * Write one registration failure to the server log, in a form an operator can
+ * actually act on.
+ *
+ * The `errorId` is the join: it is printed to the user AND written here, so
+ * "it said REG-4KQ2PX" is enough to find the exact failure. The category, the
+ * stage, the runtime and the driver detail are included so the log answers
+ * "which part of the platform is missing" without a debugger.
+ *
+ * `detail` is the caller's already-redacted projection. Nothing in this function
+ * can log a password, hash or token: the only values passed are the error ID, a
+ * category, a stage name, the address being registered, and error CODE/NAME
+ * strings from `safeErrorSummary`.
+ */
+function logRegistrationFailure(
+  failure: RegistrationFailure,
+  detail: Record<string, string>,
+): void {
+  console.error(
+    JSON.stringify({
+      event: "registration_failed",
+      errorId: failure.errorId,
+      code: failure.code,
+      at: new Date().toISOString(),
+      runtime: process.version,
+      platform: process.platform,
+      ...detail,
+    }),
+  );
+}
 
 /**
  * Verifies credentials and starts a session.
@@ -86,13 +124,29 @@ export async function signInWithPassword(
  * checked against the allow-list rather than trusted, and anything else —
  * `?role=admin`, a hand-crafted payload, a missing field — lands as
  * "requester", exactly as the old database-side signup trigger did.
+ *
+ * ERROR REPORTING
+ *
+ * Each stage is caught separately, because the stages have genuinely different
+ * causes and a user who is told the truth can act on it:
+ *
+ *   createUser      → the account row, the password hash and the role
+ *   createSession   → the session row
+ *   setSessionCookie→ the HTTP-only cookie
+ *
+ * Every failure is classified (`classifyRegistrationError`), given an error ID,
+ * logged server-side with secrets redacted, and returned as a safe sentence. The
+ * old behaviour — one catch, one `"signup unavailable"` string that no mapper
+ * recognised — turned every one of these into the same useless apology.
+ *
+ * The password and any hash/token NEVER appear in a response or a log line.
  */
 export async function signUpNewAccount(input: {
   fullName: unknown;
   email: unknown;
   password: unknown;
   role: unknown;
-}): Promise<{ error: string | null; signedIn: boolean }> {
+}): Promise<{ error: string | null; signedIn: boolean; errorId?: string }> {
   const fullName = typeof input?.fullName === "string" ? input.fullName.trim() : "";
   const email = typeof input?.email === "string" ? input.email.trim() : "";
   const password = typeof input?.password === "string" ? input.password : "";
@@ -100,31 +154,48 @@ export async function signUpNewAccount(input: {
   // Server-authoritative validation. The form checks the same things for a
   // better message, but a request that skips the form must not create a
   // one-character password.
-  if (!isValidEmail(email)) return { error: "invalid email", signedIn: false };
-  if (password.length < 8) {
-    return { error: "signup requires a valid password", signedIn: false };
-  }
-  if (fullName.length < 2) return { error: "signup rejected", signedIn: false };
+  //
+  // `error` carries a CATEGORY, not a sentence: the safe wording lives in one
+  // table (`@/lib/registration-errors`) and the client renders it, so the copy
+  // cannot drift between the server and the form.
+  if (!isValidEmail(email)) return { error: "INVALID_EMAIL", signedIn: false };
+  if (password.length < 8) return { error: "INVALID_PASSWORD", signedIn: false };
+  if (fullName.length < 2) return { error: "INVALID_NAME", signedIn: false };
 
   const requested = typeof input?.role === "string" ? input.role : "";
   const role = (
     PUBLIC_ROLE_VALUES.includes(requested) ? requested : "requester"
   ) as SessionUser["role"];
 
+  // One ID per failed platform fault, printed to the user and written to the log
+  // so the two can be matched. The email is recorded because an operator needs to
+  // find the account a user is asking about; the password never is.
+  const fail = (code: RegistrationErrorCode, stage: string, err: unknown) => {
+    const failure = registrationFailure(code);
+    logRegistrationFailure(failure, { stage, email, ...safeErrorSummary(err) });
+    return { error: failure.code, errorId: failure.errorId, signedIn: false };
+  };
+
   let user: SessionUser;
   try {
     user = createUser({ email, password, fullName, role });
   } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code === "23505") {
-      return { error: "user already registered", signedIn: false };
-    }
-    console.error("signUpNewAccount failed:", err);
-    return { error: "signup unavailable", signedIn: false };
+    return fail(classifyRegistrationError(err, "create-user"), "create-user", err);
   }
 
-  const { token, expiresAt } = createSession(user.id);
-  await setSessionCookie(token, expiresAt);
+  let session: { token: string; expiresAt: Date };
+  try {
+    session = createSession(user.id);
+  } catch (err) {
+    return fail(classifyRegistrationError(err, "create-session"), "create-session", err);
+  }
+
+  try {
+    await setSessionCookie(session.token, session.expiresAt);
+  } catch (err) {
+    return fail(classifyRegistrationError(err, "set-cookie"), "set-cookie", err);
+  }
+
   return { error: null, signedIn: true };
 }
 

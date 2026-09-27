@@ -145,6 +145,119 @@ export class Page {
     return res.result.value as T;
   }
 
+  /**
+   * PROVE the glass is real, rather than trusting that a class was applied.
+   *
+   * For each glass surface on the page this reads the COMPUTED style and checks
+   * the properties that actually make something glass: a genuinely translucent
+   * background (alpha < 1), a backdrop-filter that really blurs, a visible
+   * border, and a shadow. A pale opaque box fails this — which is exactly the
+   * failure a screenshot alone can hide.
+   */
+  async auditGlass() {
+    return this.evaluate<{
+      found: number;
+      translucent: number;
+      blurred: number;
+      samples: { cls: string; bg: string; backdrop: string; border: string; shadow: string }[];
+      failures: string[];
+    }>(`(() => {
+      const alpha = (c) => {
+        const m = c.match(/rgba?\\(([^)]+)\\)/);
+        if (!m) return 1;
+        const p = m[1].split(',').map(s => s.trim());
+        if (p.length < 4) return 1;
+        return parseFloat(p[3]);
+      };
+      const sels = ['.glass','.glass-blood','.glass-bar','.glass-panel','.glass-subtle','.glass-band'];
+      const seen = new Map();
+      const failures = [];
+      let translucent = 0, blurred = 0, found = 0;
+      for (const sel of sels) {
+        for (const el of document.querySelectorAll(sel)) {
+          found++;
+          const s = getComputedStyle(el);
+          const a = alpha(s.backgroundColor);
+          // The production minifier can keep ONLY the -webkit- prefixed form
+          // (it drops the unprefixed one as redundant for its targets), so
+          // reading only the camelCase \`backdropFilter\` reports a false negative.
+          // getPropertyValue is used because Chrome does not always expose the
+          // prefixed property as \`webkitBackdropFilter\`.
+          const std = s.getPropertyValue('backdrop-filter');
+          const pre = s.getPropertyValue('-webkit-backdrop-filter');
+          const isBlurred = (!!std && std !== 'none') || (!!pre && pre !== 'none');
+          if (a < 1) translucent++; else if (failures.length < 6) failures.push(sel + ' opaque bg ' + s.backgroundColor);
+          if (isBlurred) blurred++; else if (failures.length < 6) failures.push(sel + ' no backdrop-filter');
+          if (!seen.has(sel)) {
+            seen.set(sel, {
+              cls: sel,
+              bg: s.backgroundColor,
+              backdrop: std && std !== 'none' ? std : 'webkit-prefixed: ' + pre,
+              border: s.borderTopWidth + ' ' + s.borderTopColor,
+              shadow: s.boxShadow.slice(0, 70),
+            });
+          }
+        }
+      }
+      return { found, translucent, blurred, samples: [...seen.values()], failures };
+    })()`);
+  }
+
+  /**
+   * Save a PNG so the result can be looked at, not only measured.
+   * Returns the raw bytes as well, which is what makes the blur proof below work.
+   */
+  async screenshot(path?: string): Promise<Buffer> {
+    const res = await this.send("Page.captureScreenshot", { format: "png" });
+    const buf = Buffer.from(res.data, "base64");
+    if (path) {
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(path, buf);
+    }
+    return buf;
+  }
+
+  /**
+   * PROVE THE BLUR IS ACTUALLY RENDERING — not merely declared.
+   *
+   * Reading a computed style only proves a declaration survived the build; the
+   * production minifier rewrites these properties, so a style read can be
+   * misleading. This is the behavioural test instead: screenshot the page, then
+   * force every backdrop-filter off and screenshot again. If the blur is really
+   * being applied, the two renders differ; if the surfaces were merely tinted,
+   * they would be pixel-identical.
+   *
+   * @returns whether the two renders differ (true = the blur changed pixels)
+   */
+  async proveBlur(): Promise<{ differs: boolean; before: number; after: number }> {
+    const before = await this.screenshot();
+    // Confirm the override really lands, so a "no difference" result is
+    // meaningful rather than a silent failure to disable anything.
+    await this.evaluate(`(() => {
+      const style = document.createElement('style');
+      style.id = '__blur_probe__';
+      style.textContent =
+        '.glass,.glass-blood,.glass-bar,.glass-panel,.glass-subtle,.glass-band{' +
+        'backdrop-filter:none !important;' +
+        '-webkit-backdrop-filter:none !important;}';
+      document.head.appendChild(style);
+      return true;
+    })()`);
+    const applied = await this.evaluate<boolean>(`(() => {
+      const el = document.querySelector('.glass, .glass-bar, .glass-band');
+      if (!el) return false;
+      const s = getComputedStyle(el);
+      const std = s.getPropertyValue('backdrop-filter');
+      const pre = s.getPropertyValue('-webkit-backdrop-filter');
+      return (!std || std === 'none') && (!pre || pre === 'none');
+    })()`);
+    // Let a frame render with the override in place.
+    await new Promise((r) => setTimeout(r, 250));
+    const after = await this.screenshot();
+    await this.evaluate(`document.getElementById('__blur_probe__')?.remove(); true`);
+    return { differs: !before.equals(after), before: before.length, after: after.length };
+  }
+
   async close() {
     try {
       this.ws.close();

@@ -43,15 +43,26 @@ export default function Error({
   return (
     <div className="mx-auto flex min-h-[50vh] max-w-xl flex-col items-center justify-center gap-4 text-center">
       <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
-        Something went wrong
+        This page could not be loaded
       </p>
       <h1 className="text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-        We couldn&apos;t load this page
+        Something on our side failed
       </h1>
       <p className="text-lg text-ink-600">
-        This is on us, not on you. Nothing you submitted has been lost — try
-        again, and if it keeps happening contact us and we&apos;ll look into it.
+        This is a fault on the server, not on you. Nothing you submitted has been
+        lost. You can retry, and if it keeps happening quote the reference below
+        so we can find the exact failure in our logs.
       </p>
+      {/*
+       * The reference is the ONLY technical identifier a user is given, and it
+       * is deliberately not an error message: it is the join between this screen
+       * and the server log. No stack frame, path or driver error is rendered.
+       */}
+      {error.digest && (
+        <p className="rounded-md border border-ink-200 bg-ink-50 px-4 py-2 font-mono text-sm text-ink-700">
+          Reference: {error.digest}
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap justify-center gap-3">
         <Button type="button" onClick={reset}>
           Try again

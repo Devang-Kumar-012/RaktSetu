@@ -42,8 +42,8 @@ export function ComingSoon({
 
 /** Generic error panel. */
 export function ErrorState({
-  title = "Something went wrong",
-  description,
+  title = "This section could not be loaded",
+  description = "Something on our side failed, not on you. You can retry this section.",
   retry,
 }: {
   title?: string;

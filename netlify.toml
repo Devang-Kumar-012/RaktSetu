@@ -1,12 +1,39 @@
 # Netlify deployment configuration.
 #
-# Contains NO credentials, and requires NONE. RaktSetu is self-contained: the
-# data layer runs entirely in the visitor's own browser, so there is no
-# database URL, no API key and no environment variable to set. A fresh clone
-# deploys and runs as-is.
+# Contains NO credentials, and requires NONE. RaktSetu needs no database URL, no
+# API key and no environment variable to set.
 #
 # (The Supabase packages were removed from package.json; nothing in src/ imports
 # them any more.)
+#
+# ---------------------------------------------------------------------------
+# READ THIS BEFORE DEPLOYING: STORAGE
+# ---------------------------------------------------------------------------
+#
+# The data layer is SERVER-SIDE SQLite — a single file written to
+# `./data/raktsetu.db` beside the app (src/lib/server/db.ts). That is correct
+# for a host with a persistent, writable filesystem, which is what `next dev`
+# and `next start` give you locally.
+#
+# Netlify FUNCTIONS DO NOT. A function bundle runs with a READ-ONLY working
+# directory and an ephemeral /tmp, so the file can be neither created nor
+# persisted. A read-only deployment now fails loudly and specifically ("the
+# account database is not writable in the current deployment") with an error ID
+# in the server log, rather than silently appearing to work.
+#
+# It deliberately does NOT fall back to /tmp: writes there would "succeed" and
+# every account would silently vanish on the next cold start. An honest failure
+# is strictly better than a fake success that loses people's data.
+#
+# To run on Netlify, deploy to a target that provides a PERSISTENT WRITABLE
+# volume for the function (a container/VM with a mounted disk) rather than the
+# standard ephemeral function runtime. No code change is needed for that.
+#
+# WHAT THIS FILE MUST NOT DO
+#
+# Do not "fix" a storage failure by pointing the database at a temporary
+# directory, and do not add a filesystem-affinity flag to serialise functions:
+# neither makes the data durable, and both hide the real constraint.
 
 [build]
   command = "npm run build"

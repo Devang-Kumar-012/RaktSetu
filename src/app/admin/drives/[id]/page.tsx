@@ -134,7 +134,7 @@ export default async function AdminDriveDetailPage({
             </dl>
 
             {stats && stats.target_units !== null && (
-              <div className="mt-6 rounded-lg border border-ink-200 bg-white p-6 shadow-sm">
+              <div className="mt-6 glass rounded-lg p-6">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-lg font-bold text-ink-900">Target progress</h3>
                   <p className="text-sm font-semibold text-ink-600">
@@ -162,7 +162,7 @@ export default async function AdminDriveDetailPage({
             )}
 
             {groupEntries.length > 0 && (
-              <div className="mt-6 rounded-lg border border-ink-200 bg-white p-6 shadow-sm">
+              <div className="mt-6 glass rounded-lg p-6">
                 <h3 className="text-lg font-bold text-ink-900">
                   Registered donors by blood group
                 </h3>
@@ -236,7 +236,7 @@ export default async function AdminDriveDetailPage({
               Changing the date, time, venue or status tells every registered
               donor — once per change, never repeatedly.
             </p>
-            <div className="mt-6 rounded-lg border border-ink-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="mt-6 glass-panel rounded-lg p-6 sm:p-8">
               <AdminDriveForm drive={drive} />
             </div>
           </div>

@@ -29,7 +29,9 @@ const columns = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-ink-200 bg-white">
+    // Translucent band for the same reason as PageHeader: the ambient background
+    // continues through the footer instead of stopping at an opaque edge.
+    <footer className="glass-band border-t border-white/60">
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
         <div className="grid gap-10 md:grid-cols-4">
           <div>

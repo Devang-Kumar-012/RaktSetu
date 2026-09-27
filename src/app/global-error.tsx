@@ -41,7 +41,7 @@ export default function GlobalError({ reset }: { reset: () => void }) {
               margin: 0,
             }}
           >
-            Something went wrong
+            This page could not be loaded
           </p>
           <h1
             style={{

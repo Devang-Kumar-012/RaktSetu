@@ -42,7 +42,7 @@ export function EmergencyAlertSection() {
           {phases.map((phase, i) => (
             <li
               key={phase.title}
-              className="rounded-lg border border-blood-200 bg-white px-5 py-4"
+              className="glass-blood rounded-lg px-5 py-4"
             >
               <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
                 {ALERT_RING_LABELS[ALERT_RINGS_KM[i]] ?? `${ALERT_RINGS_KM[i]} km`}

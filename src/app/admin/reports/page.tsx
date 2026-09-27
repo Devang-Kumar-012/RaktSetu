@@ -171,7 +171,7 @@ export default async function AdminReportsPage({
           <form
             method="get"
             action="/admin/reports"
-            className="flex flex-wrap items-end gap-4 rounded-lg border border-ink-200 bg-white p-5 shadow-sm"
+            className="flex flex-wrap items-end gap-4 glass rounded-lg p-5"
           >
             <label className="block">
               <span className="mb-1.5 block text-sm font-bold uppercase tracking-widest text-ink-500">
@@ -227,7 +227,7 @@ export default async function AdminReportsPage({
             return (
               <article
                 key={r.id}
-                className="rounded-lg border border-ink-200 bg-white p-6 shadow-sm"
+                className="glass rounded-lg p-6"
               >
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="rounded-md bg-ink-100 px-3 py-1 text-sm font-bold text-ink-600">

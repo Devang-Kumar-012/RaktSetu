@@ -17,7 +17,7 @@
 
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -29,16 +29,94 @@ import {
 import { hashPassword } from "./password";
 
 /**
- * Where the database lives: `./data/raktsetu.db` beside the app, which is
- * correct for a persistent Node host. This is the single place to change it if
- * the platform mounts its volume elsewhere.
+ * WHY THE DATABASE PATH IS CHOSEN THIS WAY
  *
- * There is deliberately NO environment lookup here. The application is
- * self-contained and reads no configuration at all, an invariant asserted
- * across every file in `src/` by `scripts/check-invariants.ts`. Never sent to
- * the browser.
+ * The database is one file, so it needs a directory that is BOTH writable AND
+ * durable. Those are different requirements and confusing them is how a server
+ * ends up quietly losing data:
+ *
+ *  - A read-only working directory (a deployed serverless bundle) means the
+ *    file cannot be created at all. That must fail loudly, and say so.
+ *  - A WRITABLE BUT EPHEMERAL directory (a container's /tmp) is worse. Writes
+ *    would succeed, the user would be told they registered, and the account
+ *    would silently disappear on the next cold start. So this module NEVER
+ *    silently falls back to a temporary directory: a fake success that loses
+ *    people's accounts is far worse than an honest failure.
+ *
+ * `process.cwd()/data` is therefore the only location used, which is correct for
+ * a persistent Node host (a VM, a container with a mounted volume, a laptop).
+ * `getDb()` proves it can actually write there before trusting it, and raises a
+ * classified `DatabaseUnavailableError` when it cannot.
+ *
+ * There is deliberately NO environment lookup. The application is self-contained
+ * and reads no configuration at all, an invariant asserted across every file in
+ * `src/` by `scripts/check-invariants.ts`. Never sent to the browser.
  */
 const DB_PATH = join(process.cwd(), "data", "raktsetu.db");
+
+/**
+ * WHY THIS EXISTS
+ *
+ * A failure to open the database used to surface as an anonymous
+ * `EACCES: permission denied, mkdir '.../data'` from three frames deep. It was
+ * caught by the registration action and reported to the user as a generic
+ * apology, which told nobody anything.
+ *
+ * This error carries a `reason` the rest of the app can classify without
+ * pattern-matching English or driver strings, so the message a user sees is
+ * derived from what actually went wrong. The raw path and code stay in the
+ * server log, never in the response.
+ */
+export type DatabaseUnavailableReason =
+  /** The directory exists but cannot be written to (read-only deployment). */
+  | "storage-read-only"
+  /** The directory could not be created or written to for another reason. */
+  | "storage-unwritable"
+  /** `node:sqlite` is not available on this runtime. */
+  | "sqlite-unavailable"
+  /** The driver was present but refused to open the file. */
+  | "open-failed";
+
+export class DatabaseUnavailableError extends Error {
+  readonly reason: DatabaseUnavailableReason;
+  /** Raw driver/FS detail. Logged server-side; never returned to a browser. */
+  readonly detail: string;
+
+  constructor(reason: DatabaseUnavailableReason, detail: string) {
+    super(`database unavailable (${reason})`);
+    this.name = "DatabaseUnavailableError";
+    this.reason = reason;
+    this.detail = detail;
+  }
+}
+
+/**
+ * Prove the storage is usable BEFORE opening, so the failure names the real
+ * problem (the filesystem) rather than surfacing as an unrelated SQL error
+ * several steps later.
+ *
+ * A real create/write/unlink is used rather than `access(W_OK)`: permission
+ * bits routinely disagree with what the kernel will actually allow, and only
+ * doing the real thing is a truthful test.
+ */
+function assertStorageUsable(dir: string): void {
+  let probe: string;
+  try {
+    mkdirSync(dir, { recursive: true });
+    probe = join(dir, `.raktsetu-write-probe-${process.pid}`);
+    // Exclusive create: fails if the directory is not writable.
+    const fd = openSync(probe, "wx");
+    closeSync(fd);
+    unlinkSync(probe);
+  } catch (err) {
+    const e = err as { code?: string; message?: string };
+    const readOnly = e.code === "EROFS" || e.code === "EPERM";
+    throw new DatabaseUnavailableError(
+      readOnly ? "storage-read-only" : "storage-unwritable",
+      `${e.code ?? "unknown"}: ${e.message ?? String(err)}`,
+    );
+  }
+}
 
 /**
  * `node:sqlite` is resolved lazily, on first use.
@@ -57,23 +135,57 @@ const require_ = createRequire(import.meta.url);
 let DatabaseSyncCtor: typeof DatabaseSync | null = null;
 function sqliteDatabase(): typeof DatabaseSync {
   if (!DatabaseSyncCtor) {
-    DatabaseSyncCtor = require_("node:sqlite").DatabaseSync as typeof DatabaseSync;
+    try {
+      DatabaseSyncCtor = require_("node:sqlite").DatabaseSync as typeof DatabaseSync;
+    } catch (err) {
+      // Node older than 22.13 cannot load `node:sqlite` unflagged. Name that
+      // precisely, because it is a deployment-runtime fault and not a bad query.
+      throw new DatabaseUnavailableError(
+        "sqlite-unavailable",
+        `node:sqlite unavailable: ${(err as Error).message}`,
+      );
+    }
   }
   return DatabaseSyncCtor;
 }
 
 let db: DatabaseSync | null = null;
 
-/** The open connection, created and migrated on first use. */
+/**
+ * The open connection, created and migrated on first use.
+ *
+ * Every way this can fail is converted into a `DatabaseUnavailableError` with a
+ * `reason`, so the caller can tell the user WHICH part of the platform is
+ * missing. Previously the raw `mkdir`/`open` error escaped and was reported as a
+ * generic apology.
+ */
 export function getDb(): DatabaseSync {
   if (db) return db;
-  mkdirSync(dirname(DB_PATH), { recursive: true });
-  db = new (sqliteDatabase())(DB_PATH);
+  assertStorageUsable(dirname(DB_PATH));
+  try {
+    db = new (sqliteDatabase())(DB_PATH);
+  } catch (err) {
+    throw new DatabaseUnavailableError(
+      "open-failed",
+      `open failed: ${(err as Error).message}`,
+    );
+  }
   // WAL lets readers proceed during a write and survives restarts with the
   // file. NORMAL is the right durability trade for SQLite at this scale.
-  db.exec("PRAGMA journal_mode = WAL;");
-  db.exec("PRAGMA foreign_keys = ON;");
-  db.exec("PRAGMA busy_timeout = 5000;");
+  //
+  // WAL needs a writable directory next to the database; a platform that allows
+  // the file but not the -wal/-shm siblings is not durable, so it is refused
+  // here rather than silently degrading to a mode that loses writes.
+  try {
+    db.exec("PRAGMA journal_mode = WAL;");
+    db.exec("PRAGMA foreign_keys = ON;");
+    db.exec("PRAGMA busy_timeout = 5000;");
+  } catch (err) {
+    const detail = (err as Error).message;
+    db.close();
+    db = null;
+    throw new DatabaseUnavailableError("storage-unwritable", `pragmas failed: ${detail}`);
+  }
   migrate(db);
   return db;
 }

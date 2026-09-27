@@ -62,7 +62,7 @@ export default async function AdminDrivesPage() {
               A new drive is created as a draft. Publish it when the schedule is
               firm — donors cannot see or register for a draft.
             </p>
-            <div className="mt-6 rounded-lg border border-ink-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="mt-6 glass-panel rounded-lg p-6 sm:p-8">
               <AdminDriveForm />
             </div>
           </div>

@@ -72,7 +72,13 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
       });
 
       if (result.error) {
-        setError(friendlyAuthError(result.error));
+        // The server returns a CATEGORY, and this renders the exact safe sentence
+        // for it — including the "Error ID: REG-XXXXXX" that matches the server
+        // log for anything unexpected. Passing the code through (rather than
+        // re-deriving it here) is what keeps the wording in one place.
+        // There is deliberately no generic message: if something goes wrong, the
+        // user is told what.
+        setError(friendlyAuthError({ code: result.error, errorId: result.errorId }));
         setLoading(false);
         return;
       }

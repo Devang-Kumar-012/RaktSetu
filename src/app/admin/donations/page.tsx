@@ -83,7 +83,7 @@ export default async function AdminDonationsPage() {
             <p className="mt-2 text-base text-ink-600">
               Use the account and request IDs from the Users and Requests sections.
             </p>
-            <div className="mt-6 rounded-lg border border-ink-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="mt-6 glass-panel rounded-lg p-6 sm:p-8">
               <AdminRecordDonationForm />
             </div>
             <Alert variant="info" title="Availability filter only" className="mt-6">

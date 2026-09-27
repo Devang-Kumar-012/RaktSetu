@@ -99,7 +99,7 @@ export default async function AdminSettingsPage() {
         <Alert variant="warning" title="These are coordination rules, not medical rules">
           {ELIGIBILITY_DISCLAIMER}
         </Alert>
-        <div className="mt-8 rounded-lg border border-ink-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="mt-8 glass-panel rounded-lg p-6 sm:p-8">
           <AdminSettingsForm settings={settings} />
         </div>
 
@@ -112,7 +112,7 @@ export default async function AdminSettingsPage() {
           signed-in users — service writes, migrations and admin tooling are never
           rate limited.
         </p>
-        <div className="mt-6 rounded-lg border border-ink-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="mt-6 glass-panel rounded-lg p-6 sm:p-8">
           <AdminSafetyLimitsForm limits={limits} />
         </div>
 

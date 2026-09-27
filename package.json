@@ -20,7 +20,9 @@
     "check:live-roles": "tsx scripts/check-live-roles.ts http://localhost:3999",
     "check:browser": "tsx scripts/check-browser-flow.ts http://localhost:3999",
     "check:browser:cleanup": "tsx scripts/check-browser-flow.ts --cleanup",
-    "check:responsive": "tsx scripts/check-responsive.ts"
+    "check:responsive": "tsx scripts/check-responsive.ts",
+    "check:glass": "tsx scripts/check-glass.ts",
+    "check:registration": "tsx scripts/repro-registration.ts"
   },
   "dependencies": {
     "next": "^15.1.4",

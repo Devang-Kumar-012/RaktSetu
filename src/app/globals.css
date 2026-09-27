@@ -38,10 +38,27 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-ink-50);
   color: var(--color-ink-900);
   line-height: 1.6;
   text-rendering: optimizeLegibility;
+
+  /*
+   * AMBIENT DEPTH.
+   *
+   * Frosted surfaces need something behind them: `backdrop-filter` blurs whatever
+   * is painted underneath, so on a flat single-colour page the effect is almost
+   * invisible. These three very soft, very large washes live in the RaktSetu
+   * palette — two blood tints and one cool ink highlight — and give every glass
+   * panel on the site something to refract. They are static (no animation, no
+   * fixed attachment, so mobile compositing stays cheap) and low-contrast enough
+   * that no text ever sits on them directly.
+   */
+  background-color: var(--color-ink-50);
+  background-image:
+    radial-gradient(1100px 640px at 10% -10%, rgba(170, 31, 31, 0.1), transparent 62%),
+    radial-gradient(900px 560px at 94% 4%, rgba(227, 75, 75, 0.075), transparent 60%),
+    radial-gradient(1000px 720px at 50% 112%, rgba(43, 41, 37, 0.06), transparent 62%);
+  background-repeat: no-repeat;
 }
 
 /* Readable default focus ring for keyboard users. */
@@ -92,31 +109,53 @@ body {
  *  - browsers without backdrop-filter fall back to a solid readable surface.
  */
 :root {
-  --glass-blur: blur(10px) saturate(150%);
-  --glass-blur-bar: blur(12px) saturate(160%);
+  --glass-blur: blur(18px) saturate(180%);
+  --glass-blur-bar: blur(20px) saturate(190%);
+  /*
+   * THE LIGHT EDGE. A single-pixel inset highlight along the top of a surface
+   * is what the eye reads as "thick glass catching the light" — without it a
+   * translucent panel still just looks like a pale box. Paired with a soft,
+   * low-opacity drop shadow it also separates the panel from whatever is behind
+   * it without drawing a heavy outline.
+   */
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-edge-soft: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   --glass-shadow:
-    0 1px 2px rgba(28, 26, 23, 0.04),
-    0 16px 40px -24px rgba(28, 26, 23, 0.35);
+    0 1px 2px rgba(28, 26, 23, 0.05),
+    0 16px 40px -22px rgba(28, 26, 23, 0.38);
   --glass-shadow-bar:
     0 1px 2px rgba(28, 26, 23, 0.05),
-    0 12px 28px -22px rgba(28, 26, 23, 0.45);
+    0 12px 28px -20px rgba(28, 26, 23, 0.45);
 }
 
-/* Neutral frosted surface — summaries, feature cards, request surfaces. */
+/* Neutral frosted surface — cards, summaries, feature panels. The workhorse. */
 .glass {
-  background-color: rgba(255, 255, 255, 0.66);
-  border: 1px solid rgba(28, 26, 23, 0.08);
-  box-shadow: var(--glass-shadow);
+  background-color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/*
+ * A quieter sibling of `.glass`, for surfaces nested inside another glass panel
+ * or sitting on an already-busy background. More transparent, softer edge, so it
+ * reads as a layer of depth rather than a second competing card.
+ */
+.glass-subtle {
+  background-color: rgba(255, 255, 255, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: var(--glass-edge-soft), 0 10px 26px -20px rgba(28, 26, 23, 0.3);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
 }
 
 /* Blood-tinted frosted surface — urgent strips, unread notifications.
    Text, badges, and buttons on top keep their full solid contrast. */
 .glass-blood {
-  background-color: rgba(253, 227, 227, 0.72);
-  border: 1px solid rgba(170, 31, 31, 0.16);
-  box-shadow: var(--glass-shadow);
+  background-color: rgba(253, 227, 227, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  box-shadow: var(--glass-edge), 0 14px 36px -20px rgba(140, 24, 24, 0.4);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
 }
@@ -125,9 +164,9 @@ body {
    scrolling content. Owns its own hairline border, like every other glass
    surface, so the bar is self-contained and identical on every route. */
 .glass-bar {
-  background-color: rgba(255, 255, 255, 0.8);
-  border-bottom: 1px solid rgba(28, 26, 23, 0.08);
-  box-shadow: var(--glass-shadow-bar);
+  background-color: rgba(255, 255, 255, 0.66);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: var(--glass-edge-soft), var(--glass-shadow-bar);
   backdrop-filter: var(--glass-blur-bar);
   -webkit-backdrop-filter: var(--glass-blur-bar);
 }
@@ -137,13 +176,27 @@ body {
    a panel full of labels, hints and inputs needs MORE contrast than a summary
    card, not less. Blur radius stays modest so it never smears. */
 .glass-panel {
-  background-color: rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(28, 26, 23, 0.09);
+  background-color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow:
-    0 1px 2px rgba(28, 26, 23, 0.05),
+    var(--glass-edge),
     0 24px 56px -28px rgba(28, 26, 23, 0.42);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/*
+ * Section band — the full-width header strip under the navbar. Translucent so
+ * the ambient background continues through it instead of being cut off by a
+ * flat white band, which is what previously made the glass look like a pasted-on
+ * card floating on a dead background.
+ */
+.glass-band {
+  background-color: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: var(--glass-edge-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 /* Background wash for the authentication routes. Gives the auth panel
@@ -172,6 +225,43 @@ body {
   :root {
     --glass-blur: blur(8px) saturate(130%);
     --glass-blur-bar: blur(8px) saturate(140%);
+  }
+}
+
+/*
+ * BACKDROP-BLUR REPAIR.
+ *
+ * The production CSS minifier treats `backdrop-filter` and
+ * `-webkit-backdrop-filter` as one logical property and collapses the pair down
+ * to a single prefixed declaration. Modern Chrome does not implement the
+ * `-webkit-` alias, so the declaration that survives is the one Chrome IGNORES:
+ * the panels then render as a flat translucent tint with no blur at all, and the
+ * glassmorphism silently disappears in production while still looking correct in
+ * dev.
+ *
+ * Re-declaring the standard property here fixes it. The condition mentions only
+ * the standard form, so there is no prefixed twin for the minifier to collapse
+ * this declaration with, and the property Chrome actually honours is guaranteed
+ * to reach production.
+ */
+@supports (backdrop-filter: blur(1px)) {
+  .glass {
+    backdrop-filter: var(--glass-blur);
+  }
+  .glass-blood {
+    backdrop-filter: var(--glass-blur);
+  }
+  .glass-bar {
+    backdrop-filter: var(--glass-blur-bar);
+  }
+  .glass-panel {
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+  .glass-subtle {
+    backdrop-filter: blur(12px) saturate(160%);
+  }
+  .glass-band {
+    backdrop-filter: var(--glass-blur);
   }
 }
 
