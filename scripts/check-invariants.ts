@@ -1154,15 +1154,26 @@ eq(
     // the driver both require the Node runtime.
     !/"runtime"\s*:\s*"edge"/.test(vercelJson));
 
-  // The environment contract. Both names are documented, and NEITHER may carry
-  // a value — a real credential belongs in the host's secret store, never in a
-  // file that is committed to git.
+  // The environment contract.
+  //
+  // Both variable names are documented, and NEITHER may carry a value in the
+  // repository. They are set as real environment variables on the host (Vercel's
+  // dashboard), which the application reads through `process.env` at runtime.
+  //
+  // These two checks previously required the NAMES to appear in vercel.json,
+  // which was wrong: it pushed them back into a legacy `env` block using `@NAME`
+  // references. Vercel reads a bare `@NAME` value as a request to resolve a
+  // *Vercel Secret*, and since no such secret existed, every deployment failed
+  // with: Environment Variable "RAKTSETU_DATABASE_URL" references Secret
+  // "RAKTSETU_DATABASE_URL", which does not exist. A plain environment variable
+  // needs no declaration in vercel.json at all, so the fix is to keep the names
+  // out of it entirely — asserted below so it cannot creep back.
   ok("the database URL variable is documented", /RAKTSETU_DATABASE_URL/.test(envExample));
   ok("the database token variable is documented", /RAKTSETU_DATABASE_TOKEN/.test(envExample));
-  ok("the deployment config names the database URL as an environment variable",
-    /RAKTSETU_DATABASE_URL/.test(vercelJson));
-  ok("the deployment config names the token as an environment variable",
-    /RAKTSETU_DATABASE_TOKEN/.test(vercelJson));
+  ok("the deployment config declares no @NAME secret reference",
+    !/"@[A-Z0-9_]+"/.test(vercelJson));
+  ok("the deployment config does not re-declare the database variables",
+    !/RAKTSETU_DATABASE_(URL|TOKEN)/.test(vercelJson));
   ok("neither database variable is exposed to the browser",
     !/NEXT_PUBLIC_[A-Z0-9_]*DATABASE/.test(vercelJson + envExample));
   ok("the deployment config hard-codes no credential",

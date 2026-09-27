@@ -8,9 +8,5 @@
     "src/app/api/health/route.ts": {
       "maxDuration": 10
     }
-  },
-  "env": {
-    "RAKTSETU_DATABASE_URL": "@RAKTSETU_DATABASE_URL",
-    "RAKTSETU_DATABASE_TOKEN": "@RAKTSETU_DATABASE_TOKEN"
   }
 }
