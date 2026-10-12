@@ -248,18 +248,23 @@ body {
   .glass {
     backdrop-filter: var(--glass-blur);
   }
+
   .glass-blood {
     backdrop-filter: var(--glass-blur);
   }
+
   .glass-bar {
     backdrop-filter: var(--glass-blur-bar);
   }
+
   .glass-panel {
     backdrop-filter: blur(20px) saturate(180%);
   }
+
   .glass-subtle {
     backdrop-filter: blur(12px) saturate(160%);
   }
+
   .glass-band {
     backdrop-filter: var(--glass-blur);
   }
