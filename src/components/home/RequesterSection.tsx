@@ -4,19 +4,19 @@ import { ButtonLink } from "@/components/ui/Button";
 const steps = [
   {
     title: "Create the request",
-    body: "Blood group, component, units, hospital, locality, urgency and the time it is needed by.",
+    body: "Blood group, component, units, hospital, locality, urgency, and time needed."
   },
   {
     title: "Watch it move",
-    body: "Follow which alert ring is running, how many compatible donors have been reached, and whether anyone has accepted.",
+    body: "Follow the alert ring, compatible donors reached, and acceptances."
   },
   {
     title: "Contact the accepted donor",
-    body: "Only after a valid acceptance do you see the donor's contact details, and only until the response window closes.",
+    body: "Only after acceptance do you see the donor's contact details, until the window closes."
   },
   {
     title: "Close the request",
-    body: "Mark it fulfilled once the blood is arranged, or cancel it if the need has passed. Either way, alerting stops at once.",
+    body: "Mark it fulfilled once blood is arranged, or cancel if the need passed. Alerting stops at once."
   },
 ];
 
@@ -37,8 +37,8 @@ export function RequesterSection() {
         </h2>
         <p className="mt-4 text-lg leading-relaxed text-ink-600">
           A relative or friend can raise the request on your behalf. RaktSetu
-          coordinates who gets asked and when — arranging the actual transfusion
-          stays with you and the hospital.
+          coordinates who gets asked and when — arranging the transfusion stays
+          with you and the hospital.
         </p>
 
         <ol className="mt-8 space-y-5">

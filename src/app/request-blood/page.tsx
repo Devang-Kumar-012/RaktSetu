@@ -6,7 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { BloodRequestForm } from "@/components/requests/BloodRequestForm";
-import { BLOOD_GROUPS } from "@/lib/constants";
+import { SlotImage } from "@/components/ui/SlotImage";
 
 export const metadata: Metadata = { title: "Request blood" };
 
@@ -31,12 +31,19 @@ export default async function RequestBloodPage() {
         description="Reach willing, matching donors nearby — without the patient ever needing to operate anything."
       />
       <Section>
+        <div className="lg:col-span-2">
+          <SlotImage
+            slot="requestBlood"
+            sizes="(max-width: 639px) 85vw, (max-width: 1024px) 60vw, 720px"
+            className="w-full h-72 sm:h-80 lg:h-64"
+          />
+        </div>
         {!isRequester ? (
           <div className="max-w-2xl">
             <Alert variant="info" title="One quick account needed">
-              Blood requests are created by a family member, friend, or volunteer with a
-              requester account — the patient never touches the app. If that&apos;s you,
-              create a free requester account (or log in) and come straight back here.
+              Blood requests are created by a family member, friend, or volunteer
+              with a requester account — the patient never touches the app. If that
+              is you, create an account (or log in) and come straight back.
             </Alert>
             {!session.user && (
               <div className="mt-6 flex flex-wrap gap-4">
@@ -58,18 +65,18 @@ export default async function RequestBloodPage() {
               {[
                 {
                   title: "Someone on the ground creates the request",
-                  body: "A family member, friend, or volunteer enters the hospital, city, and blood group. The patient does not touch the app.",
+                  body: "A family member, friend, or volunteer enters the hospital, city, and blood group. The patient never touches the app."
                 },
                 {
                   title: "Matching runs against nearby donors",
-                  body: "RaktSetu looks for willing donors with the right blood group near that hospital and sorts them by distance. Contacting them is still done by hand while alerts are being built.",
+                  body: "RaktSetu finds willing donors with the right blood group near that hospital and sorts them by distance."
                 },
                 {
                   title: "The donor is confirmed, then screened",
-                  body: "Once a donor agrees, they go through the usual medical eligibility checks at the blood bank. RaktSetu never decides who is fit to donate.",
+                  body: "Once a donor agrees, they go through the usual medical eligibility checks at the blood bank."
                 },
               ].map((s, i) => (
-                <Card key={s.title}>
+                <Card key={s.title} className="max-w-3xl">
                   <CardBody className="pt-6">
                     <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
                       Step {i + 1}
@@ -86,8 +93,9 @@ export default async function RequestBloodPage() {
         ) : (
           <div className="max-w-3xl">
             <Alert variant="warning" title="Emergency?">
-              RaktSetu is a coordination tool, not an emergency service. For immediate
-              medical emergencies, contact your hospital or emergency services first.
+              RaktSetu is a coordination tool, not an emergency service. For
+              immediate medical emergencies, contact your hospital or emergency
+              services first.
             </Alert>
 
             <Card className="mt-8 p-6 sm:p-8">
@@ -95,32 +103,6 @@ export default async function RequestBloodPage() {
             </Card>
           </div>
         )}
-
-        {/*
-          INFORMATIONAL ONLY. These are the groups RaktSetu supports — they are
-          not a control. Rendered as a plain, non-focusable list with a default
-          cursor and no hover affordance, so nothing about them implies they can
-          be clicked, focused or submitted.
-        */}
-        <div className="mt-12">
-          <Card className="max-w-3xl">
-            <CardBody className="pt-6">
-              <p className="font-semibold text-ink-900">
-                These are the blood groups RaktSetu supports
-              </p>
-              <ul className="mt-3 flex flex-wrap gap-2" aria-label="Supported blood groups">
-                {BLOOD_GROUPS.map((g) => (
-                  <li
-                    key={g}
-                    className="cursor-default select-none rounded-md border border-ink-200 bg-ink-50 px-4 py-2 text-base font-bold text-ink-900"
-                  >
-                    {g}
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
-          </Card>
-        </div>
       </Section>
     </>
   );

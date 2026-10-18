@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { SlotImage } from "@/components/ui/SlotImage";
 
 export const metadata: Metadata = { title: "About" };
 
@@ -11,28 +12,29 @@ export default function AboutPage() {
       <PageHeader
         eyebrow="Our mission"
         title="About RaktSetu"
-        description="A bridge between willing donors and urgent needs — built around one rule: the patient is never asked to work the app."
+        description="One rule: the patient is never asked to work the app."
       />
       <Section>
         <div className="grid gap-10 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <SlotImage
+              slot="aboutSection"
+              sizes="(max-width: 639px) 85vw, (max-width: 1024px) 60vw, 960px"
+              className="w-full h-64 sm:h-80 lg:h-72"
+            />
+          </div>
           <div className="space-y-6 text-lg leading-relaxed text-ink-600">
             <p>
-              In an emergency, the hard part is rarely finding blood — it is finding a{" "}
-              <strong className="font-semibold text-ink-900">
-                matching donor, quickly
-              </strong>
-              . Phone calls go out, WhatsApp groups get flooded, and someone in the next
-              neighbourhood may have been ready to help all along.
+              In an emergency, the hard part is finding a matching donor quickly —
+              not blood itself. Calls go out, groups get flooded, and someone nearby
+              may have been ready to help all along.
             </p>
             <p>
-              RaktSetu tries to fix that. A request carries only what responders need —
-              blood group, hospital, area, how soon — and matching donors nearby are
-              sorted by distance instead of a hundred forwards in a group chat.
-            </p>
-            <p>
-              The person who needs the blood is usually the least able to run around
-              arranging it. So every flow here is operated by family, friends, volunteers,
-              or hospital staff on their behalf.
+              RaktSetu carries only what responders need — blood group, hospital,
+              area, urgency — and matches donors by distance instead of a hundred
+              forwards in a group chat. The person who needs blood is usually the
+              least able to arrange it, so family, friends, volunteers, or hospital
+              staff run the request on their behalf.
             </p>
           </div>
 
@@ -56,10 +58,10 @@ export default function AboutPage() {
               </CardHeader>
               <CardBody>
                 <p className="text-ink-600">
-                  RaktSetu does the coordination work: finding matching donors and keeping
-                  a clear record of each request. The moment a donor reaches a blood bank,
-                  professionals take over — screening, eligibility, collection. Software
-                  stays out of that decision.
+                  RaktSetu finds matching donors and keeps a clear record of each
+                  request. The moment a donor reaches a blood bank, professionals
+                  take over — screening, eligibility, collection. Software stays out
+                  of that decision.
                 </p>
               </CardBody>
             </Card>

@@ -34,8 +34,7 @@ export function VolunteerSection() {
           <p className="mt-4 text-lg leading-relaxed text-ink-600">
             Volunteers see emergency requests that may benefit from extra
             coordination and help a requester who has asked for support. The role
-            is deliberately narrow so nobody is ever left guessing what they are
-            authorised to do.
+            is deliberately narrow.
           </p>
         </div>
 

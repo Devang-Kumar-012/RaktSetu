@@ -22,7 +22,7 @@ export function CampusDrivesSection() {
         <p className="mt-4 max-w-3xl text-lg leading-relaxed text-ink-700">
           Alongside emergency requests, RaktSetu runs organised blood donation
           drives. Browse what is coming up, see the venue and timings, and
-          register your interest so organisers know roughly how many to expect.
+          register your interest.
         </p>
 
         <ul className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -30,7 +30,6 @@ export function CampusDrivesSection() {
             "See drive title, host organisation, date, venue and locality.",
             "Register or withdraw your interest in a few taps.",
             "Get notified when the schedule changes or a drive is called off.",
-            "Check-in and donation records are handled by drive staff on the day.",
           ].map((item) => (
             <li key={item} className="text-base leading-relaxed text-ink-800">
               <span aria-hidden="true" className="font-bold text-blood-700">
@@ -40,12 +39,6 @@ export function CampusDrivesSection() {
             </li>
           ))}
         </ul>
-
-        <p className="mt-6 max-w-3xl text-sm leading-relaxed text-ink-600">
-          Registering your interest is not an appointment and does not imply you
-          will be able to donate — that is decided at the drive by the blood bank,
-          exactly as in an emergency.
-        </p>
 
         <div className="mt-8 flex flex-wrap gap-4">
           <ButtonLink href="/drives" size="lg">

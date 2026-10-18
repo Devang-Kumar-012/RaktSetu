@@ -19,9 +19,9 @@ export function DonorSection() {
           Be the person nearby who can help
         </h2>
         <p className="mt-4 text-lg leading-relaxed text-ink-600">
-          Register once with your blood group and area. When a request near you
-          needs your blood type, the alert reaches you — and every time, the
-          choice to help is yours.
+          Register once with your blood group and area. When a nearby request
+          needs your type, the alert reaches you — and every time, the choice is
+          yours.
         </p>
 
         <ul className="mt-6 space-y-3">

@@ -17,15 +17,15 @@ export const dynamic = "force-dynamic";
 const points = [
   {
     title: "What we ask for",
-    body: "Your blood group, your area, a phone number, and whether you are available right now. Nothing else — no health history, no home address.",
+    body: "Your blood group, area, phone number, and availability. Nothing else — no health history, no home address."
   },
   {
     title: "You stay in control",
-    body: "Switch yourself to “temporarily unavailable” whenever you need to. Your phone number stays private and is never listed anywhere. You can also remove your saved location at any time.",
+    body: "Switch to “temporarily unavailable” whenever you need to. Your phone number stays private and is never listed."
   },
   {
     title: "Screening stays professional",
-    body: "RaktSetu only keeps track of when you last donated and shows the earliest date you could donate again. That is a booking filter, not a medical decision — the blood bank's staff always decides.",
+    body: "RaktSetu tracks when you last donated and shows your earliest eligible date — a booking filter, not a medical decision. The blood bank's staff always decides."
   },
 ];
 
@@ -54,7 +54,7 @@ export default async function DonorPage() {
       <PageHeader
         eyebrow="Donate"
         title="Become a donor"
-        description="Register once with your blood group and area. Update your availability whenever your situation changes."
+        description="Register once with your blood group and area."
       />
       <Section>
         <DonorMotivation />
@@ -79,11 +79,10 @@ export default async function DonorPage() {
               Add the donor role to your account
             </h2>
             <p className="mt-3 text-lg text-ink-600">
-              You are already signed in as <strong>{user.email}</strong>, so there is
-              nothing new to create. Add the donor role to this account and we will
-              take you straight to your donor profile. Everything you can already do
-              as a {roles.length === 1 ? roles[0] : "member of this account"} stays
-              exactly as it is, and you can switch between profiles at any time.
+              You are already signed in as <strong>{user.email}</strong>. Add the
+              donor role to this account and we will take you to your donor
+              profile. Nothing new to create — everything you already do stays
+              exactly as it is.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-4">
               <BecomeDonorButton />
@@ -99,9 +98,8 @@ export default async function DonorPage() {
               Ready to register?
             </h2>
             <p className="mt-3 text-lg text-ink-600">
-              Create a donor account, then fill in your donor profile. It takes a
-              couple of minutes, and you can edit everything later from your profile
-              page.
+              Create a donor account, then fill in your donor profile. You can
+              edit everything later from your profile page.
             </p>
             <div className="mt-6 flex flex-wrap gap-4">
               <ButtonLink href="/register?role=donor" size="lg">
@@ -119,12 +117,11 @@ export default async function DonorPage() {
             How alerts reach you
           </h2>
           <p className="mt-3 text-lg text-ink-600">
-            When a request matches your blood group, RaktSetu alerts donors in expanding
-            rings — nearby first (3 km), then wider (7 km, then 15 km) if nobody accepts,
-            with a short window per ring. Alerts appear on your dashboard and under
-            Notifications: accept or decline with one tap. Only after you accept do you
-            get the requester&apos;s contact to coordinate — and the blood bank&apos;s
-            screening always comes first.
+            When a request matches your blood group, RaktSetu alerts donors in
+            expanding rings — nearby first, then wider — with a short window per
+            ring. Accept or decline with one tap. Only after you accept do you get
+            the requester's contact to coordinate; the blood bank's screening
+            always comes first.
           </p>
         </div>
       </Section>

@@ -35,17 +35,15 @@ export function DonorMotivation({
     >
       <CardBody>
         <h2 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">
-          Your donation can make a life-saving difference.
+          Your donation can make a difference.
         </h2>
         <p className="mt-3 text-base leading-relaxed text-ink-700 sm:text-lg">
-          Every donation can help someone through a critical moment. RaktSetu
-          brings willing donors together with people who urgently need blood, and
-          alerts you only when your blood group and area are a genuine match.
+          RaktSetu brings willing donors together with people who urgently need
+          blood, and alerts you only when your blood group and area match.
         </p>
         <p className="mt-3 text-base leading-relaxed text-ink-700 sm:text-lg">
-          From there the work belongs to the professionals: collection, screening,
-          storage and transfusion all stay with qualified blood-bank and medical
-          staff, who decide what is safe and when. We help the right people find
+          From there, collection, screening, storage and transfusion stay with
+          qualified blood-bank and medical staff. We help the right people find
           each other quickly — they take it from there.
         </p>
       </CardBody>
