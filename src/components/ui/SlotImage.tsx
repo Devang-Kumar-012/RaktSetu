@@ -3,6 +3,8 @@ import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { EditorialImage } from "@/components/ui/EditorialImage";
 import { getPhoto } from "@/lib/photos";
 import { SITE_IMAGES, type ImageSlotName } from "@/config/site-images";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * SLOT-BACKED IMAGE.
@@ -35,7 +37,7 @@ const ART_DIRECTION_BY_MASK: Record<string, { media: string; aspect: string }[]>
   ],
   elliptical: [
     { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "wide" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
   ],
   asymRounded: [
     { media: "(max-width: 639px)", aspect: "portrait" },
@@ -50,12 +52,12 @@ const ART_DIRECTION_BY_MASK: Record<string, { media: string; aspect: string }[]>
     { media: "(min-width: 640px)", aspect: "portrait" },
   ],
   wave: [
-    { media: "(max-width: 639px)", aspect: "wide" },
-    { media: "(min-width: 640px)", aspect: "wide" },
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
   ],
   bgOrganic: [
-    { media: "(max-width: 639px)", aspect: "wide" },
-    { media: "(min-width: 640px)", aspect: "wide" },
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
   ],
 };
 
@@ -80,6 +82,35 @@ export function SlotImage({
   }
 
   if (!photoEntry) {
+    return (
+      <ImagePlaceholder
+        slot={slot}
+        mask={config.mask}
+        className={className}
+        label={config.placeholder}
+      />
+    );
+  }
+
+  // Fall back to the placeholder when no actual image file exists on disk.
+  // This guards against a manifest entry whose source files were never
+  // generated (e.g. build:assets has not been run) or were removed.
+  const publicDir = join(process.cwd(), "public");
+  let hasAssets = false;
+  for (const variant of photoEntry.variants) {
+    for (const source of variant.sources) {
+      if (
+        existsSync(join(publicDir, source.webp.slice(1))) ||
+        existsSync(join(publicDir, source.jpeg.slice(1)))
+      ) {
+        hasAssets = true;
+        break;
+      }
+    }
+    if (hasAssets) break;
+  }
+
+  if (!hasAssets) {
     return (
       <ImagePlaceholder
         slot={slot}
