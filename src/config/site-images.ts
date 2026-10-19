@@ -15,12 +15,22 @@
  * Missing images render an elegant placeholder that retains the mask shape,
  * dimensions and aspect ratio — no broken-image icons, no layout shift.
  */
-import type { PhotoId } from "@/lib/photos";
+import type { ArtDirection, PhotoId } from "@/lib/photos";
+
+/** Every organic mask style the image system can draw. */
+export type ImageMaskName =
+  | "blob"
+  | "elliptical"
+  | "asymRounded"
+  | "circular"
+  | "arch"
+  | "wave"
+  | "bgOrganic";
 
 export interface ImageSlot {
   photo?: PhotoId;
   alt: string;
-  mask: "blob" | "elliptical" | "asymRounded" | "circular" | "arch" | "wave" | "bgOrganic";
+  mask: ImageMaskName;
   focalPosition: string;
   placeholder: string;
 }
@@ -68,3 +78,41 @@ export const SITE_IMAGES: Record<string, ImageSlot> = {
 } as const;
 
 export type ImageSlotName = keyof typeof SITE_IMAGES;
+
+/**
+ * Art direction per mask style — the generated crop each viewport uses.
+ *
+ * Shared by SlotImage (rendering) and scripts/check-image-assets.ts (asset
+ * integrity), so the two can never drift apart about which aspect ratios a
+ * mask requires.
+ */
+export const ART_DIRECTION_BY_MASK: Record<ImageMaskName, ArtDirection[]> = {
+  blob: [
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "square" },
+  ],
+  elliptical: [
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
+  ],
+  asymRounded: [
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
+  ],
+  circular: [
+    { media: "(max-width: 639px)", aspect: "square" },
+    { media: "(min-width: 640px)", aspect: "square" },
+  ],
+  arch: [
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
+  ],
+  wave: [
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
+  ],
+  bgOrganic: [
+    { media: "(max-width: 639px)", aspect: "portrait" },
+    { media: "(min-width: 640px)", aspect: "portrait" },
+  ],
+};

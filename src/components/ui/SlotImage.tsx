@@ -1,19 +1,31 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 import { ImageMask } from "@/components/ui/ImageMask";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { EditorialImage } from "@/components/ui/EditorialImage";
-import { getPhoto } from "@/lib/photos";
-import { SITE_IMAGES, type ImageSlotName } from "@/config/site-images";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { findPhoto } from "@/lib/photos";
+import {
+  ART_DIRECTION_BY_MASK,
+  SITE_IMAGES,
+  type ImageSlotName,
+} from "@/config/site-images";
 
 /**
  * SLOT-BACKED IMAGE.
  *
  * Looks up an image slot from SITE_IMAGES and renders:
  *   - EditorialImage inside an ImageMask when the photograph exists in the
- *     manifest (typo-proof at compile time via PhotoId);
+ *     manifest (typo-proof at compile time via PhotoId) AND every art-directed
+ *     crop file is present on disk;
  *   - ImagePlaceholder otherwise — same mask, same dimensions, no layout shift,
- *     no broken-image icon.
+ *     no broken-image icon, and never a URL that would 404.
+ *
+ * The on-disk check is deliberately all-or-nothing: `<picture>` emits a
+ * `srcset` covering the whole width ladder of every art-directed aspect, so a
+ * PARTIAL generation would still ship missing files as broken requests. If any
+ * required file is absent the slot falls back whole; `npm run check:images`
+ * reports exactly which files are missing.
  *
  * This is the single component every page should use for configured images.
  * To change an image, edit src/config/site-images.ts — nothing else.
@@ -29,38 +41,6 @@ export interface SlotImageProps {
   objectPosition?: string;
 }
 
-/** Art direction per mask style — the aspect the crop should use at each viewport. */
-const ART_DIRECTION_BY_MASK: Record<string, { media: string; aspect: string }[]> = {
-  blob: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "square" },
-  ],
-  elliptical: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "portrait" },
-  ],
-  asymRounded: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "portrait" },
-  ],
-  circular: [
-    { media: "(max-width: 639px)", aspect: "square" },
-    { media: "(min-width: 640px)", aspect: "square" },
-  ],
-  arch: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "portrait" },
-  ],
-  wave: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "portrait" },
-  ],
-  bgOrganic: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "portrait" },
-  ],
-};
-
 export function SlotImage({
   slot,
   sizes,
@@ -69,60 +49,37 @@ export function SlotImage({
   objectPosition,
 }: SlotImageProps) {
   const config = SITE_IMAGES[slot];
-
-  // If the slot has no photo configured, or the manifest doesn't contain it,
-  // render the placeholder instead of crashing.
-  let photoEntry;
-  try {
-    if (config.photo) {
-      photoEntry = getPhoto(config.photo);
-    }
-  } catch {
-    photoEntry = undefined;
-  }
-
-  if (!photoEntry) {
-    return (
-      <ImagePlaceholder
-        slot={slot}
-        mask={config.mask}
-        className={className}
-        label={config.placeholder}
-      />
-    );
-  }
-
-  // Fall back to the placeholder when no actual image file exists on disk.
-  // This guards against a manifest entry whose source files were never
-  // generated (e.g. build:assets has not been run) or were removed.
-  const publicDir = join(process.cwd(), "public");
-  let hasAssets = false;
-  for (const variant of photoEntry.variants) {
-    for (const source of variant.sources) {
-      if (
-        existsSync(join(publicDir, source.webp.slice(1))) ||
-        existsSync(join(publicDir, source.jpeg.slice(1)))
-      ) {
-        hasAssets = true;
-        break;
-      }
-    }
-    if (hasAssets) break;
-  }
-
-  if (!hasAssets) {
-    return (
-      <ImagePlaceholder
-        slot={slot}
-        mask={config.mask}
-        className={className}
-        label={config.placeholder}
-      />
-    );
-  }
-
+  const photoId = config.photo;
+  const entry = photoId ? findPhoto(photoId) : null;
   const artDirection = ART_DIRECTION_BY_MASK[config.mask];
-  const photoId = config.photo!;
+
+  // True only when every crop the mask needs — at every width, in both
+  // formats — actually exists under public/. Verified here at render time on
+  // the server, so the browser never receives a URL that would 404.
+  const publicDir = join(process.cwd(), "public");
+  const hasEveryCropFile =
+    entry !== null &&
+    artDirection.every(({ aspect }) => {
+      const variant = entry.variants.find((v) => v.aspect === aspect);
+      if (!variant || variant.sources.length === 0) return false;
+      return variant.sources.every(
+        (source) =>
+          existsSync(join(publicDir, source.webp.slice(1))) &&
+          existsSync(join(publicDir, source.jpeg.slice(1)))
+      );
+    });
+
+  if (!photoId || !entry || !hasEveryCropFile) {
+    return (
+      <ImagePlaceholder
+        slot={slot}
+        mask={config.mask}
+        className={className}
+        label={config.placeholder}
+      />
+    );
+  }
+
   const position = objectPosition ?? config.focalPosition;
 
   return (

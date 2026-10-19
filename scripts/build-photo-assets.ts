@@ -36,7 +36,7 @@
  *
  * Usage:  npm run build:assets
  */
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import sharp from "sharp";
@@ -168,12 +168,45 @@ function cropGeometry(
 
     return { left, top, width, height };
 }
+/** One crop's entry in the generated manifest. */
+interface ManifestVariant {
+    aspect: string;
+    ratio: number;
+    intrinsic: { width: number; height: number };
+    sources: Array<{ webp: string; jpeg: string; width: number; height: number; lqip: string }>;
+}
+
+/** One photograph's entry in the generated manifest. */
+interface ManifestEntry {
+    alt: string;
+    source: { width: number; height: number; original: string };
+    poster: { webp: string; jpeg: string; width: number; height: number };
+    variants: ManifestVariant[];
+}
+
+type ManifestEntries = Record<string, ManifestEntry>;
+
 async function build() {
+    // Fail early — and clearly — when the supplied photographs are absent:
+    // every output below is a DERIVATIVE of them, so there is nothing to crop.
+    const missingSources = PHOTOS.filter((photo) => !existsSync(join(SOURCE_DIR, photo.file)));
+    if (missingSources.length > 0) {
+        console.error("Missing source photographs in assets/raktsetu-source/:");
+        for (const photo of missingSources) {
+            console.error(`  - assets/raktsetu-source/${photo.file}`);
+        }
+        console.error(
+            "\nPlace the original 1536x1024 photographs there and re-run `npm run build:assets`.\n" +
+            "Until then the site renders branded placeholders inside every image mask and the\n" +
+            "manifest stays empty — see README, section “Photography assets”."
+        );
+        process.exit(1);
+    }
     mkdirSync(OUT_DIR, { recursive: true });
 
     /** Everything written this run, so stale files can be pruned at the end. */
     const written = new Set<string>();
-    const manifest: Record<string, unknown> = {};
+    const manifest: ManifestEntries = {};
 
     for (const photo of PHOTOS) {
         const image = sharp(join(SOURCE_DIR, photo.file), { failOn: "none" }).rotate();
@@ -313,7 +346,7 @@ async function build() {
     console.log(`manifest: public/images/raktsetu/manifest.json\n`);
 }
 
-function attributionDoc(manifest: Record<string, any>): string {
+function attributionDoc(manifest: ManifestEntries): string {
     const rows = Object.entries(manifest)
         .map(([id, m]) =>
             [
@@ -322,7 +355,7 @@ function attributionDoc(manifest: Record<string, any>): string {
                 `- **Original:** \`${m.source.original}\` (${m.source.width}x${m.source.height} JPEG)`,
                 `- **Alt text:** ${m.alt}`,
                 `- **Variants:** ${m.variants
-                    .map((v: any) => `${v.aspect} (${v.sources.map((s: any) => s.width).join("/")}px)`)
+                    .map((v) => `${v.aspect} (${v.sources.map((s) => s.width).join("/")}px)`)
                     .join("; ")}`,
                 `- **Poster:** \`${m.poster.jpeg}\` (${m.poster.width}x${m.poster.height})`,
                 "",

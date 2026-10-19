@@ -318,6 +318,30 @@ schedule the ring engine already uses; unread ones are never deleted.
   code and no dependency beyond the official client
 - Server-side authentication with HTTP-only session cookies
 
+## Photography assets
+
+Every photograph on the public pages is a derivative of two supplied 1536×1024
+originals, cropped and optimised by a deterministic pipeline:
+
+```
+assets/raktsetu-source/            # originals — supplied locally, not committed
+  hero-donor-original.jpeg         # donor holding a heart — homepage hero, About
+  blood-bag-original.jpeg          # labelled blood bag — Request Blood, emergency
+        │  npm run build:assets
+        ▼
+public/images/raktsetu/            # generated WebP/JPEG width ladders + posters
+  manifest.json                    # machine-readable record of what exists
+```
+
+`src/lib/photos.ts` is the only reader of the manifest, and
+`src/config/site-images.ts` is the only place image slots are assigned. Until
+the pipeline has been run, `manifest.json` is empty and every slot renders a
+branded placeholder inside its intended organic mask — no broken images, no
+layout shift, no requests that would 404. Drop the originals into
+`assets/raktsetu-source/` and run `npm run build:assets`; the pages pick up the
+photographs with no code change. `npm run check:images` verifies that manifest,
+generated files, and slot configuration all agree.
+
 ## Deployment
 
 RaktSetu's authoritative data is **a remote libSQL/Turso database in production**,
@@ -445,6 +469,10 @@ migrated automatically on first use.
 - `npm run check` — rule checks, ring-engine checks, then the production build
 - `npm run smoke` — start a local server and hit every route (writes results to
   `/tmp/rs-routes.txt`)
+- `npm run build:assets` — regenerate the photography derivatives and the
+  manifest from `assets/raktsetu-source/` (see “Photography assets” below)
+- `npm run check:images` — image-asset integrity: the manifest, the generated
+  files under `public/`, and the image-slot configuration must all agree
 
 ## Project structure
 
