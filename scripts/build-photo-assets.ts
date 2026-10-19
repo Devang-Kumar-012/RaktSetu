@@ -67,7 +67,7 @@ const PHOTOS = [
         /** Alt text describes the photograph itself, for screen readers. */
         alt: "Digital illustration of a blood donation network — a donor's arm connected to a collection bag, surrounded by donors, recipients, and blood-type icons",
         focus: { x: 0.5, y: 0.5 },
-        poster: { width: 1440 },
+        poster: { width: 1200 },
         variants: [
             // 1:1 — the organic/circular hero clip. A square keeps the hand and the
             // heart on one optical centre line instead of letting them drift apart.
@@ -84,7 +84,7 @@ const PHOTOS = [
         file: "blood-bag-original.jpeg",
         alt: "A labelled B+ whole blood bag hanging in a hospital ward beside a patient bed",
         focus: { x: 0.29, y: 0.36 },
-        poster: { width: 1440 },
+        poster: { width: 1200 },
         variants: [
             // 4:5 — the request-page side image: tall, bag-forward, keeping the bed and
             // staff as medical context without the bag leaving the frame.
@@ -209,6 +209,7 @@ async function build() {
             "manifest stays empty — see README, section “Photography assets”."
         );
         process.exit(1);
+    }
     const skippedIds = new Set(missingSources.map((photo) => photo.id));
     for (const photo of missingSources) {
         console.warn(
@@ -216,17 +217,20 @@ async function build() {
                 `its slots keep their placeholders. Add the file and re-run \`npm run build:assets\`.`
         );
     }
-    }
+    // Preserve previously generated entries for skipped photos, so adding one
+    // new source never wipes an already-built photo from the manifest or disk.
+    const priorManifest = loadManifest(join(OUT_DIR, "manifest.json"));
     mkdirSync(OUT_DIR, { recursive: true });
 
     /** Everything written this run, so stale files can be pruned at the end. */
-    // (moved below: prior-manifest merge runs after `manifest` is declared)
+    // Preserve previously generated entries for skipped photos, so adding one
+    // new source never wipes an already-built photo from the manifest or disk.
     const written = new Set<string>();
     const manifest: ManifestEntries = {};
 
     for (const photo of PHOTOS) {
-        const image = sharp(join(SOURCE_DIR, photo.file), { failOn: "none" }).rotate();
         if (skippedIds.has(photo.id)) continue;
+        const image = sharp(join(SOURCE_DIR, photo.file), { failOn: "none" }).rotate();
         const meta = await image.metadata();
         const src = { width: meta.width ?? 0, height: meta.height ?? 0 };
         if (!src.width || !src.height) {
@@ -345,6 +349,29 @@ async function build() {
             },
             variants,
         };
+    }
+
+    // Merge back skipped photos' prior entries (and shield their files from
+    // pruning), so adding one new source never wipes an already-built photo.
+    for (const [id, entry] of Object.entries(priorManifest) as [string, ManifestEntry][]) {
+        if (skippedIds.has(id) && !(manifest as Record<string, ManifestEntry>)[id]) {
+            (manifest as Record<string, ManifestEntry>)[id] = entry;
+        }
+    }
+    for (const entry of Object.values(manifest)) {
+        if (!entry) continue;
+        for (const url of [entry.poster.webp, entry.poster.jpeg]) {
+            const base = url.split("/").pop();
+            if (base) written.add(base);
+        }
+        for (const variant of entry.variants) {
+            for (const source of variant.sources) {
+                for (const url of [source.webp, source.jpeg]) {
+                    const base = url.split("/").pop();
+                    if (base) written.add(base);
+                }
+            }
+        }
     }
 
     // Prune anything this run did not produce, so retired crops cannot linger.

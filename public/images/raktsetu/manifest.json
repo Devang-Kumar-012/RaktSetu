@@ -1,1 +1,111 @@
-{}
+{
+  "hero-donor": {
+    "alt": "Digital illustration of a blood donation network — a donor's arm connected to a collection bag, surrounded by donors, recipients, and blood-type icons",
+    "source": {
+      "width": 1254,
+      "height": 1254,
+      "original": "assets/raktsetu-source/hero-donor-original.png"
+    },
+    "poster": {
+      "webp": "/images/raktsetu/hero-donor-poster-1200.webp",
+      "jpeg": "/images/raktsetu/hero-donor-poster-1200.jpg",
+      "width": 1200,
+      "height": 1200
+    },
+    "variants": [
+      {
+        "aspect": "square",
+        "ratio": 1,
+        "intrinsic": {
+          "width": 1080,
+          "height": 1080
+        },
+        "sources": [
+          {
+            "webp": "/images/raktsetu/hero-donor-square-480.webp",
+            "jpeg": "/images/raktsetu/hero-donor-square-480.jpg",
+            "width": 480,
+            "height": 480,
+            "lqip": "data:image/webp;base64,UklGRnAEAABXRUJQVlA4IGQEAADQJwCdASoUAOYEPu1mq08/qq2jLtLcC/AdiWNujdmURTjzWM9PcMldYsZmt/+f/p/zH+vHwLHuxX3zT9Lg88TXESFHDflYROR38J+AzVJq0nFswcta2kfz9pHrIQ9gCLkGYYdAYnACm+laybwUC4XQt4udmjELqdEGMrDu3swiqtm91SBUGGCt/cpQIDK5osTtAOMV18XhoDu4FSw/4PGpBpHwUcwwE31hUTOAOpogZnVsqX7r9tkMb2xfvWgDwD3itmFKjFEMIIFXxQcVZMsbYK2so94yisjh60qMJ3cAjkGAK0QGm3oPu9t6OlAZXs7csHpmBuFhbCVPUOHeSNEBM7OnszDCh0HSTBlw7R0LqMPHai/yrtFhv7YLq/k2r2Kavjs4qwynvDI98DRfY+bG19/JtnV+n9jo5+rGTqrx9LbP7jZsAgAA/tifHiQH3RWnyYuOzPw8IBKvrN40IBXE+cJVzlTsCvhkDjFh8gq/G5i1d2UByCwZfHJ5i8YdNZ7dgxCU8wYsmXjACBW0MGQf+aWXLb3acAu+kspSbS5ACWNvJUu9vjaDAP0KPIicCID3jjXqQ6BfxIafPM/1xS9jXEbmLVTof1LlTuQsAhC9C+w4oAuouDUEKK+qWbPqi8y7M0oZybCe87+BZJx8ivwT0Ko5La4nlznzFkpY0PlSUSWx4FbdFmNo4pKaWi9f+KZh4ZT8QWZdvf2cYM4A4vetFwSXdfvti7CEGOoJGlbi0DwLAQKdjLiZ700cBFFTykcRDeRfFqbHJypiCiIXk1+JVDboIIpJoTIf7F3Q6s6NJ0RrkxpJESvfTWV8+D3OQmT9z11dJ1d0XwPzHh0MlxfLToIBmVSfImlECQIKidKct1WVOv2/sjwxqyZvC9CkB2XZkVvkh5AT1HTNQxEfMydXAwUpiPcrzisiRaeiqe+qYttaja7Z20T6XMSOTJ7BN9Z0yygzXD4QZi+6ka3hVn4K6RpG/qkl4PBhShm/39FtZ26G813+5PntLmamjW82+RxDx2Gif8mOl+Ot4MZMSA0SzW4oWhOpXBbcT9ztIsccKca5oD3PJEoAzJKEw+nhZ8uJmymkP18brY3ZDeEeikq0NYDSGzaG0ujyPUfSsOd0nTUHdkxtS+lgpvsomA+G4adMDgLD6Cu2UPJZPbNUyUFHSAszVhAsTdksRApniitVU9j869x3Kjn7gJVtGUUwnfTTFs/Qofe9FdAKBIPm5Em7AUUtIDRuFtBgEyU0pSf/jWAELhn4+8t9hiBZwPtUumIf4UjySel/ZIqJP6/cQ7ZTiyKcRiDXAsA0/7uey79rkWArKtNcfjbCAgiporssGpMis5qAiWAMRRM3OXyxpEgccS8kmAXXYuDjkzE+Rye/4zVuUdgQ9WXlgpbWMtQ4dL+3treHrYxlJwSGN0C2AAjJ6NflV7jSmrf55ElryRyQHBTSIY/EQqzV46UKFQ6oY043rIN4fAnWEOI9Vkm9c8ZAN7lAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-donor-square-720.webp",
+            "jpeg": "/images/raktsetu/hero-donor-square-720.jpg",
+            "width": 720,
+            "height": 720,
+            "lqip": "data:image/webp;base64,UklGRnAEAABXRUJQVlA4IGQEAADQJwCdASoUAOYEPu1mq08/qq2jLtLcC/AdiWNujdmURTjzWM9PcMldYsZmt/+f/p/zH+vHwLHuxX3zT9Lg88TXESFHDflYROR38J+AzVJq0nFswcta2kfz9pHrIQ9gCLkGYYdAYnACm+laybwUC4XQt4udmjELqdEGMrDu3swiqtm91SBUGGCt/cpQIDK5osTtAOMV18XhoDu4FSw/4PGpBpHwUcwwE31hUTOAOpogZnVsqX7r9tkMb2xfvWgDwD3itmFKjFEMIIFXxQcVZMsbYK2so94yisjh60qMJ3cAjkGAK0QGm3oPu9t6OlAZXs7csHpmBuFhbCVPUOHeSNEBM7OnszDCh0HSTBlw7R0LqMPHai/yrtFhv7YLq/k2r2Kavjs4qwynvDI98DRfY+bG19/JtnV+n9jo5+rGTqrx9LbP7jZsAgAA/tifHiQH3RWnyYuOzPw8IBKvrN40IBXE+cJVzlTsCvhkDjFh8gq/G5i1d2UByCwZfHJ5i8YdNZ7dgxCU8wYsmXjACBW0MGQf+aWXLb3acAu+kspSbS5ACWNvJUu9vjaDAP0KPIicCID3jjXqQ6BfxIafPM/1xS9jXEbmLVTof1LlTuQsAhC9C+w4oAuouDUEKK+qWbPqi8y7M0oZybCe87+BZJx8ivwT0Ko5La4nlznzFkpY0PlSUSWx4FbdFmNo4pKaWi9f+KZh4ZT8QWZdvf2cYM4A4vetFwSXdfvti7CEGOoJGlbi0DwLAQKdjLiZ700cBFFTykcRDeRfFqbHJypiCiIXk1+JVDboIIpJoTIf7F3Q6s6NJ0RrkxpJESvfTWV8+D3OQmT9z11dJ1d0XwPzHh0MlxfLToIBmVSfImlECQIKidKct1WVOv2/sjwxqyZvC9CkB2XZkVvkh5AT1HTNQxEfMydXAwUpiPcrzisiRaeiqe+qYttaja7Z20T6XMSOTJ7BN9Z0yygzXD4QZi+6ka3hVn4K6RpG/qkl4PBhShm/39FtZ26G813+5PntLmamjW82+RxDx2Gif8mOl+Ot4MZMSA0SzW4oWhOpXBbcT9ztIsccKca5oD3PJEoAzJKEw+nhZ8uJmymkP18brY3ZDeEeikq0NYDSGzaG0ujyPUfSsOd0nTUHdkxtS+lgpvsomA+G4adMDgLD6Cu2UPJZPbNUyUFHSAszVhAsTdksRApniitVU9j869x3Kjn7gJVtGUUwnfTTFs/Qofe9FdAKBIPm5Em7AUUtIDRuFtBgEyU0pSf/jWAELhn4+8t9hiBZwPtUumIf4UjySel/ZIqJP6/cQ7ZTiyKcRiDXAsA0/7uey79rkWArKtNcfjbCAgiporssGpMis5qAiWAMRRM3OXyxpEgccS8kmAXXYuDjkzE+Rye/4zVuUdgQ9WXlgpbWMtQ4dL+3treHrYxlJwSGN0C2AAjJ6NflV7jSmrf55ElryRyQHBTSIY/EQqzV46UKFQ6oY043rIN4fAnWEOI9Vkm9c8ZAN7lAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-donor-square-1080.webp",
+            "jpeg": "/images/raktsetu/hero-donor-square-1080.jpg",
+            "width": 1080,
+            "height": 1080,
+            "lqip": "data:image/webp;base64,UklGRnAEAABXRUJQVlA4IGQEAADQJwCdASoUAOYEPu1mq08/qq2jLtLcC/AdiWNujdmURTjzWM9PcMldYsZmt/+f/p/zH+vHwLHuxX3zT9Lg88TXESFHDflYROR38J+AzVJq0nFswcta2kfz9pHrIQ9gCLkGYYdAYnACm+laybwUC4XQt4udmjELqdEGMrDu3swiqtm91SBUGGCt/cpQIDK5osTtAOMV18XhoDu4FSw/4PGpBpHwUcwwE31hUTOAOpogZnVsqX7r9tkMb2xfvWgDwD3itmFKjFEMIIFXxQcVZMsbYK2so94yisjh60qMJ3cAjkGAK0QGm3oPu9t6OlAZXs7csHpmBuFhbCVPUOHeSNEBM7OnszDCh0HSTBlw7R0LqMPHai/yrtFhv7YLq/k2r2Kavjs4qwynvDI98DRfY+bG19/JtnV+n9jo5+rGTqrx9LbP7jZsAgAA/tifHiQH3RWnyYuOzPw8IBKvrN40IBXE+cJVzlTsCvhkDjFh8gq/G5i1d2UByCwZfHJ5i8YdNZ7dgxCU8wYsmXjACBW0MGQf+aWXLb3acAu+kspSbS5ACWNvJUu9vjaDAP0KPIicCID3jjXqQ6BfxIafPM/1xS9jXEbmLVTof1LlTuQsAhC9C+w4oAuouDUEKK+qWbPqi8y7M0oZybCe87+BZJx8ivwT0Ko5La4nlznzFkpY0PlSUSWx4FbdFmNo4pKaWi9f+KZh4ZT8QWZdvf2cYM4A4vetFwSXdfvti7CEGOoJGlbi0DwLAQKdjLiZ700cBFFTykcRDeRfFqbHJypiCiIXk1+JVDboIIpJoTIf7F3Q6s6NJ0RrkxpJESvfTWV8+D3OQmT9z11dJ1d0XwPzHh0MlxfLToIBmVSfImlECQIKidKct1WVOv2/sjwxqyZvC9CkB2XZkVvkh5AT1HTNQxEfMydXAwUpiPcrzisiRaeiqe+qYttaja7Z20T6XMSOTJ7BN9Z0yygzXD4QZi+6ka3hVn4K6RpG/qkl4PBhShm/39FtZ26G813+5PntLmamjW82+RxDx2Gif8mOl+Ot4MZMSA0SzW4oWhOpXBbcT9ztIsccKca5oD3PJEoAzJKEw+nhZ8uJmymkP18brY3ZDeEeikq0NYDSGzaG0ujyPUfSsOd0nTUHdkxtS+lgpvsomA+G4adMDgLD6Cu2UPJZPbNUyUFHSAszVhAsTdksRApniitVU9j869x3Kjn7gJVtGUUwnfTTFs/Qofe9FdAKBIPm5Em7AUUtIDRuFtBgEyU0pSf/jWAELhn4+8t9hiBZwPtUumIf4UjySel/ZIqJP6/cQ7ZTiyKcRiDXAsA0/7uey79rkWArKtNcfjbCAgiporssGpMis5qAiWAMRRM3OXyxpEgccS8kmAXXYuDjkzE+Rye/4zVuUdgQ9WXlgpbWMtQ4dL+3treHrYxlJwSGN0C2AAjJ6NflV7jSmrf55ElryRyQHBTSIY/EQqzV46UKFQ6oY043rIN4fAnWEOI9Vkm9c8ZAN7lAAA=="
+          }
+        ]
+      },
+      {
+        "aspect": "portrait",
+        "ratio": 0.8,
+        "intrinsic": {
+          "width": 1200,
+          "height": 1500
+        },
+        "sources": [
+          {
+            "webp": "/images/raktsetu/hero-donor-portrait-480.webp",
+            "jpeg": "/images/raktsetu/hero-donor-portrait-480.jpg",
+            "width": 480,
+            "height": 600,
+            "lqip": "data:image/webp;base64,UklGRmoEAABXRUJQVlA4IF4EAADQJQCdASoUAOYEPu1qrU+/pjKjK5Wbe/AdiWNuJPi2BPQEgZ399wRUyNXR/uLv8puP/NXn/6f8x/whW3HBFFqXr75wE5140PhoWU2smuFg/nkiT08c0tMOWa3Grbr3nj4CsA9vanFsnIr4XUHeuRu/2f4comE2nDgL+4htCb5hO7LOaRy4g+wV9TXkq6M2CkTBYAbZ8lKe6h9P/gVPUX3z/VAjhk4TdKE+j8ryynxLE9XKQ5cStbHMpTjBfshdQgmI3spp3sW9i0ssfhhdsxfL2Rkr+9loLDoRjLDEB4X5ALqnrnMybzODfRqs7Si/xRYhyAKMMuHumFdR9yBbeK/GbLz/Xo4oOLHaY3J7gHws8yDTIBN7/TG91JSRyQT8woDFLPH24DMWrDp9c0RlhBX24Ovpi8wLkAD+1dXb9MngPQM83QYmfKZadAFCs+oBwaIF7kKiL9XmluBzLbJmxJpBFh2wFOHRm0XPd+nhS9Eo9N9LqH1yjAO3WAE7oiK5AYrEbDap+SvUTqG7JGuqCwcJcVR6hEQcGqe+zxKAKJp/vbmDe0GS++fPI/JsphRoC90hcb80zbhWLMTC/JgCFekDKBCUtq2oz7wRhNhncbXCriv1HEhi9Iey84DXl+2ez5I2LIzZ356I5XHg8LOtswEvZuXSw0jqvsBv5oDgiUEcPZrnIL2vp63WM30Wu+uSIOCFtyzTvl+E4kMeMvaiuL06BrcQAyNHdijwWylIEDU1aJvXrQR7lSbphnxeshfQkMlTAn8a74q55DEXUFukBqA7tGI4FtUJE6hjdBYMf0Df6/WRA7b3hRjyySG1ou4hfwsXC6qoOIl7zEiN1CGhZhSkjcDv0LpsNExFHqD7TTdGENot2zt5D1aGjloPG9Wj1dUoDpj2T6dhRx10LdopcWil5IhUQ1D+iO4XBRFG7WW1fw6mJ/eSs6marSU5UBQUcdQ0GFOZvjWRrYs3DJTniH1NVLwHzzzyqOYjrQYTNLHkZF6n3PdnEazd/wj6ybaOfvBQGbuvwgRAzzR3fyDIkp9+ZG0xjbf+XyPkPKd2ffiSmxWtbYSVMl5g7idsdQPfObrxW6CLTZkgChMrYr+tbVIgcpt8GewHCUHh8dT+UizRhz2L7/ifVLismf9Vxx3TmC3v0FCr6OZ/zVfqEQQl45puGJF8z25bJlvEz2ixfbxO4JaEj3nmg8jUqayXPxG5psmM/ZrRoNalSJbRSrHtTmF54ERBZec5ruNmYhDzGTM/IdviQhgRmS1y1A3zOs87DWnZUnQlidKuhPktfdUX9jVIqZYpDw3CXXGzy1yswsDTTADRQRB4xZ90Ax3i6g0SuthBwuAb5cSkotMDbNFUICdmm2a7hLl9DH4z8vJAxMMhsVrRQjd95R9HEQADHCTPbEj9O5OyKqtxjqPskg+3AM6Ge3FLHZi30FlI5x6TgW8kGTYLxbnzJSYhsLJ9GpYXpvimaR4YrOgYMnafiuwAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-donor-portrait-720.webp",
+            "jpeg": "/images/raktsetu/hero-donor-portrait-720.jpg",
+            "width": 720,
+            "height": 900,
+            "lqip": "data:image/webp;base64,UklGRmoEAABXRUJQVlA4IF4EAADQJQCdASoUAOYEPu1qrU+/pjKjK5Wbe/AdiWNuJPi2BPQEgZ399wRUyNXR/uLv8puP/NXn/6f8x/whW3HBFFqXr75wE5140PhoWU2smuFg/nkiT08c0tMOWa3Grbr3nj4CsA9vanFsnIr4XUHeuRu/2f4comE2nDgL+4htCb5hO7LOaRy4g+wV9TXkq6M2CkTBYAbZ8lKe6h9P/gVPUX3z/VAjhk4TdKE+j8ryynxLE9XKQ5cStbHMpTjBfshdQgmI3spp3sW9i0ssfhhdsxfL2Rkr+9loLDoRjLDEB4X5ALqnrnMybzODfRqs7Si/xRYhyAKMMuHumFdR9yBbeK/GbLz/Xo4oOLHaY3J7gHws8yDTIBN7/TG91JSRyQT8woDFLPH24DMWrDp9c0RlhBX24Ovpi8wLkAD+1dXb9MngPQM83QYmfKZadAFCs+oBwaIF7kKiL9XmluBzLbJmxJpBFh2wFOHRm0XPd+nhS9Eo9N9LqH1yjAO3WAE7oiK5AYrEbDap+SvUTqG7JGuqCwcJcVR6hEQcGqe+zxKAKJp/vbmDe0GS++fPI/JsphRoC90hcb80zbhWLMTC/JgCFekDKBCUtq2oz7wRhNhncbXCriv1HEhi9Iey84DXl+2ez5I2LIzZ356I5XHg8LOtswEvZuXSw0jqvsBv5oDgiUEcPZrnIL2vp63WM30Wu+uSIOCFtyzTvl+E4kMeMvaiuL06BrcQAyNHdijwWylIEDU1aJvXrQR7lSbphnxeshfQkMlTAn8a74q55DEXUFukBqA7tGI4FtUJE6hjdBYMf0Df6/WRA7b3hRjyySG1ou4hfwsXC6qoOIl7zEiN1CGhZhSkjcDv0LpsNExFHqD7TTdGENot2zt5D1aGjloPG9Wj1dUoDpj2T6dhRx10LdopcWil5IhUQ1D+iO4XBRFG7WW1fw6mJ/eSs6marSU5UBQUcdQ0GFOZvjWRrYs3DJTniH1NVLwHzzzyqOYjrQYTNLHkZF6n3PdnEazd/wj6ybaOfvBQGbuvwgRAzzR3fyDIkp9+ZG0xjbf+XyPkPKd2ffiSmxWtbYSVMl5g7idsdQPfObrxW6CLTZkgChMrYr+tbVIgcpt8GewHCUHh8dT+UizRhz2L7/ifVLismf9Vxx3TmC3v0FCr6OZ/zVfqEQQl45puGJF8z25bJlvEz2ixfbxO4JaEj3nmg8jUqayXPxG5psmM/ZrRoNalSJbRSrHtTmF54ERBZec5ruNmYhDzGTM/IdviQhgRmS1y1A3zOs87DWnZUnQlidKuhPktfdUX9jVIqZYpDw3CXXGzy1yswsDTTADRQRB4xZ90Ax3i6g0SuthBwuAb5cSkotMDbNFUICdmm2a7hLl9DH4z8vJAxMMhsVrRQjd95R9HEQADHCTPbEj9O5OyKqtxjqPskg+3AM6Ge3FLHZi30FlI5x6TgW8kGTYLxbnzJSYhsLJ9GpYXpvimaR4YrOgYMnafiuwAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-donor-portrait-960.webp",
+            "jpeg": "/images/raktsetu/hero-donor-portrait-960.jpg",
+            "width": 960,
+            "height": 1200,
+            "lqip": "data:image/webp;base64,UklGRmoEAABXRUJQVlA4IF4EAADQJQCdASoUAOYEPu1qrU+/pjKjK5Wbe/AdiWNuJPi2BPQEgZ399wRUyNXR/uLv8puP/NXn/6f8x/whW3HBFFqXr75wE5140PhoWU2smuFg/nkiT08c0tMOWa3Grbr3nj4CsA9vanFsnIr4XUHeuRu/2f4comE2nDgL+4htCb5hO7LOaRy4g+wV9TXkq6M2CkTBYAbZ8lKe6h9P/gVPUX3z/VAjhk4TdKE+j8ryynxLE9XKQ5cStbHMpTjBfshdQgmI3spp3sW9i0ssfhhdsxfL2Rkr+9loLDoRjLDEB4X5ALqnrnMybzODfRqs7Si/xRYhyAKMMuHumFdR9yBbeK/GbLz/Xo4oOLHaY3J7gHws8yDTIBN7/TG91JSRyQT8woDFLPH24DMWrDp9c0RlhBX24Ovpi8wLkAD+1dXb9MngPQM83QYmfKZadAFCs+oBwaIF7kKiL9XmluBzLbJmxJpBFh2wFOHRm0XPd+nhS9Eo9N9LqH1yjAO3WAE7oiK5AYrEbDap+SvUTqG7JGuqCwcJcVR6hEQcGqe+zxKAKJp/vbmDe0GS++fPI/JsphRoC90hcb80zbhWLMTC/JgCFekDKBCUtq2oz7wRhNhncbXCriv1HEhi9Iey84DXl+2ez5I2LIzZ356I5XHg8LOtswEvZuXSw0jqvsBv5oDgiUEcPZrnIL2vp63WM30Wu+uSIOCFtyzTvl+E4kMeMvaiuL06BrcQAyNHdijwWylIEDU1aJvXrQR7lSbphnxeshfQkMlTAn8a74q55DEXUFukBqA7tGI4FtUJE6hjdBYMf0Df6/WRA7b3hRjyySG1ou4hfwsXC6qoOIl7zEiN1CGhZhSkjcDv0LpsNExFHqD7TTdGENot2zt5D1aGjloPG9Wj1dUoDpj2T6dhRx10LdopcWil5IhUQ1D+iO4XBRFG7WW1fw6mJ/eSs6marSU5UBQUcdQ0GFOZvjWRrYs3DJTniH1NVLwHzzzyqOYjrQYTNLHkZF6n3PdnEazd/wj6ybaOfvBQGbuvwgRAzzR3fyDIkp9+ZG0xjbf+XyPkPKd2ffiSmxWtbYSVMl5g7idsdQPfObrxW6CLTZkgChMrYr+tbVIgcpt8GewHCUHh8dT+UizRhz2L7/ifVLismf9Vxx3TmC3v0FCr6OZ/zVfqEQQl45puGJF8z25bJlvEz2ixfbxO4JaEj3nmg8jUqayXPxG5psmM/ZrRoNalSJbRSrHtTmF54ERBZec5ruNmYhDzGTM/IdviQhgRmS1y1A3zOs87DWnZUnQlidKuhPktfdUX9jVIqZYpDw3CXXGzy1yswsDTTADRQRB4xZ90Ax3i6g0SuthBwuAb5cSkotMDbNFUICdmm2a7hLl9DH4z8vJAxMMhsVrRQjd95R9HEQADHCTPbEj9O5OyKqtxjqPskg+3AM6Ge3FLHZi30FlI5x6TgW8kGTYLxbnzJSYhsLJ9GpYXpvimaR4YrOgYMnafiuwAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-donor-portrait-1200.webp",
+            "jpeg": "/images/raktsetu/hero-donor-portrait-1200.jpg",
+            "width": 1200,
+            "height": 1500,
+            "lqip": "data:image/webp;base64,UklGRmoEAABXRUJQVlA4IF4EAADQJQCdASoUAOYEPu1qrU+/pjKjK5Wbe/AdiWNuJPi2BPQEgZ399wRUyNXR/uLv8puP/NXn/6f8x/whW3HBFFqXr75wE5140PhoWU2smuFg/nkiT08c0tMOWa3Grbr3nj4CsA9vanFsnIr4XUHeuRu/2f4comE2nDgL+4htCb5hO7LOaRy4g+wV9TXkq6M2CkTBYAbZ8lKe6h9P/gVPUX3z/VAjhk4TdKE+j8ryynxLE9XKQ5cStbHMpTjBfshdQgmI3spp3sW9i0ssfhhdsxfL2Rkr+9loLDoRjLDEB4X5ALqnrnMybzODfRqs7Si/xRYhyAKMMuHumFdR9yBbeK/GbLz/Xo4oOLHaY3J7gHws8yDTIBN7/TG91JSRyQT8woDFLPH24DMWrDp9c0RlhBX24Ovpi8wLkAD+1dXb9MngPQM83QYmfKZadAFCs+oBwaIF7kKiL9XmluBzLbJmxJpBFh2wFOHRm0XPd+nhS9Eo9N9LqH1yjAO3WAE7oiK5AYrEbDap+SvUTqG7JGuqCwcJcVR6hEQcGqe+zxKAKJp/vbmDe0GS++fPI/JsphRoC90hcb80zbhWLMTC/JgCFekDKBCUtq2oz7wRhNhncbXCriv1HEhi9Iey84DXl+2ez5I2LIzZ356I5XHg8LOtswEvZuXSw0jqvsBv5oDgiUEcPZrnIL2vp63WM30Wu+uSIOCFtyzTvl+E4kMeMvaiuL06BrcQAyNHdijwWylIEDU1aJvXrQR7lSbphnxeshfQkMlTAn8a74q55DEXUFukBqA7tGI4FtUJE6hjdBYMf0Df6/WRA7b3hRjyySG1ou4hfwsXC6qoOIl7zEiN1CGhZhSkjcDv0LpsNExFHqD7TTdGENot2zt5D1aGjloPG9Wj1dUoDpj2T6dhRx10LdopcWil5IhUQ1D+iO4XBRFG7WW1fw6mJ/eSs6marSU5UBQUcdQ0GFOZvjWRrYs3DJTniH1NVLwHzzzyqOYjrQYTNLHkZF6n3PdnEazd/wj6ybaOfvBQGbuvwgRAzzR3fyDIkp9+ZG0xjbf+XyPkPKd2ffiSmxWtbYSVMl5g7idsdQPfObrxW6CLTZkgChMrYr+tbVIgcpt8GewHCUHh8dT+UizRhz2L7/ifVLismf9Vxx3TmC3v0FCr6OZ/zVfqEQQl45puGJF8z25bJlvEz2ixfbxO4JaEj3nmg8jUqayXPxG5psmM/ZrRoNalSJbRSrHtTmF54ERBZec5ruNmYhDzGTM/IdviQhgRmS1y1A3zOs87DWnZUnQlidKuhPktfdUX9jVIqZYpDw3CXXGzy1yswsDTTADRQRB4xZ90Ax3i6g0SuthBwuAb5cSkotMDbNFUICdmm2a7hLl9DH4z8vJAxMMhsVrRQjd95R9HEQADHCTPbEj9O5OyKqtxjqPskg+3AM6Ge3FLHZi30FlI5x6TgW8kGTYLxbnzJSYhsLJ9GpYXpvimaR4YrOgYMnafiuwAAA=="
+          }
+        ]
+      },
+      {
+        "aspect": "wide",
+        "ratio": 1.5,
+        "intrinsic": {
+          "width": 1080,
+          "height": 720
+        },
+        "sources": [
+          {
+            "webp": "/images/raktsetu/hero-donor-wide-720.webp",
+            "jpeg": "/images/raktsetu/hero-donor-wide-720.jpg",
+            "width": 720,
+            "height": 480,
+            "lqip": "data:image/webp;base64,UklGRqADAABXRUJQVlA4IJQDAAAwIQCdASoUAEQDPu1kqk4ppa0iLtNNmaAdiWNuJNf0tTql6lVQW9D3Lremzl5/+n/cgG9/1o9yk/OtXzE1B8Wsl3/Ucf+G0VdilJ4wwTvcXj266LkzotIqNiJdWvK3tw1Ssm7GPgCQ/J01AAqqhOnJ7OeIuUtVD9bX/iEdq3mdUjko8C8f1W6k4RgckZNhaECpNgG6yT63wF9XnmewVR+7F8aWZOzwoZYck4OIPXdg9Fq12762+f0hpnPJARoUpgpN9IfDaNrQDuHH4Isn50Q5fPaGbfIha0LJ5fBvO1QMFMYJNQwurRsviMfPixt9CXUCtBIWPNUPv3zbKpldmBzUi4FaqmosZ7XQrybZOY6yc6XAAP0YBSaUQDqsuk/zn8bJ87ZUu+F0SCQUA9ie/iPXSfkESsv7Iwm+QbX2kKm6sioLBAWlrWLuWA0lJ28KObzLWv8Zq+PewYLtfF9wzTWgCf2GC/a6E4g8yhaE31G8CRZrl+eX/zebtt7twetIzkYx0bCeI36T8qVyUVXo/DAqWXSbVoGfX57CpZs0zJ19Xq4AqEclyqNhA/3sjJGyP1mP8JaEgD7XLS4Ix82R4RoAg451vJtNZpjVdqzcdvvPH4sOt4ZU631AEhqmXk1A1ccyQIfZR9Fbo0s/M/Fuftpd2qE5vPQzLts+g6xwxh5/8Xn0D+s6CnusX8Cdh7cvNQB4SRwISWp+gsl7diPsfrzCqMQKqRTyP60J5BeYojYbqtaAIhWC/vIbCevcU8Ab46/iO+qx7wnjMnSxf/9Fa08feqbja75beXnbJZzF6nInCbilFzeq53rmtLIybJIyjxJxvMGg5u8W6nnORUB2rYS98XQpYSc4ioQiEHmUa84Lm4kVFm43mNtb1w64JSXmCEI7bKEMwVIljJUIC0/GQ8BfNkmni6CX4rssTkEN7AIVrgyWku78a9yPasGBMlCOEb2x885SgBWEaGIPiGXFWl4hK+tzOCJuRRJAja4FQN0SKHiZT96nzXFjaD+CgLstfbDR9DbaaqD3B/aUGGgQSr0IjpsHuvlBJvHOTZrHSVzCvGHkeuQPVN/oyJY45IxgSrBI7esG4PJ3Om5XyIKdlMixaa3dLDvDfH/aJtDhle7UypmD/rHHg/63kK8dThXqniix1pcaEzMqiclYbGTcsG5+cRYnQlUBcKyrJlKn86NyeaVJFpqUomOR72UBYcv0dymAAAAA"
+          },
+          {
+            "webp": "/images/raktsetu/hero-donor-wide-1080.webp",
+            "jpeg": "/images/raktsetu/hero-donor-wide-1080.jpg",
+            "width": 1080,
+            "height": 720,
+            "lqip": "data:image/webp;base64,UklGRqADAABXRUJQVlA4IJQDAAAwIQCdASoUAEQDPu1kqk4ppa0iLtNNmaAdiWNuJNf0tTql6lVQW9D3Lremzl5/+n/cgG9/1o9yk/OtXzE1B8Wsl3/Ucf+G0VdilJ4wwTvcXj266LkzotIqNiJdWvK3tw1Ssm7GPgCQ/J01AAqqhOnJ7OeIuUtVD9bX/iEdq3mdUjko8C8f1W6k4RgckZNhaECpNgG6yT63wF9XnmewVR+7F8aWZOzwoZYck4OIPXdg9Fq12762+f0hpnPJARoUpgpN9IfDaNrQDuHH4Isn50Q5fPaGbfIha0LJ5fBvO1QMFMYJNQwurRsviMfPixt9CXUCtBIWPNUPv3zbKpldmBzUi4FaqmosZ7XQrybZOY6yc6XAAP0YBSaUQDqsuk/zn8bJ87ZUu+F0SCQUA9ie/iPXSfkESsv7Iwm+QbX2kKm6sioLBAWlrWLuWA0lJ28KObzLWv8Zq+PewYLtfF9wzTWgCf2GC/a6E4g8yhaE31G8CRZrl+eX/zebtt7twetIzkYx0bCeI36T8qVyUVXo/DAqWXSbVoGfX57CpZs0zJ19Xq4AqEclyqNhA/3sjJGyP1mP8JaEgD7XLS4Ix82R4RoAg451vJtNZpjVdqzcdvvPH4sOt4ZU631AEhqmXk1A1ccyQIfZR9Fbo0s/M/Fuftpd2qE5vPQzLts+g6xwxh5/8Xn0D+s6CnusX8Cdh7cvNQB4SRwISWp+gsl7diPsfrzCqMQKqRTyP60J5BeYojYbqtaAIhWC/vIbCevcU8Ab46/iO+qx7wnjMnSxf/9Fa08feqbja75beXnbJZzF6nInCbilFzeq53rmtLIybJIyjxJxvMGg5u8W6nnORUB2rYS98XQpYSc4ioQiEHmUa84Lm4kVFm43mNtb1w64JSXmCEI7bKEMwVIljJUIC0/GQ8BfNkmni6CX4rssTkEN7AIVrgyWku78a9yPasGBMlCOEb2x885SgBWEaGIPiGXFWl4hK+tzOCJuRRJAja4FQN0SKHiZT96nzXFjaD+CgLstfbDR9DbaaqD3B/aUGGgQSr0IjpsHuvlBJvHOTZrHSVzCvGHkeuQPVN/oyJY45IxgSrBI7esG4PJ3Om5XyIKdlMixaa3dLDvDfH/aJtDhle7UypmD/rHHg/63kK8dThXqniix1pcaEzMqiclYbGTcsG5+cRYnQlUBcKyrJlKn86NyeaVJFpqUomOR72UBYcv0dymAAAAA"
+          }
+        ]
+      }
+    ]
+  }
+}
