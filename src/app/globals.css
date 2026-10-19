@@ -33,7 +33,10 @@
 
 html {
   scroll-behavior: smooth;
+  /* In-page jumps and focused fields land below the sticky navbar, not under it. */
+  scroll-padding-top: 5.5rem;
   -webkit-text-size-adjust: 100%;
+  background-color: var(--color-ink-50);
 }
 
 body {
@@ -41,24 +44,35 @@ body {
   color: var(--color-ink-900);
   line-height: 1.6;
   text-rendering: optimizeLegibility;
+}
 
-  /*
-   * AMBIENT DEPTH.
-   *
-   * Frosted surfaces need something behind them: `backdrop-filter` blurs whatever
-   * is painted underneath, so on a flat single-colour page the effect is almost
-   * invisible. These three very soft, very large washes live in the RaktSetu
-   * palette — two blood tints and one cool ink highlight — and give every glass
-   * panel on the site something to refract. They are static (no animation, no
-   * fixed attachment, so mobile compositing stays cheap) and low-contrast enough
-   * that no text ever sits on them directly.
-   */
-  background-color: var(--color-ink-50);
+/*
+ * AMBIENT DEPTH — the layer every glass surface refracts.
+ *
+ * `backdrop-filter` only shows when something colourful sits behind it. The
+ * washes used to be painted on <body> and scrolled away with the first screen,
+ * so every card below the fold sat on flat grey and the glass was invisible.
+ * A fixed pseudo-element keeps them behind every page at every scroll position;
+ * it is composited once (fixed, transform-only drift), so scrolling stays cheap.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
   background-image:
-    radial-gradient(1100px 640px at 10% -10%, rgba(170, 31, 31, 0.1), transparent 62%),
-    radial-gradient(900px 560px at 94% 4%, rgba(227, 75, 75, 0.075), transparent 60%),
-    radial-gradient(1000px 720px at 50% 112%, rgba(43, 41, 37, 0.06), transparent 62%);
-  background-repeat: no-repeat;
+    radial-gradient(44% 40% at 14% 12%, rgba(170, 31, 31, 0.2), transparent 70%),
+    radial-gradient(40% 36% at 88% 24%, rgba(227, 75, 75, 0.18), transparent 70%),
+    radial-gradient(50% 42% at 50% 58%, rgba(214, 64, 64, 0.11), transparent 72%),
+    radial-gradient(46% 40% at 12% 86%, rgba(196, 98, 45, 0.12), transparent 70%),
+    radial-gradient(42% 38% at 88% 90%, rgba(116, 29, 29, 0.15), transparent 70%);
+  animation: ambientDrift 40s ease-in-out infinite alternate;
+}
+
+@keyframes ambientDrift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-3%, 2%, 0) scale(1.05); }
 }
 
 /* Readable default focus ring for keyboard users. */
@@ -130,7 +144,8 @@ body {
 
 /* Neutral frosted surface — cards, summaries, feature panels. The workhorse. */
 .glass {
-  background-color: rgba(255, 255, 255, 0.55);
+  background-color: rgba(255, 255, 255, 0.42);
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.05) 60%);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow: var(--glass-edge), var(--glass-shadow);
   backdrop-filter: var(--glass-blur);
@@ -153,7 +168,8 @@ body {
 /* Blood-tinted frosted surface — urgent strips, unread notifications.
    Text, badges, and buttons on top keep their full solid contrast. */
 .glass-blood {
-  background-color: rgba(253, 227, 227, 0.62);
+  background-color: rgba(253, 227, 227, 0.58);
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 60%);
   border: 1px solid rgba(255, 255, 255, 0.68);
   box-shadow: var(--glass-edge), 0 14px 36px -20px rgba(140, 24, 24, 0.4);
   backdrop-filter: var(--glass-blur);
@@ -334,17 +350,7 @@ body {
     0 10px 24px -10px rgb(15 23 42 / 0.4);
 }
 
-/* Fade-and-rise as an element scrolls into view. CSS scroll-driven animation:
-   no JavaScript, and browsers without support simply show the element. The
-   global reduced-motion rule above shortens it to an instant. */
-@supports (animation-timeline: view()) {
-  .reveal-on-scroll {
-    animation: revealOnScroll linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 30%;
-  }
-}
-
+/* Fade-and-rise as an element scrolls into view (used by the scroll effects below). */
 @keyframes revealOnScroll {
   from {
     opacity: 0;
@@ -353,5 +359,42 @@ body {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* SCROLL EFFECTS, site-wide. CSS scroll-driven animations only: no JavaScript,
+   browsers without support show everything normally, and the global
+   reduced-motion rule above makes them instant. */
+@supports (animation-timeline: view()) {
+  /* Every glass card and every framed photo eases in as it enters the viewport. */
+  main .glass,
+  main .glass-blood,
+  main .glass-panel,
+  main .mask-blob,
+  main .mask-elliptical,
+  main .mask-asym-rounded,
+  main .mask-arch,
+  main .mask-wave {
+    animation: revealOnScroll linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 22%;
+  }
+
+  /* The navbar turns from light frost to denser glass once the page scrolls. */
+  .glass-bar {
+    animation: barCondense linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 140px;
+  }
+}
+
+@keyframes barCondense {
+  from {
+    background-color: rgba(255, 255, 255, 0.45);
+    box-shadow: var(--glass-edge-soft);
+  }
+  to {
+    background-color: rgba(255, 255, 255, 0.78);
+    box-shadow: var(--glass-edge-soft), var(--glass-shadow-bar);
   }
 }

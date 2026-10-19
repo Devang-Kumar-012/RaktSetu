@@ -184,7 +184,7 @@ async function main() {
   // glass is technically present but perceptually flat.
   await page.goto(`${BASE}/`, 600);
   const ambient = await page.evaluate<string>(
-    `getComputedStyle(document.body).backgroundImage`,
+    `getComputedStyle(document.body, "::before").backgroundImage`,
   );
   check(
     "body carries ambient depth (the blur has something to refract)",

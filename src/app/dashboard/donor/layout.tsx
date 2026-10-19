@@ -21,7 +21,7 @@ export default function DonorDashboardLayout({
           <SlotImage
             slot="donorDashboard"
             sizes="208px"
-            className="reveal-on-scroll h-56 w-52"
+            className="h-56 w-52"
           />
         </div>
       </div>
