@@ -8,8 +8,9 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/States";
 import { VolunteerRequestCard } from "@/components/volunteer/VolunteerRequestCard";
+import { VerificationCard } from "@/components/volunteer/VerificationCard";
 import { LiveRefresh } from "@/components/notifications/LiveRefresh";
-import type { VolunteerProfile, VolunteerRequestView } from "@/types";
+import type { VolunteerProfile, VolunteerRequestView, PendingVerificationView } from "@/types";
 
 export const metadata = { title: "Volunteer dashboard" };
 
@@ -27,18 +28,35 @@ export default async function VolunteerDashboardPage() {
   const { user, profile } = await requireRolePage("volunteer");
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: volunteer }, { data: requests }] = await Promise.all([
+  const [
+    { data: volunteer },
+    { data: requests },
+    { data: verifications },
+    { data: otherVolunteers },
+  ] = await Promise.all([
     supabase
       .from("volunteer_profiles")
       .select("user_id, locality, availability, created_at, updated_at")
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase.rpc("volunteer_active_requests", { p_limit: 50 }),
+    supabase.rpc("my_pending_verifications"),
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("role", "volunteer")
+      .eq("status", "active")
+      .neq("id", user.id)
+      .limit(10),
   ]);
 
   const activeRequests = (requests as VolunteerRequestView[] | null) ?? [];
   const assisting = activeRequests.filter((r) => r.me_assisting);
   const others = activeRequests.filter((r) => !r.me_assisting);
+  const pendingVerifications =
+    (verifications as PendingVerificationView[] | null) ?? [];
+  const escalationTargets =
+    (otherVolunteers as { id: string; full_name: string }[] | null) ?? [];
   const firstName = profile.full_name.trim().split(" ")[0];
 
   return (
@@ -96,6 +114,27 @@ export default async function VolunteerDashboardPage() {
             You can still browse requests, but switch your availability to “Available”
             in your profile when you are ready to coordinate again.
           </Alert>
+        )}
+
+        {pendingVerifications.length > 0 && (
+          <>
+            <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+              Pending verifications ({pendingVerifications.length})
+            </h2>
+            <p className="mt-2 text-base text-ink-600">
+              A donor has accepted an emergency request. Confirm the coordination
+              before the deadline or escalate to another volunteer.
+            </p>
+            <div className="mt-6 space-y-6">
+              {pendingVerifications.map((v) => (
+                <VerificationCard
+                  key={v.id}
+                  verification={v}
+                  escalationTargets={escalationTargets}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">

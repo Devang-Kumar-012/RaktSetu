@@ -438,6 +438,43 @@ export interface RequesterRingStatus {
   outcome: "accepted" | "request_closed" | "rings_exhausted" | null;
 }
 
+
+
+export const VERIFY_MARKER = "types_added";
+
+
+export type VerificationStatus = "pending" | "verified" | "rejected" | "timeout" | "escalated";
+
+export interface VolunteerVerification {
+  id: string;
+  request_id: string;
+  volunteer_id: string;
+  status: VerificationStatus;
+  target_deadline: string;
+  started_at: string;
+  completed_at: string | null;
+  verified_by: string | null;
+  escalated_to: string | null;
+  outcome_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PendingVerificationView {
+  id: string;
+  request_id: string;
+  blood_group: string;
+  blood_component: string;
+  units: number;
+  hospital_name: string;
+  hospital_locality: string;
+  urgency: string;
+  required_by: string;
+  target_deadline: string;
+  started_at: string;
+  minutes_left: number | null;
+  status: VerificationStatus;
+}
 /** Row shape returned by public.admin_ring_progress() (migration 0011). */
 export interface AdminRingProgressRow {
   request_id: string;

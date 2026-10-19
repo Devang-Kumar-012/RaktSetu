@@ -662,6 +662,32 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   updated_at                  TEXT NOT NULL
 );
 
+
+
+CREATE TABLE IF NOT EXISTS volunteer_verifications (
+  id             TEXT PRIMARY KEY,
+  request_id     TEXT NOT NULL REFERENCES blood_requests(id) ON DELETE CASCADE,
+  volunteer_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status         TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','verified','rejected','timeout','escalated')),
+  target_deadline TEXT NOT NULL,
+  started_at     TEXT NOT NULL,
+  completed_at   TEXT,
+  verified_by    TEXT REFERENCES users(id),
+  escalated_to   TEXT REFERENCES users(id),
+  outcome_notes  TEXT,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+-- SQLite has no inline partial UNIQUE constraint (that is Postgres syntax);
+-- the one-pending-per-request rule is enforced by a partial unique index.
+CREATE UNIQUE INDEX IF NOT EXISTS volunteer_verifications_one_pending
+  ON volunteer_verifications(request_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS volunteer_verifications_volunteer_idx
+  ON volunteer_verifications(volunteer_id, status);
+CREATE INDEX IF NOT EXISTS volunteer_verifications_request_idx
+  ON volunteer_verifications(request_id, status);
+
 CREATE TABLE IF NOT EXISTS platform_safety_limits (
   id                     INTEGER PRIMARY KEY CHECK (id = 1),
   max_requests_per_hour   INTEGER NOT NULL DEFAULT 6,

@@ -237,47 +237,6 @@ export default function DonorDashboardPage() {
           <DonorRecognitionCard recognition={recognition} />
         </div>
 
-        {/* Campus drives (migration 0015) — deliberately a separate section
-            from emergency alerts below. A planned drive is not an emergency,
-            and nothing here changes matching or an alert. */}
-        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
-          Campus blood drives
-        </h2>
-        <p className="mt-2 max-w-3xl text-base text-ink-600">
-          Planned donation camps run by colleges and organisations. Register your
-          interest, then turn up — or skip one and wait for a nearby emergency
-          alert instead. Registering for a drive does not affect your emergency
-          availability.
-        </p>
-        <div className="mt-6">
-          {upcomingDrives.length === 0 ? (
-            <EmptyState
-              title="No open drives right now"
-              description="Campus drives appear here once an administrator publishes them. You will get an in-app notification when one is announced."
-              action={
-                <ButtonLink href="/drives" variant="secondary">
-                  See all campus drives
-                </ButtonLink>
-              }
-            />
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-              {upcomingDrives.slice(0, 4).map((drive) => (
-                <DriveCard
-                  key={drive.id}
-                  drive={drive}
-                  registrationStatus={myDriveStatuses.get(drive.id) ?? null}
-                />
-              ))}
-            </div>
-          )}
-          <div className="mt-6">
-            <ButtonLink href="/drives" variant="secondary">
-              All campus blood drives
-            </ButtonLink>
-          </div>
-        </div>
-
         <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
           Emergency alerts
         </h2>
@@ -436,6 +395,51 @@ export default function DonorDashboardPage() {
             ))
           )}
         </div>
+      </Section>
+      {/* DRIVES_DEMOTED — drives live at the bottom so emergency
+          alerts stay the first thing a donor sees. */}
+      <Section>
+        {/* Campus drives (migration 0015) — deliberately a separate section
+            from emergency alerts below. A planned drive is not an emergency,
+            and nothing here changes matching or an alert. */}
+        <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
+          Campus blood drives
+        </h2>
+        <p className="mt-2 max-w-3xl text-base text-ink-600">
+          Planned donation camps run by colleges and organisations. Register your
+          interest, then turn up — or skip one and wait for a nearby emergency
+          alert instead. Registering for a drive does not affect your emergency
+          availability.
+        </p>
+        <div className="mt-6">
+          {upcomingDrives.length === 0 ? (
+            <EmptyState
+              title="No open drives right now"
+              description="Campus drives appear here once an administrator publishes them. You will get an in-app notification when one is announced."
+              action={
+                <ButtonLink href="/drives" variant="secondary">
+                  See all campus drives
+                </ButtonLink>
+              }
+            />
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2">
+              {upcomingDrives.slice(0, 4).map((drive) => (
+                <DriveCard
+                  key={drive.id}
+                  drive={drive}
+                  registrationStatus={myDriveStatuses.get(drive.id) ?? null}
+                />
+              ))}
+            </div>
+          )}
+          <div className="mt-6">
+            <ButtonLink href="/drives" variant="secondary">
+              All campus blood drives
+            </ButtonLink>
+          </div>
+        </div>
+
       </Section>
     </>
   );
