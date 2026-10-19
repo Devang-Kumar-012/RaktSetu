@@ -1,11 +1,11 @@
 /**
- * PHOTO ASSET PIPELINE — turns the two supplied 1536x1024 photographs into the
+ * PHOTO ASSET PIPELINE — turns the supplied source photographs into the
  * optimized, art-directed set the site actually ships.
  *
  * WHY A SCRIPT INSTEAD OF CHECKING-IN HAND-CROPPED FILES
  *
- * The source frames are fixed and small (1536x1024). Every crop the UI needs is
- * a DERIVATIVE of them, and derivatives have to stay in sync: if the hero crop
+ * The source frames are fixed originals under `assets/raktsetu-source/`.
+ * Every crop the UI needs is a DERIVATIVE of them, and derivatives have to stay in sync: if the hero crop
  * is re-tuned, the tablet crop, the mobile crop and the manifest all have to move
  * with it. Doing that by hand is how a site ends up with three versions of the
  * same crop that disagree about where the donor's hand is. So the focal points
@@ -36,7 +36,7 @@
  *
  * Usage:  npm run build:assets
  */
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import sharp from "sharp";
@@ -63,10 +63,10 @@ const OUT_DIR = join(ROOT, "public", "images", "raktsetu");
 const PHOTOS = [
     {
         id: "hero-donor",
-        file: "hero-donor-original.jpeg",
+        file: "hero-donor-original.png",
         /** Alt text describes the photograph itself, for screen readers. */
-        alt: "A blood donor's arm connected to a donation line, their hand holding a red heart marked with a blood drop",
-        focus: { x: 0.46, y: 0.62 },
+        alt: "Digital illustration of a blood donation network — a donor's arm connected to a collection bag, surrounded by donors, recipients, and blood-type icons",
+        focus: { x: 0.5, y: 0.5 },
         poster: { width: 1440 },
         variants: [
             // 1:1 — the organic/circular hero clip. A square keeps the hand and the
@@ -124,6 +124,14 @@ interface Generated {
     width: number;
     height: number;
     lqip: string;
+}
+/** Read the previous manifest so skipped photos keep their entries. */
+function loadManifest(path: string): ManifestEntries {
+    try {
+        return JSON.parse(readFileSync(path, "utf8")) as ManifestEntries;
+    } catch {
+        return {};
+    }
 }
 
 interface ManifestVariant {
@@ -190,7 +198,7 @@ async function build() {
     // Fail early — and clearly — when the supplied photographs are absent:
     // every output below is a DERIVATIVE of them, so there is nothing to crop.
     const missingSources = PHOTOS.filter((photo) => !existsSync(join(SOURCE_DIR, photo.file)));
-    if (missingSources.length > 0) {
+    if (missingSources.length === PHOTOS.length) {
         console.error("Missing source photographs in assets/raktsetu-source/:");
         for (const photo of missingSources) {
             console.error(`  - assets/raktsetu-source/${photo.file}`);
@@ -201,15 +209,24 @@ async function build() {
             "manifest stays empty — see README, section “Photography assets”."
         );
         process.exit(1);
+    const skippedIds = new Set(missingSources.map((photo) => photo.id));
+    for (const photo of missingSources) {
+        console.warn(
+            `  ! skipping "${photo.id}" — source "assets/raktsetu-source/${photo.file}" not found; ` +
+                `its slots keep their placeholders. Add the file and re-run \`npm run build:assets\`.`
+        );
+    }
     }
     mkdirSync(OUT_DIR, { recursive: true });
 
     /** Everything written this run, so stale files can be pruned at the end. */
+    // (moved below: prior-manifest merge runs after `manifest` is declared)
     const written = new Set<string>();
     const manifest: ManifestEntries = {};
 
     for (const photo of PHOTOS) {
         const image = sharp(join(SOURCE_DIR, photo.file), { failOn: "none" }).rotate();
+        if (skippedIds.has(photo.id)) continue;
         const meta = await image.metadata();
         const src = { width: meta.width ?? 0, height: meta.height ?? 0 };
         if (!src.width || !src.height) {
