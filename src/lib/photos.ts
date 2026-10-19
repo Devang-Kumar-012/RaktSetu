@@ -62,7 +62,7 @@ export interface PhotoManifestEntry {
  * slot's placeholder, never a broken image. Add an id here when the pipeline
  * learns to emit a new photograph.
  */
-export const PHOTO_IDS = ["hero-donor", "blood-bag"] as const;
+export const PHOTO_IDS = ["hero-donor", "hero-network", "blood-bag"] as const;
 export type PhotoId = (typeof PHOTO_IDS)[number];
 
 /* --------------------------- runtime validation --------------------------- */

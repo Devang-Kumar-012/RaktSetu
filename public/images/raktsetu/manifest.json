@@ -107,5 +107,90 @@
         ]
       }
     ]
+  },
+  "hero-network": {
+    "alt": "A glowing red blood drop streaking between a laptop, connected screens and a server at dusk",
+    "source": {
+      "width": 1254,
+      "height": 1254,
+      "original": "assets/raktsetu-source/hero-network-original.png"
+    },
+    "poster": {
+      "webp": "/images/raktsetu/hero-network-poster-1200.webp",
+      "jpeg": "/images/raktsetu/hero-network-poster-1200.jpg",
+      "width": 1200,
+      "height": 1200
+    },
+    "variants": [
+      {
+        "aspect": "square",
+        "ratio": 1,
+        "intrinsic": {
+          "width": 1080,
+          "height": 1080
+        },
+        "sources": [
+          {
+            "webp": "/images/raktsetu/hero-network-square-480.webp",
+            "jpeg": "/images/raktsetu/hero-network-square-480.jpg",
+            "width": 480,
+            "height": 480,
+            "lqip": "data:image/webp;base64,UklGRnAEAABXRUJQVlA4IGQEAADQJwCdASoUAOYEPu1mq08/qq2jLtLcC/AdiWNujdmURTjzWM9PcMldYsZmt/+f/p/zH+vHwLHuxX3zT9Lg88TXESFHDflYROR38J+AzVJq0nFswcta2kfz9pHrIQ9gCLkGYYdAYnACm+laybwUC4XQt4udmjELqdEGMrDu3swiqtm91SBUGGCt/cpQIDK5osTtAOMV18XhoDu4FSw/4PGpBpHwUcwwE31hUTOAOpogZnVsqX7r9tkMb2xfvWgDwD3itmFKjFEMIIFXxQcVZMsbYK2so94yisjh60qMJ3cAjkGAK0QGm3oPu9t6OlAZXs7csHpmBuFhbCVPUOHeSNEBM7OnszDCh0HSTBlw7R0LqMPHai/yrtFhv7YLq/k2r2Kavjs4qwynvDI98DRfY+bG19/JtnV+n9jo5+rGTqrx9LbP7jZsAgAA/tifHiQH3RWnyYuOzPw8IBKvrN40IBXE+cJVzlTsCvhkDjFh8gq/G5i1d2UByCwZfHJ5i8YdNZ7dgxCU8wYsmXjACBW0MGQf+aWXLb3acAu+kspSbS5ACWNvJUu9vjaDAP0KPIicCID3jjXqQ6BfxIafPM/1xS9jXEbmLVTof1LlTuQsAhC9C+w4oAuouDUEKK+qWbPqi8y7M0oZybCe87+BZJx8ivwT0Ko5La4nlznzFkpY0PlSUSWx4FbdFmNo4pKaWi9f+KZh4ZT8QWZdvf2cYM4A4vetFwSXdfvti7CEGOoJGlbi0DwLAQKdjLiZ700cBFFTykcRDeRfFqbHJypiCiIXk1+JVDboIIpJoTIf7F3Q6s6NJ0RrkxpJESvfTWV8+D3OQmT9z11dJ1d0XwPzHh0MlxfLToIBmVSfImlECQIKidKct1WVOv2/sjwxqyZvC9CkB2XZkVvkh5AT1HTNQxEfMydXAwUpiPcrzisiRaeiqe+qYttaja7Z20T6XMSOTJ7BN9Z0yygzXD4QZi+6ka3hVn4K6RpG/qkl4PBhShm/39FtZ26G813+5PntLmamjW82+RxDx2Gif8mOl+Ot4MZMSA0SzW4oWhOpXBbcT9ztIsccKca5oD3PJEoAzJKEw+nhZ8uJmymkP18brY3ZDeEeikq0NYDSGzaG0ujyPUfSsOd0nTUHdkxtS+lgpvsomA+G4adMDgLD6Cu2UPJZPbNUyUFHSAszVhAsTdksRApniitVU9j869x3Kjn7gJVtGUUwnfTTFs/Qofe9FdAKBIPm5Em7AUUtIDRuFtBgEyU0pSf/jWAELhn4+8t9hiBZwPtUumIf4UjySel/ZIqJP6/cQ7ZTiyKcRiDXAsA0/7uey79rkWArKtNcfjbCAgiporssGpMis5qAiWAMRRM3OXyxpEgccS8kmAXXYuDjkzE+Rye/4zVuUdgQ9WXlgpbWMtQ4dL+3treHrYxlJwSGN0C2AAjJ6NflV7jSmrf55ElryRyQHBTSIY/EQqzV46UKFQ6oY043rIN4fAnWEOI9Vkm9c8ZAN7lAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-network-square-720.webp",
+            "jpeg": "/images/raktsetu/hero-network-square-720.jpg",
+            "width": 720,
+            "height": 720,
+            "lqip": "data:image/webp;base64,UklGRnAEAABXRUJQVlA4IGQEAADQJwCdASoUAOYEPu1mq08/qq2jLtLcC/AdiWNujdmURTjzWM9PcMldYsZmt/+f/p/zH+vHwLHuxX3zT9Lg88TXESFHDflYROR38J+AzVJq0nFswcta2kfz9pHrIQ9gCLkGYYdAYnACm+laybwUC4XQt4udmjELqdEGMrDu3swiqtm91SBUGGCt/cpQIDK5osTtAOMV18XhoDu4FSw/4PGpBpHwUcwwE31hUTOAOpogZnVsqX7r9tkMb2xfvWgDwD3itmFKjFEMIIFXxQcVZMsbYK2so94yisjh60qMJ3cAjkGAK0QGm3oPu9t6OlAZXs7csHpmBuFhbCVPUOHeSNEBM7OnszDCh0HSTBlw7R0LqMPHai/yrtFhv7YLq/k2r2Kavjs4qwynvDI98DRfY+bG19/JtnV+n9jo5+rGTqrx9LbP7jZsAgAA/tifHiQH3RWnyYuOzPw8IBKvrN40IBXE+cJVzlTsCvhkDjFh8gq/G5i1d2UByCwZfHJ5i8YdNZ7dgxCU8wYsmXjACBW0MGQf+aWXLb3acAu+kspSbS5ACWNvJUu9vjaDAP0KPIicCID3jjXqQ6BfxIafPM/1xS9jXEbmLVTof1LlTuQsAhC9C+w4oAuouDUEKK+qWbPqi8y7M0oZybCe87+BZJx8ivwT0Ko5La4nlznzFkpY0PlSUSWx4FbdFmNo4pKaWi9f+KZh4ZT8QWZdvf2cYM4A4vetFwSXdfvti7CEGOoJGlbi0DwLAQKdjLiZ700cBFFTykcRDeRfFqbHJypiCiIXk1+JVDboIIpJoTIf7F3Q6s6NJ0RrkxpJESvfTWV8+D3OQmT9z11dJ1d0XwPzHh0MlxfLToIBmVSfImlECQIKidKct1WVOv2/sjwxqyZvC9CkB2XZkVvkh5AT1HTNQxEfMydXAwUpiPcrzisiRaeiqe+qYttaja7Z20T6XMSOTJ7BN9Z0yygzXD4QZi+6ka3hVn4K6RpG/qkl4PBhShm/39FtZ26G813+5PntLmamjW82+RxDx2Gif8mOl+Ot4MZMSA0SzW4oWhOpXBbcT9ztIsccKca5oD3PJEoAzJKEw+nhZ8uJmymkP18brY3ZDeEeikq0NYDSGzaG0ujyPUfSsOd0nTUHdkxtS+lgpvsomA+G4adMDgLD6Cu2UPJZPbNUyUFHSAszVhAsTdksRApniitVU9j869x3Kjn7gJVtGUUwnfTTFs/Qofe9FdAKBIPm5Em7AUUtIDRuFtBgEyU0pSf/jWAELhn4+8t9hiBZwPtUumIf4UjySel/ZIqJP6/cQ7ZTiyKcRiDXAsA0/7uey79rkWArKtNcfjbCAgiporssGpMis5qAiWAMRRM3OXyxpEgccS8kmAXXYuDjkzE+Rye/4zVuUdgQ9WXlgpbWMtQ4dL+3treHrYxlJwSGN0C2AAjJ6NflV7jSmrf55ElryRyQHBTSIY/EQqzV46UKFQ6oY043rIN4fAnWEOI9Vkm9c8ZAN7lAAA=="
+          },
+          {
+            "webp": "/images/raktsetu/hero-network-square-1080.webp",
+            "jpeg": "/images/raktsetu/hero-network-square-1080.jpg",
+            "width": 1080,
+            "height": 1080,
+            "lqip": "data:image/webp;base64,UklGRnAEAABXRUJQVlA4IGQEAADQJwCdASoUAOYEPu1mq08/qq2jLtLcC/AdiWNujdmURTjzWM9PcMldYsZmt/+f/p/zH+vHwLHuxX3zT9Lg88TXESFHDflYROR38J+AzVJq0nFswcta2kfz9pHrIQ9gCLkGYYdAYnACm+laybwUC4XQt4udmjELqdEGMrDu3swiqtm91SBUGGCt/cpQIDK5osTtAOMV18XhoDu4FSw/4PGpBpHwUcwwE31hUTOAOpogZnVsqX7r9tkMb2xfvWgDwD3itmFKjFEMIIFXxQcVZMsbYK2so94yisjh60qMJ3cAjkGAK0QGm3oPu9t6OlAZXs7csHpmBuFhbCVPUOHeSNEBM7OnszDCh0HSTBlw7R0LqMPHai/yrtFhv7YLq/k2r2Kavjs4qwynvDI98DRfY+bG19/JtnV+n9jo5+rGTqrx9LbP7jZsAgAA/tifHiQH3RWnyYuOzPw8IBKvrN40IBXE+cJVzlTsCvhkDjFh8gq/G5i1d2UByCwZfHJ5i8YdNZ7dgxCU8wYsmXjACBW0MGQf+aWXLb3acAu+kspSbS5ACWNvJUu9vjaDAP0KPIicCID3jjXqQ6BfxIafPM/1xS9jXEbmLVTof1LlTuQsAhC9C+w4oAuouDUEKK+qWbPqi8y7M0oZybCe87+BZJx8ivwT0Ko5La4nlznzFkpY0PlSUSWx4FbdFmNo4pKaWi9f+KZh4ZT8QWZdvf2cYM4A4vetFwSXdfvti7CEGOoJGlbi0DwLAQKdjLiZ700cBFFTykcRDeRfFqbHJypiCiIXk1+JVDboIIpJoTIf7F3Q6s6NJ0RrkxpJESvfTWV8+D3OQmT9z11dJ1d0XwPzHh0MlxfLToIBmVSfImlECQIKidKct1WVOv2/sjwxqyZvC9CkB2XZkVvkh5AT1HTNQxEfMydXAwUpiPcrzisiRaeiqe+qYttaja7Z20T6XMSOTJ7BN9Z0yygzXD4QZi+6ka3hVn4K6RpG/qkl4PBhShm/39FtZ26G813+5PntLmamjW82+RxDx2Gif8mOl+Ot4MZMSA0SzW4oWhOpXBbcT9ztIsccKca5oD3PJEoAzJKEw+nhZ8uJmymkP18brY3ZDeEeikq0NYDSGzaG0ujyPUfSsOd0nTUHdkxtS+lgpvsomA+G4adMDgLD6Cu2UPJZPbNUyUFHSAszVhAsTdksRApniitVU9j869x3Kjn7gJVtGUUwnfTTFs/Qofe9FdAKBIPm5Em7AUUtIDRuFtBgEyU0pSf/jWAELhn4+8t9hiBZwPtUumIf4UjySel/ZIqJP6/cQ7ZTiyKcRiDXAsA0/7uey79rkWArKtNcfjbCAgiporssGpMis5qAiWAMRRM3OXyxpEgccS8kmAXXYuDjkzE+Rye/4zVuUdgQ9WXlgpbWMtQ4dL+3treHrYxlJwSGN0C2AAjJ6NflV7jSmrf55ElryRyQHBTSIY/EQqzV46UKFQ6oY043rIN4fAnWEOI9Vkm9c8ZAN7lAAA=="
+          }
+        ]
+      },
+      {
+        "aspect": "portrait",
+        "ratio": 0.8,
+        "intrinsic": {
+          "width": 1200,
+          "height": 1500
+        },
+        "sources": [
+          {
+            "webp": "/images/raktsetu/hero-network-portrait-480.webp",
+            "jpeg": "/images/raktsetu/hero-network-portrait-480.jpg",
+            "width": 480,
+            "height": 600,
+            "lqip": "data:image/webp;base64,UklGRrAEAABXRUJQVlA4IKQEAADwJwCdASoUAOYEPu1orFApv6SjLPJMA/AdiWNujeNTgTeDIztkKq7hh38fPh6f/p/uQDe9YQ1btSKcm+I4QlS4cb9EdR/N30mZpskP7A/8h82oxip6EKKqUFChBpOD2VJKW0fYODHU0fckl1551FUPOCwun95LXkpo38bAbjov0iE1xmZY5HktcQsgLjUCxvle589TnxqhUXu4XXg81sLClK7cAAW38JoAAjtjkd2kZe2dMF76XJ2d/mY8ZoyCxDfBGh6S/epAniu++gF6UmnxcstMk73KxFuybZlBp3+g4m6Lk33lm3d4frvHgut/aor8+moZf570Uc7lisdEWmV1l642hb5jwnzPtvuaoB0ZFyA9iKOA5hnhIJ/vhKFnwDPMARTvnEhi8Hn3pgL1w8WGRGjlQXpEgJyOY/NNkU4EN2DcICcjnQgAAP7SfpHey/ztFcT3/Fmh9D3hLi6CGC4OwitfxgrsRitx6kWeJPImwdn2INz8424aPWTZevqXmL+xRn/TWsRojxLA6Ee6GHSk3IHN0USpI2Mi1XTYGyYTdG0XTi3O03fyz6ixWXpK5oAq2mBkn5vrOzGDkyj5pU/twFj0OLXmxse4K+RILvb6sZf3x5L7/I52IVIzh50yhhIDkbbuOtw1PKdiVDJYJtk6EvdG2rAdI5H0vrmDHjwcckdXvbQSEiktBlsQWGiFUagpC2SyNistOa9IdffgX8CHJbSJgqdcZNaUCsVJUBZnQqv/AyOSHd+xcjr5dWCGJ8Ok6eIfNK9C/ASuhxY7beH0f21umd27JXsFluizNUtphbzFYsvl/tmN5Hx9ullBZigkqnJiS3aKHA8yb6XTkfERjjhA0A49m2WmMsmKYv4U8a9MaO5QgDNfXIyHgH+PmQc4fgpAmtly7y2fS54oLHA+C4fIR536ieKxJ0j1orFovhTDDzNSpxziLDwPeDL+NnW6NUmKBnYCMYvSs24fDz8tcyp/9htT6R+PR16posV5QE5HxdwXCnI3dc/ggxsUPYQ++rohWfo70S02Vc08ThrqXfnwb8L+tD02vkn4jiP7wQ6PS5TOIRu4EOGxhG4/Vvf4IzYO6eB7MnzvdCWguPWN5Vm80cCsObOSu8/DvjbmA5HhfephynCh3NCK55Vn9s3bZUye3gySy8SoaaUuLev3dJfsyBRk+7F0QqgBvHkW0Ki2KfToiYuWw7/hKUHXigVJjkuDthrI2CdoZI4PfHlQGyCKq6sv7XHcu2Na6t2gCXqbOhTEBizCVGNO3uAcdRYtjMwv3Xb3G+4mEgJuq2w87TloBq9KDqSTcFTnibV6pKVscCi+1Ya8ry2E9QX1ABaC7FrcdfypabSRkJfRyWJrf2s/Go/SuQjNUv54Cq8w9wJ4CnLD1bgvxOEKuB+rYnOTVOjEk5EoKyl0QHnv2TJH5Ai8ls7uKHIhFf5ooUG3mLy8TZpNs7fvdz3WMZM59wxXosRLI+m7CR5YdzDXQZtZEyf0zLLmqFQnOdcu2eNEIqnaNn4QgUDYABw22u5ut0ZnukiR8A7BUpTOMZn5blGLnGkKEGVWnlB+ZKQAkorED3RcQAA="
+          },
+          {
+            "webp": "/images/raktsetu/hero-network-portrait-720.webp",
+            "jpeg": "/images/raktsetu/hero-network-portrait-720.jpg",
+            "width": 720,
+            "height": 900,
+            "lqip": "data:image/webp;base64,UklGRrAEAABXRUJQVlA4IKQEAADwJwCdASoUAOYEPu1orFApv6SjLPJMA/AdiWNujeNTgTeDIztkKq7hh38fPh6f/p/uQDe9YQ1btSKcm+I4QlS4cb9EdR/N30mZpskP7A/8h82oxip6EKKqUFChBpOD2VJKW0fYODHU0fckl1551FUPOCwun95LXkpo38bAbjov0iE1xmZY5HktcQsgLjUCxvle589TnxqhUXu4XXg81sLClK7cAAW38JoAAjtjkd2kZe2dMF76XJ2d/mY8ZoyCxDfBGh6S/epAniu++gF6UmnxcstMk73KxFuybZlBp3+g4m6Lk33lm3d4frvHgut/aor8+moZf570Uc7lisdEWmV1l642hb5jwnzPtvuaoB0ZFyA9iKOA5hnhIJ/vhKFnwDPMARTvnEhi8Hn3pgL1w8WGRGjlQXpEgJyOY/NNkU4EN2DcICcjnQgAAP7SfpHey/ztFcT3/Fmh9D3hLi6CGC4OwitfxgrsRitx6kWeJPImwdn2INz8424aPWTZevqXmL+xRn/TWsRojxLA6Ee6GHSk3IHN0USpI2Mi1XTYGyYTdG0XTi3O03fyz6ixWXpK5oAq2mBkn5vrOzGDkyj5pU/twFj0OLXmxse4K+RILvb6sZf3x5L7/I52IVIzh50yhhIDkbbuOtw1PKdiVDJYJtk6EvdG2rAdI5H0vrmDHjwcckdXvbQSEiktBlsQWGiFUagpC2SyNistOa9IdffgX8CHJbSJgqdcZNaUCsVJUBZnQqv/AyOSHd+xcjr5dWCGJ8Ok6eIfNK9C/ASuhxY7beH0f21umd27JXsFluizNUtphbzFYsvl/tmN5Hx9ullBZigkqnJiS3aKHA8yb6XTkfERjjhA0A49m2WmMsmKYv4U8a9MaO5QgDNfXIyHgH+PmQc4fgpAmtly7y2fS54oLHA+C4fIR536ieKxJ0j1orFovhTDDzNSpxziLDwPeDL+NnW6NUmKBnYCMYvSs24fDz8tcyp/9htT6R+PR16posV5QE5HxdwXCnI3dc/ggxsUPYQ++rohWfo70S02Vc08ThrqXfnwb8L+tD02vkn4jiP7wQ6PS5TOIRu4EOGxhG4/Vvf4IzYO6eB7MnzvdCWguPWN5Vm80cCsObOSu8/DvjbmA5HhfephynCh3NCK55Vn9s3bZUye3gySy8SoaaUuLev3dJfsyBRk+7F0QqgBvHkW0Ki2KfToiYuWw7/hKUHXigVJjkuDthrI2CdoZI4PfHlQGyCKq6sv7XHcu2Na6t2gCXqbOhTEBizCVGNO3uAcdRYtjMwv3Xb3G+4mEgJuq2w87TloBq9KDqSTcFTnibV6pKVscCi+1Ya8ry2E9QX1ABaC7FrcdfypabSRkJfRyWJrf2s/Go/SuQjNUv54Cq8w9wJ4CnLD1bgvxOEKuB+rYnOTVOjEk5EoKyl0QHnv2TJH5Ai8ls7uKHIhFf5ooUG3mLy8TZpNs7fvdz3WMZM59wxXosRLI+m7CR5YdzDXQZtZEyf0zLLmqFQnOdcu2eNEIqnaNn4QgUDYABw22u5ut0ZnukiR8A7BUpTOMZn5blGLnGkKEGVWnlB+ZKQAkorED3RcQAA="
+          },
+          {
+            "webp": "/images/raktsetu/hero-network-portrait-960.webp",
+            "jpeg": "/images/raktsetu/hero-network-portrait-960.jpg",
+            "width": 960,
+            "height": 1200,
+            "lqip": "data:image/webp;base64,UklGRrAEAABXRUJQVlA4IKQEAADwJwCdASoUAOYEPu1orFApv6SjLPJMA/AdiWNujeNTgTeDIztkKq7hh38fPh6f/p/uQDe9YQ1btSKcm+I4QlS4cb9EdR/N30mZpskP7A/8h82oxip6EKKqUFChBpOD2VJKW0fYODHU0fckl1551FUPOCwun95LXkpo38bAbjov0iE1xmZY5HktcQsgLjUCxvle589TnxqhUXu4XXg81sLClK7cAAW38JoAAjtjkd2kZe2dMF76XJ2d/mY8ZoyCxDfBGh6S/epAniu++gF6UmnxcstMk73KxFuybZlBp3+g4m6Lk33lm3d4frvHgut/aor8+moZf570Uc7lisdEWmV1l642hb5jwnzPtvuaoB0ZFyA9iKOA5hnhIJ/vhKFnwDPMARTvnEhi8Hn3pgL1w8WGRGjlQXpEgJyOY/NNkU4EN2DcICcjnQgAAP7SfpHey/ztFcT3/Fmh9D3hLi6CGC4OwitfxgrsRitx6kWeJPImwdn2INz8424aPWTZevqXmL+xRn/TWsRojxLA6Ee6GHSk3IHN0USpI2Mi1XTYGyYTdG0XTi3O03fyz6ixWXpK5oAq2mBkn5vrOzGDkyj5pU/twFj0OLXmxse4K+RILvb6sZf3x5L7/I52IVIzh50yhhIDkbbuOtw1PKdiVDJYJtk6EvdG2rAdI5H0vrmDHjwcckdXvbQSEiktBlsQWGiFUagpC2SyNistOa9IdffgX8CHJbSJgqdcZNaUCsVJUBZnQqv/AyOSHd+xcjr5dWCGJ8Ok6eIfNK9C/ASuhxY7beH0f21umd27JXsFluizNUtphbzFYsvl/tmN5Hx9ullBZigkqnJiS3aKHA8yb6XTkfERjjhA0A49m2WmMsmKYv4U8a9MaO5QgDNfXIyHgH+PmQc4fgpAmtly7y2fS54oLHA+C4fIR536ieKxJ0j1orFovhTDDzNSpxziLDwPeDL+NnW6NUmKBnYCMYvSs24fDz8tcyp/9htT6R+PR16posV5QE5HxdwXCnI3dc/ggxsUPYQ++rohWfo70S02Vc08ThrqXfnwb8L+tD02vkn4jiP7wQ6PS5TOIRu4EOGxhG4/Vvf4IzYO6eB7MnzvdCWguPWN5Vm80cCsObOSu8/DvjbmA5HhfephynCh3NCK55Vn9s3bZUye3gySy8SoaaUuLev3dJfsyBRk+7F0QqgBvHkW0Ki2KfToiYuWw7/hKUHXigVJjkuDthrI2CdoZI4PfHlQGyCKq6sv7XHcu2Na6t2gCXqbOhTEBizCVGNO3uAcdRYtjMwv3Xb3G+4mEgJuq2w87TloBq9KDqSTcFTnibV6pKVscCi+1Ya8ry2E9QX1ABaC7FrcdfypabSRkJfRyWJrf2s/Go/SuQjNUv54Cq8w9wJ4CnLD1bgvxOEKuB+rYnOTVOjEk5EoKyl0QHnv2TJH5Ai8ls7uKHIhFf5ooUG3mLy8TZpNs7fvdz3WMZM59wxXosRLI+m7CR5YdzDXQZtZEyf0zLLmqFQnOdcu2eNEIqnaNn4QgUDYABw22u5ut0ZnukiR8A7BUpTOMZn5blGLnGkKEGVWnlB+ZKQAkorED3RcQAA="
+          },
+          {
+            "webp": "/images/raktsetu/hero-network-portrait-1200.webp",
+            "jpeg": "/images/raktsetu/hero-network-portrait-1200.jpg",
+            "width": 1200,
+            "height": 1500,
+            "lqip": "data:image/webp;base64,UklGRrAEAABXRUJQVlA4IKQEAADwJwCdASoUAOYEPu1orFApv6SjLPJMA/AdiWNujeNTgTeDIztkKq7hh38fPh6f/p/uQDe9YQ1btSKcm+I4QlS4cb9EdR/N30mZpskP7A/8h82oxip6EKKqUFChBpOD2VJKW0fYODHU0fckl1551FUPOCwun95LXkpo38bAbjov0iE1xmZY5HktcQsgLjUCxvle589TnxqhUXu4XXg81sLClK7cAAW38JoAAjtjkd2kZe2dMF76XJ2d/mY8ZoyCxDfBGh6S/epAniu++gF6UmnxcstMk73KxFuybZlBp3+g4m6Lk33lm3d4frvHgut/aor8+moZf570Uc7lisdEWmV1l642hb5jwnzPtvuaoB0ZFyA9iKOA5hnhIJ/vhKFnwDPMARTvnEhi8Hn3pgL1w8WGRGjlQXpEgJyOY/NNkU4EN2DcICcjnQgAAP7SfpHey/ztFcT3/Fmh9D3hLi6CGC4OwitfxgrsRitx6kWeJPImwdn2INz8424aPWTZevqXmL+xRn/TWsRojxLA6Ee6GHSk3IHN0USpI2Mi1XTYGyYTdG0XTi3O03fyz6ixWXpK5oAq2mBkn5vrOzGDkyj5pU/twFj0OLXmxse4K+RILvb6sZf3x5L7/I52IVIzh50yhhIDkbbuOtw1PKdiVDJYJtk6EvdG2rAdI5H0vrmDHjwcckdXvbQSEiktBlsQWGiFUagpC2SyNistOa9IdffgX8CHJbSJgqdcZNaUCsVJUBZnQqv/AyOSHd+xcjr5dWCGJ8Ok6eIfNK9C/ASuhxY7beH0f21umd27JXsFluizNUtphbzFYsvl/tmN5Hx9ullBZigkqnJiS3aKHA8yb6XTkfERjjhA0A49m2WmMsmKYv4U8a9MaO5QgDNfXIyHgH+PmQc4fgpAmtly7y2fS54oLHA+C4fIR536ieKxJ0j1orFovhTDDzNSpxziLDwPeDL+NnW6NUmKBnYCMYvSs24fDz8tcyp/9htT6R+PR16posV5QE5HxdwXCnI3dc/ggxsUPYQ++rohWfo70S02Vc08ThrqXfnwb8L+tD02vkn4jiP7wQ6PS5TOIRu4EOGxhG4/Vvf4IzYO6eB7MnzvdCWguPWN5Vm80cCsObOSu8/DvjbmA5HhfephynCh3NCK55Vn9s3bZUye3gySy8SoaaUuLev3dJfsyBRk+7F0QqgBvHkW0Ki2KfToiYuWw7/hKUHXigVJjkuDthrI2CdoZI4PfHlQGyCKq6sv7XHcu2Na6t2gCXqbOhTEBizCVGNO3uAcdRYtjMwv3Xb3G+4mEgJuq2w87TloBq9KDqSTcFTnibV6pKVscCi+1Ya8ry2E9QX1ABaC7FrcdfypabSRkJfRyWJrf2s/Go/SuQjNUv54Cq8w9wJ4CnLD1bgvxOEKuB+rYnOTVOjEk5EoKyl0QHnv2TJH5Ai8ls7uKHIhFf5ooUG3mLy8TZpNs7fvdz3WMZM59wxXosRLI+m7CR5YdzDXQZtZEyf0zLLmqFQnOdcu2eNEIqnaNn4QgUDYABw22u5ut0ZnukiR8A7BUpTOMZn5blGLnGkKEGVWnlB+ZKQAkorED3RcQAA="
+          }
+        ]
+      }
+    ]
   }
 }

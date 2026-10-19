@@ -80,6 +80,18 @@ const PHOTOS = [
         ],
     },
     {
+        // The glowing drop sits just right of centre, mid-frame.
+        id: "hero-network",
+        file: "hero-network-original.png",
+        alt: "A glowing red blood drop streaking between a laptop, connected screens and a server at dusk",
+        focus: { x: 0.58, y: 0.5 },
+        poster: { width: 1200 },
+        variants: [
+            { name: "square", ratio: 1 },
+            { name: "portrait", ratio: 4 / 5 },
+        ],
+    },
+    {
         id: "blood-bag",
         file: "blood-bag-original.jpeg",
         alt: "A labelled B+ whole blood bag hanging in a hospital ward beside a patient bed",
@@ -132,14 +144,6 @@ function loadManifest(path: string): ManifestEntries {
     } catch {
         return {};
     }
-}
-
-interface ManifestVariant {
-    aspect: string;
-    ratio: number;
-    /** The LARGEST step, for a `width`/`height` box that never upscales. */
-    intrinsic: { width: number; height: number };
-    sources: Generated[];
 }
 
 /**
@@ -210,7 +214,7 @@ async function build() {
         );
         process.exit(1);
     }
-    const skippedIds = new Set(missingSources.map((photo) => photo.id));
+    const skippedIds: Set<string> = new Set(missingSources.map((photo) => photo.id));
     for (const photo of missingSources) {
         console.warn(
             `  ! skipping "${photo.id}" — source "assets/raktsetu-source/${photo.file}" not found; ` +
@@ -353,10 +357,8 @@ async function build() {
 
     // Merge back skipped photos' prior entries (and shield their files from
     // pruning), so adding one new source never wipes an already-built photo.
-    for (const [id, entry] of Object.entries(priorManifest) as [string, ManifestEntry][]) {
-        if (skippedIds.has(id) && !(manifest as Record<string, ManifestEntry>)[id]) {
-            (manifest as Record<string, ManifestEntry>)[id] = entry;
-        }
+    for (const [id, entry] of Object.entries(priorManifest)) {
+        if (skippedIds.has(id) && !manifest[id]) manifest[id] = entry;
     }
     for (const entry of Object.values(manifest)) {
         if (!entry) continue;

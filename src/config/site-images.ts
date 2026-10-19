@@ -41,10 +41,10 @@ export interface ImageSlot {
  */
 export const SITE_IMAGES: Record<string, ImageSlot> = {
   hero: {
-    photo: "hero-donor",
-    alt: "A blood donor's arm connected to a donation line, their hand holding a red heart marked with a blood drop",
+    photo: "hero-network",
+    alt: "A glowing red blood drop streaking between a laptop, connected screens and a server at dusk",
     mask: "blob",
-    focalPosition: "46% 62%",
+    focalPosition: "58% 50%",
     placeholder: "Add hero image",
   },
   requestBlood: {
