@@ -16,8 +16,6 @@ const PROTECTED_PREFIXES = [
   "/request-blood",
 ];
 
-const AUTH_PAGES = ["/login", "/register", "/signup", "/signin", "/create-account"];
-
 /**
  * Route guard.
  *
@@ -49,13 +47,6 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = `next=${encodeURIComponent(`${pathname}${search}`)}`;
-    return NextResponse.redirect(url);
-  }
-
-  if (AUTH_PAGES.includes(pathname) && signedIn) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    url.search = "";
     return NextResponse.redirect(url);
   }
 

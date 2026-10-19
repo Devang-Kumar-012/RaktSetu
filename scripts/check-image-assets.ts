@@ -130,7 +130,7 @@ function main(): void {
       if (!entry.variants.some((v) => v.aspect === aspect)) {
         fail(
           `slot "${name}": photo "${slot.photo}" has no "${aspect}" crop ` +
-            `(needed by mask "${slot.mask}")`
+          `(needed by mask "${slot.mask}")`
         );
       }
     }
@@ -139,7 +139,7 @@ function main(): void {
   if (awaitingPipeline.size > 0) {
     console.log(
       `  … awaiting build:assets for ${[...awaitingPipeline].join(", ")} — ` +
-        "their slots render masked placeholders (expected until the source photographs are supplied)"
+      "their slots render masked placeholders (expected until the source photographs are supplied)"
     );
   }
 
@@ -153,7 +153,7 @@ function finish(generated: number): void {
   }
   console.log(
     `\nOK — ${generated}/${PHOTO_IDS.length} photos generated, ` +
-      `${filesVerified} referenced files verified present.`
+    `${filesVerified} referenced files verified present.`
   );
 }
 

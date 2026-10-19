@@ -11,13 +11,9 @@
  * no payload the browser supplies can decide WHO is being read, because the
  * server ANDs in the session's own user regardless.
  *
- * `auth` and `channel` still resolve to the local adapter, exactly as before:
- * the session lives in a cookie both sides already share, and realtime is a
- * no-op that merely triggers refreshes. Nothing here needs an API key, a
- * backend URL or any configuration — a deployment with no configuration still
- * works.
+ * Nothing is stored in the browser: no localStorage, no IndexedDB. The only
+ * client-side state is the HTTP-only session cookie the server sets.
  */
-import { createLocalClient, type LocalClient, type LocalChannel } from "@/lib/local/adapter";
 import { dashboardRpc, DashboardTableQuery } from "@/lib/supabase/browser-query";
 import type { DashboardQueryResult } from "@/lib/dashboard-query";
 
@@ -25,21 +21,11 @@ import type { DashboardQueryResult } from "@/lib/dashboard-query";
 export interface BrowserDataClient {
   from(table: string): DashboardTableQuery;
   rpc(name: string, args?: Record<string, unknown>): Promise<DashboardQueryResult>;
-  /** Session and credential handling — still the local adapter's own. */
-  auth: LocalClient["auth"];
-  /** Realtime shim; a no-op that keeps the refresh call chain valid. */
-  channel(name: string): LocalChannel;
-  removeChannel(channel: LocalChannel): Promise<void>;
 }
 
 export function createSupabaseBrowserClient(): BrowserDataClient {
-  const legacy = createLocalClient();
   return {
     from: (table: string) => new DashboardTableQuery(table),
     rpc: (name: string, args: Record<string, unknown> = {}) => dashboardRpc(name, args),
-    auth: legacy.auth,
-    channel: (name: string) => legacy.channel(name),
-    removeChannel: (channel: LocalChannel) => legacy.removeChannel(channel),
   };
 }
-

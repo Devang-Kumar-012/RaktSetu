@@ -80,12 +80,12 @@ const PHOTOS = [
         ],
     },
     {
-        // The glowing drop sits just right of centre, mid-frame.
-        id: "hero-network",
-        file: "hero-network-original.png",
-        alt: "A glowing red blood drop streaking between a laptop, connected screens and a server at dusk",
-        focus: { x: 0.58, y: 0.5 },
-        poster: { width: 1200 },
+        // Paramedics rushing a stretcher under a blood bag; text panel cropped off the original.
+        id: "hero-emergency",
+        file: "hero-emergency-original.png",
+        alt: "Paramedics rush a patient on a stretcher into an emergency entrance, a blood bag hanging from the drip stand",
+        focus: { x: 0.45, y: 0.5 },
+        poster: { width: 1110 },
         variants: [
             { name: "square", ratio: 1 },
             { name: "portrait", ratio: 4 / 5 },
@@ -218,7 +218,7 @@ async function build() {
     for (const photo of missingSources) {
         console.warn(
             `  ! skipping "${photo.id}" — source "assets/raktsetu-source/${photo.file}" not found; ` +
-                `its slots keep their placeholders. Add the file and re-run \`npm run build:assets\`.`
+            `its slots keep their placeholders. Add the file and re-run \`npm run build:assets\`.`
         );
     }
     // Preserve previously generated entries for skipped photos, so adding one

@@ -200,13 +200,22 @@ export function registrationFailure(
   return { code, message: COPY[code], errorId };
 }
 
+/** Failures the visitor can fix themselves: a support ID would only alarm them. */
+const USER_CAUSED = new Set<RegistrationErrorCode>([
+  "INVALID_EMAIL",
+  "INVALID_PASSWORD",
+  "INVALID_NAME",
+  "VALIDATION_ERROR",
+  "DUPLICATE_ACCOUNT",
+]);
+
 /**
  * The exact sentence the user should see, with the traceable ID appended when
  * there is one. A visitor who mistyped their password gets a clean sentence; a
  * platform fault additionally gets an ID they can quote to support.
  */
 export function describeRegistrationFailure(failure: RegistrationFailure): string {
-  return failure.errorId
+  return failure.errorId && !USER_CAUSED.has(failure.code)
     ? `${failure.message} Error ID: ${failure.errorId}`
     : failure.message;
 }

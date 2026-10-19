@@ -1,5 +1,5 @@
 /**
- * RaktSetu rule checks — run with: sh scripts/check-rules.sh
+ * RaktSetu rule checks — run with: npm run check:rules
  *
  * Verifies the application-level rules that matching depends on:
  *   1. geo      — distance math, ~1 km coordinate rounding, invalid input

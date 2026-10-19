@@ -33,7 +33,7 @@
  * upgrading mid-transaction. An optimistic best-effort transaction would let two
  * concurrent acceptances each believe they won.
  */
-import { mkdirSync, closeSync, openSync, unlinkSync } from "node:fs";
+import { mkdirSync, closeSync, openSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Values a driver will bind. Both backends accept this set. */
@@ -148,21 +148,80 @@ function loadSqlite(): SqliteCtor {
 
 let localDriver: Driver | null = null;
 
+export const LOCAL_CSV_DIR = join(DATA_DIR, "csv");
+/** Secrets never copied into the readable CSV mirror. */
+const REDACTED_COLUMNS = new Set(["password_hash", "token_hash"]);
+
+/** One CSV field, quoted per RFC 4180 when it contains a comma, quote or newline. */
+function csvField(v: unknown): string {
+  let s = v == null ? "" : String(v);
+  // User-typed text starting with = + - @ would run as a spreadsheet formula.
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+/**
+ * Write every table to `data/csv/<table>.csv` so the data can be read in a spreadsheet.
+ * One-way: SQLite stays the source of truth, edits to the CSVs are not read back.
+ * Temp file + rename, so a crash mid-write never leaves a half-written file.
+ * shortcut: rewrites every table on each write, fine for a dev-sized database;
+ * drop it if local writes ever get slow.
+ */
+export function writeCsvMirror(conn: Pick<SqliteConn, "prepare">, dir = LOCAL_CSV_DIR): void {
+  mkdirSync(dir, { recursive: true });
+  const tables = conn
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all() as Array<{ name: string }>;
+  for (const { name } of tables) {
+    // Column names from the schema, so an empty table still gets its header row.
+    const cols = (conn.prepare(`PRAGMA table_info("${name}")`).all() as Array<{ name: string }>).map((c) => c.name);
+    const rows = conn.prepare(`SELECT * FROM "${name}"`).all() as Record<string, unknown>[];
+    const lines = [cols.map(csvField).join(",")];
+    for (const row of rows) {
+      lines.push(cols.map((c) => csvField(REDACTED_COLUMNS.has(c) ? "[redacted]" : row[c])).join(","));
+    }
+    const file = join(dir, `${name}.csv`);
+    writeFileSync(`${file}.tmp`, lines.join("\r\n") + "\r\n");
+    renameSync(`${file}.tmp`, file);
+  }
+}
+
 function makeLocalDriver(conn: SqliteConn, inTx = false): Driver {
+  let txOpen = false;
+  let mirroredChanges = -1;
+  // Mirror only committed state: never mid-transaction, and only when something changed.
+  const mirror = () => {
+    if (txOpen) return;
+    const { n } = conn.prepare("SELECT total_changes() AS n").get() as { n: number };
+    if (n === mirroredChanges) return;
+    try {
+      writeCsvMirror(conn);
+      mirroredChanges = n;
+    } catch (err) {
+      // The mirror is a view; failing to write it must never fail the real save.
+      console.error("[raktsetu] CSV mirror write failed:", (err as Error).message);
+    }
+  };
   const d: Driver = {
     kind: "sqlite",
     async query<T>(sql: string, params: SqlParam[] = []) {
-      return conn.prepare(sql).all(...params) as T[];
+      const rows = conn.prepare(sql).all(...params) as T[];
+      mirror(); // a query can write too (INSERT … RETURNING)
+      return rows;
     },
     async queryOne<T>(sql: string, params: SqlParam[] = []) {
-      return conn.prepare(sql).get(...params) as T | undefined;
+      const row = conn.prepare(sql).get(...params) as T | undefined;
+      mirror();
+      return row;
     },
     async run(sql: string, params: SqlParam[] = []) {
       const info = conn.prepare(sql).run(...params);
+      mirror();
       return { changes: Number(info.changes), lastInsertRowid: info.lastInsertRowid };
     },
     async exec(sql: string) {
       conn.exec(sql);
+      mirror();
     },
     /**
      * IMMEDIATE takes the write lock up front, so two concurrent acceptances
@@ -172,11 +231,15 @@ function makeLocalDriver(conn: SqliteConn, inTx = false): Driver {
     async transaction<T>(fn: (t: Tx) => Promise<T>): Promise<T> {
       if (inTx) return fn(d); // already inside one: join it, never nest
       conn.exec("BEGIN IMMEDIATE");
+      txOpen = true;
       try {
         const out = await fn(d);
         conn.exec("COMMIT");
+        txOpen = false;
+        mirror();
         return out;
       } catch (err) {
+        txOpen = false;
         try {
           conn.exec("ROLLBACK");
         } catch {

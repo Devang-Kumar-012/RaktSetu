@@ -2457,11 +2457,9 @@ for (const [label, file] of LIVE_SURFACES) {
   check(`20. live channel mounted: ${label}`, mounted, true);
 }
 check(
-  "20. realtime is ONE shared mechanism, and purely informational",
-  // A single channel and a single notifications subscription: no parallel
-  // per-role real-time systems.
-  liveRefreshSrc.includes(".channel(") &&
-  liveRefreshSrc.includes('table: "notifications"') &&
+  "20. live refresh is ONE shared mechanism, and purely informational",
+  // Focus/visibility refresh only: the old realtime channel was a no-op shim.
+  liveRefreshSrc.includes('addEventListener("focus"') &&
   // The handler only re-renders server data; it never mutates and never
   // decides an outcome, so it cannot be mistaken for authorization.
   liveRefreshSrc.includes("router.refresh()") &&
@@ -2590,18 +2588,13 @@ check(
   true
 );
 check(
-  "20. the local data layer is the single source of truth",
-  // Both client entry points must resolve to the local adapter, or some pages
-  // would still be waiting on a backend that no longer exists.
-  readFileSync(join(ROOT, "src/lib/supabase/client.ts"), "utf8").includes(
-    "createLocalClient"
-  ) &&
-  readFileSync(join(ROOT, "src/lib/supabase/server.ts"), "utf8").includes(
-    "createLocalClient"
-  ) &&
-  existsSync(join(ROOT, "src/lib/local/store.ts")) &&
-  existsSync(join(ROOT, "src/lib/local/engine.ts")) &&
-  existsSync(join(ROOT, "src/lib/local/adapter.ts")),
+  "20. no data is stored in the browser — the old localStorage store is gone",
+  !stripJsComments(readFileSync(join(ROOT, "src/lib/supabase/client.ts"), "utf8")).includes("createLocalClient") &&
+  !stripJsComments(readFileSync(join(ROOT, "src/lib/supabase/server.ts"), "utf8")).includes("createLocalClient") &&
+  !existsSync(join(ROOT, "src/lib/local")) &&
+  walk(join(ROOT, "src"))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .every((f) => !/\b(localStorage|sessionStorage|indexedDB)\b/.test(stripJsComments(readFileSync(f, "utf8")))),
   true
 );
 check(
@@ -2762,7 +2755,8 @@ check(
 // There is no server and no cron: ring progression is RECOMPUTED from stored
 // timestamps every time it is read, so it is correct whether or not anything is
 // running, and it cannot leak a privileged endpoint onto the internet.
-const localEngine = readFileSync(join(ROOT, "src/lib/local/engine.ts"), "utf8");
+const localEngine = readFileSync(join(ROOT, "src/lib/server/sql-requests.ts"), "utf8");
+const constantsSrc = readFileSync(join(ROOT, "src/lib/constants.ts"), "utf8");
 const rootLayout2 = readFileSync(join(ROOT, "src/app/layout.tsx"), "utf8");
 
 check(
@@ -2816,7 +2810,7 @@ check(
   // created_at / required_by, so a closed tab cannot freeze the search and a
   // late visit catches up rather than replaying.
   localEngine.includes("Date.now()") &&
-  localEngine.includes("RING_WINDOW_MINUTES") &&
+  localEngine.includes("windowMinutes") &&
   /required_by/.test(localEngine) &&
   // no scheduling primitive anywhere in the engine
   !/setInterval|setTimeout|cron/i.test(localEngine),
@@ -2824,8 +2818,8 @@ check(
 );
 check(
   "22. the rings remain 3 km -> 7 km -> 15 km with a 10-minute window",
-  localEngine.includes("RING_KM = [3, 7, 15]") &&
-  localEngine.includes("RING_WINDOW_MINUTES = 10"),
+  /ALERT_RINGS_KM\b[^=]*=\s*\[3, 7, 15\]/.test(constantsSrc) &&
+  localEngine.includes("num(row?.alert_window_minutes, 10)"),
   true
 );
 check(
@@ -2843,8 +2837,8 @@ check(
   "22. the engine still stops every future ring once a request is closed",
   // Closing a request must retire its open alerts, or a donor would keep seeing
   // an actionable card for a request nobody can act on.
-  localEngine.includes("closeProcessForRequest") &&
-  /status = "expired"/.test(localEngine) &&
+  localEngine.includes("closeProcess(") &&
+  /SET status = 'expired'/.test(localEngine) &&
   /request_closed/.test(localEngine),
   true
 );

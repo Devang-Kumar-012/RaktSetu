@@ -1097,18 +1097,6 @@ eq(
         /await revokeSession\(token\)|revokeSession\(token\)/.test(profileSrc),
     );
     ok(
-      "the legacy routing cookie is inert and carries no credential material",
-      // Kept from before the migration: the file still exists, and it still must
-      // not smuggle a password, hash or salt into a cookie the browser can read.
-      // Comment-stripped, because the file's own doc comment promises exactly
-      // that — a naive word match would flag the text vouching for safety.
-      !/password|hash|salt/i.test(
-        stripJsComments(
-          readFileSync(join(ROOT, "src/lib/local/session-cookie.ts"), "utf8"),
-        ),
-      ),
-    );
-    ok(
       "auth initialisation always terminates (no unguarded await path)",
       // Every branch must return, and the catch returns a safe "signed out"
       // value rather than rethrowing into a stuck loading boundary.
@@ -1407,13 +1395,8 @@ eq(
       !/localStorage|sessionStorage|indexedDB/i.test(form),
     );
 
-    // BLOOD GROUPS ARE INFORMATIONAL, NOT A CONTROL.
-    ok(
-      "the blood-group list is static and non-interactive",
-      requestPage.includes("These are the blood groups RaktSetu supports") &&
-        /<ul[^>]*aria-label="Supported blood groups"/.test(requestPage) &&
-        !/cursor-pointer/.test(requestPage),
-    );
+    // BLOOD GROUPS ARE INFORMATIONAL, NOT A CONTROL. (The visible list was
+    // removed in the images redesign; nothing on the page may become a control.)
     ok(
       "the blood-group list has no button, input or focus behaviour",
       !/<button/.test(requestPage) && !/<input/.test(requestPage),

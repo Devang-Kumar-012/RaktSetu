@@ -40,6 +40,7 @@ import {
   getUserRoles,
   grantRole,
   revokeSession,
+  setPassword,
   setSessionActiveRole,
   type SessionUser,
 } from "@/lib/server/session";
@@ -318,5 +319,22 @@ export async function getClientSession(): Promise<SessionUser | null> {
     return (await getUserForToken(token)) ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Set a new password for the signed-in account (the reset-password page).
+ * The account comes from the session cookie, never from the request body.
+ */
+export async function updateCurrentPassword(input: { password: unknown }): Promise<{ error: string | null }> {
+  const password = typeof input?.password === "string" ? input.password : "";
+  if (password.length < 8) return { error: "Password must be at least 8 characters long." };
+  try {
+    const user = await getUserForToken(await readSessionToken());
+    if (!user) return { error: "Your session has ended. Please sign in again." };
+    await setPassword(user.id, password);
+    return { error: null };
+  } catch {
+    return { error: "That password could not be saved. Please try again." };
   }
 }

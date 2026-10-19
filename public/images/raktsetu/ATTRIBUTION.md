@@ -19,12 +19,12 @@ every crop, LQIP and this file stay in sync. Un-cropped originals live in
 - **Variants:** square (480/720/1080px); portrait (480/720/960/1200px); wide (720/1080px)
 - **Poster:** `/images/raktsetu/hero-donor-poster-1200.jpg` (1200x1200)
 
-### `hero-network`
+### `hero-emergency`
 
-- **Original:** `assets/raktsetu-source/hero-network-original.png` (1254x1254 JPEG)
-- **Alt text:** A glowing red blood drop streaking between a laptop, connected screens and a server at dusk
-- **Variants:** square (480/720/1080px); portrait (480/720/960/1200px)
-- **Poster:** `/images/raktsetu/hero-network-poster-1200.jpg` (1200x1200)
+- **Original:** `assets/raktsetu-source/hero-emergency-original.png` (1110x900 JPEG)
+- **Alt text:** Paramedics rush a patient on a stretcher into an emergency entrance, a blood bag hanging from the drip stand
+- **Variants:** square (480/720/1080px); portrait (480/720/960px)
+- **Poster:** `/images/raktsetu/hero-emergency-poster-1110.jpg` (1110x900)
 
 ## Licence
 

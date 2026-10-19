@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { getSessionInfo } from "@/lib/profile";
 
 export const metadata: Metadata = { title: "Create account" };
 
@@ -18,6 +20,9 @@ export default async function RegisterPage({
   searchParams: Promise<{ role?: string }>;
 }) {
   const { role } = await searchParams;
+  // Checked here, not in middleware: only the server can tell a valid session
+  // from a stale cookie, and guessing from the cookie alone caused a redirect loop.
+  if ((await getSessionInfo()).user) redirect("/dashboard");
 
   return (
     <AuthShell

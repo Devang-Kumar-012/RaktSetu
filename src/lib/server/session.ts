@@ -171,6 +171,16 @@ export async function createUser(input: {
   };
 }
 
+/** Replace an account's password. The caller has already proven who they are. */
+export async function setPassword(userId: string, password: string): Promise<void> {
+  const { hash } = hashPassword(password);
+  await (await getDriver()).run("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", [
+    hash,
+    new Date().toISOString(),
+    userId,
+  ]);
+}
+
 /** Verify credentials. Returns the user, or null. Never reveals which part failed. */
 export async function authenticate(
   email: string,

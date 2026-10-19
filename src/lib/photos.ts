@@ -62,7 +62,7 @@ export interface PhotoManifestEntry {
  * slot's placeholder, never a broken image. Add an id here when the pipeline
  * learns to emit a new photograph.
  */
-export const PHOTO_IDS = ["hero-donor", "hero-network", "blood-bag"] as const;
+export const PHOTO_IDS = ["hero-donor", "hero-emergency", "blood-bag"] as const;
 export type PhotoId = (typeof PHOTO_IDS)[number];
 
 /* --------------------------- runtime validation --------------------------- */
@@ -163,7 +163,7 @@ export function getPhoto(id: PhotoId): PhotoManifestEntry {
   if (!entry) {
     throw new Error(
       `Photo "${id}" has not been generated. Add the originals to ` +
-        `assets/raktsetu-source/ and run \`npm run build:assets\`.`
+      `assets/raktsetu-source/ and run \`npm run build:assets\`.`
     );
   }
   return entry;
@@ -229,7 +229,7 @@ export function getVariant(id: PhotoId, aspect: string): PhotoVariant {
     const available = getPhoto(id).variants.map((v) => v.aspect).join(", ");
     throw new Error(
       `Photo "${id}" has no "${aspect}" crop. Available: ${available}. ` +
-        `Re-run \`npm run build:assets\`.`
+      `Re-run \`npm run build:assets\`.`
     );
   }
   return variant;

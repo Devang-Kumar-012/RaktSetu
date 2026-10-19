@@ -7,7 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { updateCurrentPassword } from "@/lib/actions/auth";
 
 /** Sets a new password after the reset link (user has a recovery session). */
 export function ResetPasswordForm() {
@@ -33,11 +33,10 @@ export function ResetPasswordForm() {
 
     setLoading(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error: updateError } = await supabase.auth.updateUser({ password });
+      const { error: updateError } = await updateCurrentPassword({ password });
 
       if (updateError) {
-        setError(friendlyAuthError(updateError));
+        setError(updateError);
         setLoading(false);
         return;
       }

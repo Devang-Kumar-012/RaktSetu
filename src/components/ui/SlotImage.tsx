@@ -87,6 +87,7 @@ export function SlotImage({
       <EditorialImage
         photo={photoId}
         alt={config.alt}
+        className="h-full w-full"
         artDirection={artDirection}
         sizes={sizes}
         objectPosition={position}

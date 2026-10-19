@@ -5,8 +5,8 @@
  * actions, pages, route handlers — works untouched. See the block below for
  * what it returns now and why.
  */
-import { createLocalClient } from "@/lib/local/adapter";
 import { createSqlClient } from "@/lib/server/sql-adapter";
+import { runServerOpsRpc } from "@/lib/server/sql-ops";
 import {
   closeRequestAsRequester,
   expandAlertRings,
@@ -143,13 +143,9 @@ async function requestWorkflowRpc(
  * `requestWorkflowRpc` runs them against SQLite and takes the caller from the
  * session cookie, never from the arguments.
  *
- * `auth` AND THE NON-REQUEST `rpc` FUNCTIONS ARE STILL DELEGATED —
- * DELIBERATELY
- *
- * `auth` keeps its existing implementation so suspension still revokes the
- * session cookie, and any `rpc` outside the request workflow (volunteer, admin,
- * drive reminders) behaves exactly as it did before. Porting those is a separate,
- * later step; this change is scoped to the request path.
+ * EVERY OTHER `rpc` (volunteer, verification, admin, drive stats) runs
+ * against SQL too, in `@/lib/server/sql-ops`. Nothing on the server touches
+ * the old browser (localStorage) store any more.
  *
  * SERVER-ONLY BY CONSTRUCTION
  *
@@ -159,7 +155,6 @@ async function requestWorkflowRpc(
  */
 export async function createSupabaseServerClient() {
   const sql = createSqlClient();
-  const legacy = createLocalClient();
 
   return {
     /** Table reads and writes — now backed by SQLite. */
@@ -171,10 +166,11 @@ export async function createSupabaseServerClient() {
     rpc: async (name: string, args: Record<string, unknown> = {}) => {
       const migrated = await requestWorkflowRpc(name, args);
       if (migrated) return migrated;
-      return legacy.rpc(name, args);
+      const { user } = await getSessionInfo();
+      if (!user) return { data: null, error: { message: "Please sign in first." } };
+      const result = await runServerOpsRpc(name, args, { id: user.id, role: user.role });
+      return result ?? { data: null, error: { message: `Unknown function: ${name}`, code: "42883" } };
     },
-    /** Preserved so suspension still revokes the session cookie. */
-    auth: legacy.auth,
   };
 }
 
