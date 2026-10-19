@@ -65,7 +65,7 @@ const PHOTOS = [
         id: "hero-donor",
         file: "hero-donor-original.png",
         /** Alt text describes the photograph itself, for screen readers. */
-        alt: "Digital illustration of a blood donation network — a donor's arm connected to a collection bag, surrounded by donors, recipients, and blood-type icons",
+        alt: "A glowing red blood drop streaking between connected screens at dusk",
         focus: { x: 0.5, y: 0.5 },
         poster: { width: 1200 },
         variants: [
@@ -209,7 +209,7 @@ async function build() {
         }
         console.error(
             "\nPlace the original 1536x1024 photographs there and re-run `npm run build:assets`.\n" +
-            "Until then the site renders branded placeholders inside every image mask and the\n" +
+            "Until then the site omits those image slots entirely and the\n" +
             "manifest stays empty — see README, section “Photography assets”."
         );
         process.exit(1);
@@ -218,7 +218,7 @@ async function build() {
     for (const photo of missingSources) {
         console.warn(
             `  ! skipping "${photo.id}" — source "assets/raktsetu-source/${photo.file}" not found; ` +
-            `its slots keep their placeholders. Add the file and re-run \`npm run build:assets\`.`
+            `its slots stay hidden. Add the file and re-run \`npm run build:assets\`.`
         );
     }
     // Preserve previously generated entries for skipped photos, so adding one

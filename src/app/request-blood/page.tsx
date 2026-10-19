@@ -31,13 +31,11 @@ export default async function RequestBloodPage() {
         description="Reach willing, matching donors nearby — without the patient ever needing to operate anything."
       />
       <Section>
-        <div className="lg:col-span-2">
-          <SlotImage
-            slot="requestBlood"
-            sizes="(max-width: 639px) 85vw, (max-width: 1024px) 60vw, 720px"
-            className="w-full h-72 sm:h-80 lg:h-64"
-          />
-        </div>
+        <SlotImage
+          slot="requestBlood"
+          sizes="(max-width: 639px) 92vw, 1104px"
+          className="mb-10 h-72 w-full sm:h-80 lg:h-64"
+        />
         {!isRequester ? (
           <div className="max-w-2xl">
             <Alert variant="info" title="One quick account needed">

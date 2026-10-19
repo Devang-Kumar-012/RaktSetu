@@ -277,7 +277,6 @@ export default function RequesterDashboardPage() {
 
           <p className="mt-3 text-lg font-bold text-ink-900">
             {request.locality}
-            <span className="font-medium text-ink-600"> — {request.locality}</span>
           </p>
           <p className="mt-1 text-base text-ink-600">
             {URGENCY_LABELS[request.urgency]} · Required by{" "}
@@ -390,30 +389,25 @@ export default function RequesterDashboardPage() {
       />
 
       <Section>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="glass flex flex-wrap gap-x-10 gap-y-4 rounded-lg px-6 py-5">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
-                Active requests
-              </p>
-              <p className="text-2xl font-extrabold text-ink-900">{active.length}</p>
-            </div>
-            <div>
-              <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
-                Fulfilled
-              </p>
-              <p className="text-2xl font-extrabold text-ink-900">
-                {fulfilledCount ?? 0}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Active now", value: active.length, accent: true },
+            { label: "Fulfilled", value: fulfilledCount ?? 0 },
+            { label: "All requests", value: totalCount ?? active.length },
+          ].map((stat) => (
+            <div key={stat.label} className="glass rounded-xl px-6 py-5">
+              <p className="text-sm font-bold uppercase tracking-widest text-ink-400">{stat.label}</p>
+              <p className={`mt-1 text-4xl font-extrabold ${stat.accent ? "text-blood-700" : "text-ink-900"}`}>
+                {stat.value}
               </p>
             </div>
-            <div>
-              <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
-                Total
-              </p>
-              <p className="text-2xl font-extrabold text-ink-900">{totalCount ?? active.length}</p>
-            </div>
+          ))}
+          <div className="flex flex-col justify-center gap-2 rounded-xl bg-blood-700 px-6 py-5 text-white">
+            <p className="text-sm font-semibold text-blood-100">Someone needs blood?</p>
+            <ButtonLink href="/request-blood" variant="secondary">
+              + New blood request
+            </ButtonLink>
           </div>
-          <ButtonLink href="/request-blood">+ New blood request</ButtonLink>
         </div>
 
         <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
@@ -438,15 +432,11 @@ export default function RequesterDashboardPage() {
         </div>
 
         <h2 className="mt-12 text-2xl font-extrabold tracking-tight text-ink-900">
-          Request history — newest first unless sorted otherwise
+          Request history
         </h2>
         <p className="mt-2 max-w-2xl text-base text-ink-600">
-          Every request you created — active, fulfilled, expired, and
-          cancelled — with its blood group, component, units, hospital,
-          urgency, required-by time, status, and when it was created.
-          Filtering happens in the database over your rows only, {PAGE_SIZE}{" "}
-          at a time. Closed requests are read-only; open one to see its
-          outcome.
+          Every request you have made, newest first. Filter or sort to find one, and
+          open it to see the outcome. Closed requests can no longer be changed.
         </p>
         <div className="mt-6">
           <RequestFilterBar filters={filters} basePath="/dashboard/requester" />

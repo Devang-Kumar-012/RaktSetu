@@ -9,6 +9,7 @@
  *
  * Run with: npx tsx scripts/check-roles.ts
  */
+import "./lib/temp-data-dir";
 import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +27,7 @@ import {
 } from "../src/lib/server/session";
 import { createSqlClient } from "../src/lib/server/sql-adapter";
 
-const DB = join(import.meta.dirname, "..", "data", "raktsetu.db");
+const DB = join(process.env.RAKTSETU_DATA_DIR!, "raktsetu.db");
 
 let passed = 0;
 const failures: string[] = [];

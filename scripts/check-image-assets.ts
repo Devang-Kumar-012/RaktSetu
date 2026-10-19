@@ -16,7 +16,7 @@
  *
  * An EMPTY manifest is a legitimate state: it means the asset pipeline has not
  * been run because the supplied photographs are not present. Slots then render
- * masked placeholders and nothing 404s, so the check passes with a clear note.
+ * nothing, no URL 404s, and the check passes with a clear note.
  * Run `npm run build:assets` after placing the originals in
  * assets/raktsetu-source/ to fill it in.
  *
@@ -139,7 +139,7 @@ function main(): void {
   if (awaitingPipeline.size > 0) {
     console.log(
       `  … awaiting build:assets for ${[...awaitingPipeline].join(", ")} — ` +
-      "their slots render masked placeholders (expected until the source photographs are supplied)"
+      "their slots render nothing until the source photographs are supplied"
     );
   }
 

@@ -17,17 +17,22 @@ const columns = [
       { href: "/contact", label: "Contact & help" },
     ],
   },
-  {
-    heading: "Your account",
-    links: [
-      { href: "/login", label: "Log in" },
-      { href: "/register", label: "Create account" },
-      { href: "/profile", label: "My profile" },
-    ],
-  },
 ];
 
-export function Footer() {
+export function Footer({ signedIn }: { signedIn: boolean }) {
+  const account = {
+    heading: "Your account",
+    links: signedIn
+      ? [
+          { href: "/dashboard", label: "Dashboard" },
+          { href: "/notifications", label: "Notifications" },
+          { href: "/profile", label: "My profile" },
+        ]
+      : [
+          { href: "/login", label: "Log in" },
+          { href: "/register", label: "Create account" },
+        ],
+  };
   return (
     // Translucent band for the same reason as PageHeader: the ambient background
     // continues through the footer instead of stopping at an opaque edge.
@@ -40,7 +45,7 @@ export function Footer() {
             </p>
             <p className="mt-3 max-w-xs text-base text-ink-600">{APP_TAGLINE}</p>
           </div>
-          {columns.map((col) => (
+          {[...columns, account].map((col) => (
             <nav key={col.heading} aria-label={col.heading}>
               <p className="text-sm font-bold uppercase tracking-widest text-ink-400">
                 {col.heading}

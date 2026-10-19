@@ -119,6 +119,21 @@ async function main() {
 
   assert.equal(await runServerOpsRpc("no_such_function", {}, A), null, "unknown names are reported, not faked");
 
+  // A database created before 'cancelled' existed is upgraded on open, keeping its rows.
+  await db.exec(`ALTER TABLE campus_drive_registrations RENAME TO r_old;
+    CREATE TABLE campus_drive_registrations (
+      id TEXT PRIMARY KEY, drive_id TEXT NOT NULL, donor_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'registered' CHECK (status IN ('registered','checked_in','participated','absent')),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (drive_id, donor_id));
+    INSERT INTO campus_drive_registrations SELECT * FROM r_old; DROP TABLE r_old;`);
+  await closeDriver();
+  const reopened = await getDriver();
+  await reopened.run("UPDATE campus_drive_registrations SET status = 'cancelled' WHERE drive_id = ?", [drive]);
+  const row = (await reopened.queryOne("SELECT status FROM campus_drive_registrations WHERE drive_id = ?", [drive])) as {
+    status: string;
+  };
+  assert.equal(row.status, "cancelled", "an old database is migrated so a donor can cancel a drive registration");
+
   await closeDriver();
   rmSync(dir, { recursive: true, force: true });
   console.log("sql ops checks passed");

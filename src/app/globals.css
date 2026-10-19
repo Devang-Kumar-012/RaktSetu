@@ -290,14 +290,13 @@ body {
 }
 
 /* ============================================================================
-   ORGANIC IMAGE MASKING SYSTEM
-   Premium editorial silhouettes for photographs. All shapes are genuinely
-   smooth — no polygons, no faceted cutouts, no obvious geometric clipping.
-   Each mask uses border-radius with elliptical percentage radii and
-   overflow: hidden so content is clipped cleanly at every viewport.
+   IMAGE FRAMES
+   One restrained treatment for every photograph: a softly rounded rectangle
+   with a hairline ring and a low shadow. The mask names are kept so the slot
+   config keeps working; the organic blob/arch/wave silhouettes were retired
+   because they read as gimmicky. `circular` stays for small accent images.
    ============================================================================ */
 
-/* Base mask frame: every mask clips children into a smooth silhouette. */
 .mask-frame {
   position: relative;
   overflow: hidden;
@@ -314,79 +313,45 @@ body {
   display: block;
 }
 
-/* --- A. Organic blob — smooth asymmetrical curves, ideal for hero --- */
-.mask-blob {
-  border-radius: 65% 35% 58% 42% / 55% 48% 52% 45%;
-  border: none;
-  background: transparent;
-}
-
-/* Pale-red background shape behind the blob image. */
-.mask-blob::before {
-  content: "";
-  position: absolute;
-  inset: -8%;
-  border-radius: 70% 30% 60% 40% / 60% 50% 50% 40%;
-  background: rgba(200, 30, 37, 0.10);
-  filter: blur(24px);
-  z-index: -1;
-  animation: maskBlobFloat 10s ease-in-out infinite;
-}
-
-/* --- B. Soft elliptical — wide or tall oval compositions --- */
-.mask-elliptical {
-  border-radius: 50% / 40%;
-  background: transparent;
-}
-
-/* --- C. Asymmetrical rounded — different corner curvatures, no sharp corners --- */
-.mask-asym-rounded {
-  border-radius: 48% 52% 36% 64% / 44% 56% 40% 60%;
-  background: transparent;
-}
-
-/* --- D. Circular — perfect circular crops --- */
-.mask-circular {
-  border-radius: 50%;
-  background: transparent;
-}
-
-/* --- E. Arch — smooth arched top with rounded lower corners --- */
-.mask-arch {
-  border-radius: 40% 40% 14% 14% / 55% 55% 18% 18%;
-  background: transparent;
-}
-
-/* --- F. Soft wave — gentle curved silhouette, no sharp transitions --- */
-.mask-wave {
-  border-radius: 55% 45% 48% 52% / 50% 58% 42% 50%;
-  background: transparent;
-}
-
-/* --- G. Organic background image — large background photography in flowing shape --- */
+.mask-blob,
+.mask-elliptical,
+.mask-asym-rounded,
+.mask-arch,
+.mask-wave,
 .mask-bg-organic {
-  border-radius: 60% 40% 52% 48% / 52% 44% 56% 48%;
+  border-radius: 1.5rem;
   background: transparent;
+  box-shadow:
+    0 0 0 1px rgb(15 23 42 / 0.06),
+    0 18px 40px -18px rgb(15 23 42 / 0.35);
 }
 
-/* Subtle float animation for the pale-red background shape behind hero blobs. */
-@keyframes maskBlobFloat {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-    opacity: 0.6;
-  }
-  33% {
-    transform: translate(12px, -8px) scale(1.02);
-    opacity: 0.8;
-  }
-  66% {
-    transform: translate(-8px, 12px) scale(0.98);
-    opacity: 0.6;
+.mask-circular {
+  border-radius: 9999px;
+  background: transparent;
+  box-shadow:
+    0 0 0 4px #fff,
+    0 10px 24px -10px rgb(15 23 42 / 0.4);
+}
+
+/* Fade-and-rise as an element scrolls into view. CSS scroll-driven animation:
+   no JavaScript, and browsers without support simply show the element. The
+   global reduced-motion rule above shortens it to an instant. */
+@supports (animation-timeline: view()) {
+  .reveal-on-scroll {
+    animation: revealOnScroll linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 30%;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .mask-blob::before {
-    animation: none;
+@keyframes revealOnScroll {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }

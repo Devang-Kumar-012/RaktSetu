@@ -23,13 +23,8 @@ export function Brand({ compact = false }: { compact?: boolean }) {
           <path d="M12 2.5C12 2.5 5.5 10 5.5 14.6a6.5 6.5 0 0 0 13 0C18.5 10 12 2.5 12 2.5Z" />
         </svg>
       </span>
-      {/*
-        The wordmark is dropped on the narrowest phones, where the glyph plus the
-        menu button need the width more than the name does. The link keeps its
-        accessible name via aria-label, so this is a visual decision only.
-      */}
       {!compact && (
-        <span className="hidden text-2xl font-extrabold tracking-tight text-ink-900 min-[400px]:inline">
+        <span className="text-2xl font-extrabold tracking-tight text-ink-900">
           Rakt<span className="text-blood-700">Setu</span>
         </span>
       )}
@@ -108,9 +103,7 @@ export function Navbar({
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:px-6">
         {/*
           `min-w-0` lets the brand shrink inside the flex row instead of forcing
-          the bar wider than the viewport. The wordmark itself is allowed to drop
-          its text on the narrowest phones (the `Brand` component's own
-          breakpoint), where the hamburger matters more than the word.
+          the bar wider than the viewport.
         */}
         <div className="min-w-0 shrink-0">
           <Brand />
@@ -232,7 +225,7 @@ export function Navbar({
           aria-expanded={open}
           aria-label="Toggle navigation menu"
           onClick={() => setOpen((v) => !v)}
-          className="ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-800 hover:bg-ink-100 xl:hidden"
+          className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-800 hover:bg-ink-100 xl:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
             {open ? (

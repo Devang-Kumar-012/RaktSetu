@@ -10,10 +10,9 @@
  *  - alt: accessibility text describing the photograph
  *  - mask: one of the organic mask styles from ImageMask
  *  - focalPosition: object-position value for keeping the subject in frame
- *  - placeholder: label shown when the image is missing
  *
- * Missing images render an elegant placeholder that retains the mask shape,
- * dimensions and aspect ratio — no broken-image icons, no layout shift.
+ * A slot whose photograph is missing renders nothing, so visitors never see
+ * an "image coming soon" box.
  */
 import type { ArtDirection, PhotoId } from "@/lib/photos";
 
@@ -32,7 +31,6 @@ export interface ImageSlot {
   alt: string;
   mask: ImageMaskName;
   focalPosition: string;
-  placeholder: string;
 }
 
 /**
@@ -45,35 +43,30 @@ export const SITE_IMAGES: Record<string, ImageSlot> = {
     alt: "Paramedics rush a patient on a stretcher into an emergency entrance, a blood bag hanging from the drip stand",
     mask: "blob",
     focalPosition: "45% 50%",
-    placeholder: "Add hero image",
   },
   requestBlood: {
     photo: "blood-bag",
     alt: "A labelled blood bag hanging beside a hospital bed",
     mask: "arch",
     focalPosition: "29% 36%",
-    placeholder: "Add request image",
-  },
-  donorStory: {
-    photo: "hero-donor",
-    alt: "A donor giving blood",
-    mask: "circular",
-    focalPosition: "50% 50%",
-    placeholder: "Add donor image",
   },
   aboutSection: {
     photo: "hero-donor",
-    alt: "A donor giving blood in a clinic setting",
+    alt: "A glowing red blood drop streaking between connected screens at dusk",
     mask: "elliptical",
     focalPosition: "50% 50%",
-    placeholder: "Add about image",
   },
-  emergencySection: {
-    photo: "blood-bag",
-    alt: "Emergency blood supply in a hospital ward",
-    mask: "wave",
-    focalPosition: "30% 40%",
-    placeholder: "Add emergency image",
+  requesterDashboard: {
+    photo: "hero-emergency",
+    alt: "Paramedics rush a patient on a stretcher into an emergency entrance, a blood bag hanging from the drip stand",
+    mask: "arch",
+    focalPosition: "45% 50%",
+  },
+  donorDashboard: {
+    photo: "hero-donor",
+    alt: "A glowing red blood drop streaking between connected screens at dusk",
+    mask: "asymRounded",
+    focalPosition: "46% 62%",
   },
 } as const;
 
@@ -91,9 +84,10 @@ export const ART_DIRECTION_BY_MASK: Record<ImageMaskName, ArtDirection[]> = {
     { media: "(max-width: 639px)", aspect: "portrait" },
     { media: "(min-width: 640px)", aspect: "square" },
   ],
+  // Used for full-width banners, so it needs the wide crop at every size.
   elliptical: [
-    { media: "(max-width: 639px)", aspect: "portrait" },
-    { media: "(min-width: 640px)", aspect: "portrait" },
+    { media: "(max-width: 639px)", aspect: "wide" },
+    { media: "(min-width: 640px)", aspect: "wide" },
   ],
   asymRounded: [
     { media: "(max-width: 639px)", aspect: "portrait" },

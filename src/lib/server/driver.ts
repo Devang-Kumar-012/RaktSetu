@@ -33,8 +33,10 @@
  * upgrading mid-transaction. An optimistic best-effort transaction would let two
  * concurrent acceptances each believe they won.
  */
-import { mkdirSync, closeSync, openSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, closeSync, openSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+
+import { snapshotSync, writeDataFiles } from "./data-export";
 
 /** Values a driver will bind. Both backends accept this set. */
 export type SqlParam = string | number | bigint | Buffer | null;
@@ -148,43 +150,8 @@ function loadSqlite(): SqliteCtor {
 
 let localDriver: Driver | null = null;
 
-export const LOCAL_CSV_DIR = join(DATA_DIR, "csv");
-/** Secrets never copied into the readable CSV mirror. */
-const REDACTED_COLUMNS = new Set(["password_hash", "token_hash"]);
-
-/** One CSV field, quoted per RFC 4180 when it contains a comma, quote or newline. */
-function csvField(v: unknown): string {
-  let s = v == null ? "" : String(v);
-  // User-typed text starting with = + - @ would run as a spreadsheet formula.
-  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
-}
-
-/**
- * Write every table to `data/csv/<table>.csv` so the data can be read in a spreadsheet.
- * One-way: SQLite stays the source of truth, edits to the CSVs are not read back.
- * Temp file + rename, so a crash mid-write never leaves a half-written file.
- * shortcut: rewrites every table on each write, fine for a dev-sized database;
- * drop it if local writes ever get slow.
- */
-export function writeCsvMirror(conn: Pick<SqliteConn, "prepare">, dir = LOCAL_CSV_DIR): void {
-  mkdirSync(dir, { recursive: true });
-  const tables = conn
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-    .all() as Array<{ name: string }>;
-  for (const { name } of tables) {
-    // Column names from the schema, so an empty table still gets its header row.
-    const cols = (conn.prepare(`PRAGMA table_info("${name}")`).all() as Array<{ name: string }>).map((c) => c.name);
-    const rows = conn.prepare(`SELECT * FROM "${name}"`).all() as Record<string, unknown>[];
-    const lines = [cols.map(csvField).join(",")];
-    for (const row of rows) {
-      lines.push(cols.map((c) => csvField(REDACTED_COLUMNS.has(c) ? "[redacted]" : row[c])).join(","));
-    }
-    const file = join(dir, `${name}.csv`);
-    writeFileSync(`${file}.tmp`, lines.join("\r\n") + "\r\n");
-    renameSync(`${file}.tmp`, file);
-  }
-}
+/** Where the local readable copies go: `data/csv/<table>.csv` and `data/report.md`. */
+export const LOCAL_EXPORT_DIR = DATA_DIR;
 
 function makeLocalDriver(conn: SqliteConn, inTx = false): Driver {
   let txOpen = false;
@@ -195,11 +162,11 @@ function makeLocalDriver(conn: SqliteConn, inTx = false): Driver {
     const { n } = conn.prepare("SELECT total_changes() AS n").get() as { n: number };
     if (n === mirroredChanges) return;
     try {
-      writeCsvMirror(conn);
+      writeDataFiles(snapshotSync((sql) => conn.prepare(sql).all() as Record<string, unknown>[]), LOCAL_EXPORT_DIR);
       mirroredChanges = n;
     } catch (err) {
       // The mirror is a view; failing to write it must never fail the real save.
-      console.error("[raktsetu] CSV mirror write failed:", (err as Error).message);
+      console.error("[raktsetu] data file write failed:", (err as Error).message);
     }
   };
   const d: Driver = {

@@ -7,9 +7,7 @@ import { SlotImage } from "@/components/ui/SlotImage";
  * Left: eyebrow, headline with highlighted phrase, one short supporting line,
  * primary and secondary actions.
  *
- * Right: large photograph in an organic blob mask with a pale-red background
- * shape behind it, plus an optional circular image detail and a small
- * handwritten-style annotation.
+ * Right: one large photograph in a rounded frame.
  */
 export function HeroSection({ appName }: { appName: string }) {
   return (
@@ -45,32 +43,13 @@ export function HeroSection({ appName }: { appName: string }) {
             </p>
           </div>
 
-          {/* RIGHT — large organic masked photograph */}
-          <div className="flex flex-col items-center justify-center gap-4">
-            <div className="relative">
-              <SlotImage
-                slot="hero"
-                sizes="(max-width: 639px) 85vw, (max-width: 1024px) 60vw, 480px"
-                className="w-64 h-64 sm:w-80 sm:h-80 lg:w-96 lg:h-96"
-                priority
-              />
-              {/* Small circular image detail overlapping the main image */}
-              <div className="absolute -bottom-6 -right-6 sm:-bottom-10 sm:-right-10">
-                <SlotImage
-                  slot="donorStory"
-                  sizes="(max-width: 639px) 60vw, 160px"
-                  className="w-20 h-20 sm:w-24 sm:h-24"
-                  objectPosition="50% 50%"
-                />
-              </div>
-              {/* Handwritten-style annotation */}
-              <div className="absolute -left-8 sm:-left-12 bottom-6 sm:bottom-10">
-                <p className="inline glass-blood rounded-full px-3 py-1 text-xs font-semibold text-ink-900 sm:text-sm">
-                  "Small act. Big impact."
-                </p>
-              </div>
-            </div>
-          </div>
+          {/* RIGHT — one large photograph in a rounded frame */}
+          <SlotImage
+            slot="hero"
+            sizes="(max-width: 1023px) 92vw, 560px"
+            className="aspect-[4/5] w-full sm:aspect-square lg:max-w-[560px] lg:justify-self-end"
+            priority
+          />
         </div>
       </div>
     </section>

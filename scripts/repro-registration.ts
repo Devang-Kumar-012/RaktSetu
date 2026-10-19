@@ -15,6 +15,7 @@
  *   6. a read-only deployment produces a specific storage error (the bug itself)
  *   7. a valid registration still succeeds, and a duplicate is still refused
  */
+import "./lib/temp-data-dir";
 import { chmodSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -203,6 +204,9 @@ async function main() {
   mkdirSync(ro, { recursive: true });
   chmodSync(ro, 0o555);
   const original = process.cwd();
+  // This case needs the default ./data under the read-only cwd, not the test's temp dir.
+  const savedDataDir = process.env.RAKTSETU_DATA_DIR;
+  delete process.env.RAKTSETU_DATA_DIR;
   let readOnlyCode: RegistrationErrorCode | null = null;
   try {
     process.chdir(ro);
@@ -214,6 +218,7 @@ async function main() {
     readOnlyCode = classifyRegistrationError(err, "create-user");
   } finally {
     process.chdir(original);
+    process.env.RAKTSETU_DATA_DIR = savedDataDir;
     chmodSync(ro, 0o755);
     rmSync(ro, { recursive: true, force: true });
   }
@@ -284,7 +289,7 @@ async function main() {
   // Remove the account this check created, so a run leaves no residue.
   try {
     const { execFileSync } = await import("node:child_process");
-    execFileSync("sqlite3", [join(ROOT, "data", "raktsetu.db"),
+    execFileSync("sqlite3", [join(process.env.RAKTSETU_DATA_DIR!, "raktsetu.db"),
       `DELETE FROM users WHERE email = '${email}';`], { stdio: "ignore" });
   } catch {
     // The sqlite3 CLI may be absent; the row is inert either way, and the
@@ -292,7 +297,11 @@ async function main() {
   }
   }
 
-  console.log(`\nall ${passed} registration error checks passed`);
+  console.log(
+    failed === 0
+      ? `\nall ${passed} registration error checks passed`
+      : `\n${passed} passed, ${failed} FAILED`,
+  );
   process.exit(failed === 0 ? 0 : 1);
 }
 

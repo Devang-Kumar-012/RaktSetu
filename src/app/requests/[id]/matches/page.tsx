@@ -59,7 +59,7 @@ export default async function RequestMatchesPage({
       <PageHeader
         eyebrow="Matches"
         title={`${bloodRequest.blood_group} · ${bloodRequest.locality}`}
-        description={`${BLOOD_COMPONENT_LABELS[bloodRequest.blood_component]} · ${bloodRequest.units} ${bloodRequest.units === 1 ? "unit" : "units"} · ${bloodRequest.locality}`}
+        description={`${BLOOD_COMPONENT_LABELS[bloodRequest.blood_component]} · ${bloodRequest.units} ${bloodRequest.units === 1 ? "unit" : "units"}`}
       />
 
       <Section className="max-w-3xl">

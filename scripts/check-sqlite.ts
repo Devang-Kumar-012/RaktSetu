@@ -6,6 +6,7 @@
  * per-user scoping, the database-decided acceptance race, and multi-device
  * sessions.
  */
+import "./lib/temp-data-dir";
 import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";

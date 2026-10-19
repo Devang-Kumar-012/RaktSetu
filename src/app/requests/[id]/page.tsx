@@ -300,8 +300,7 @@ export default async function RequestDetailsPage({
                 value={`${request.units} ${request.units === 1 ? "unit" : "units"}`}
               />
               <Detail label="Urgency" value={URGENCY_LABELS[request.urgency]} />
-              <Detail label="Hospital" value={request.locality} />
-              <Detail label="Locality" value={request.locality} />
+              <Detail label="Area" value={request.locality} />
               <Detail label="Required by" value={formatDateTime(request.required_by)} />
               <Detail label="Contact name" value={request.contact_name} />
               <Detail

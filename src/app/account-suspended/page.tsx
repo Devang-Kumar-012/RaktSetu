@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { PageHeader, Section } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { getSessionInfo } from "@/lib/profile";
 
 export const metadata: Metadata = { title: "Account suspended" };
 
@@ -17,7 +19,11 @@ export const metadata: Metadata = { title: "Account suspended" };
  * ended server-side, so this page needs no session of its own and stays
  * reachable after sign-out.
  */
-export default function AccountSuspendedPage() {
+export default async function AccountSuspendedPage() {
+  // A signed-in active account is not suspended; don't tell it otherwise.
+  const { profile } = await getSessionInfo();
+  if (profile?.status === "active") redirect("/dashboard");
+
   return (
     <>
       <PageHeader

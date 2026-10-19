@@ -328,7 +328,12 @@ export async function ensureSchema(db?: Driver): Promise<void> {
         const seeded = await conn.queryOne<{ id: number }>(
           "SELECT id FROM platform_settings WHERE id = 1",
         );
-        migrated = !!seeded;
+        // Also probe the newest schema change, so a database set up before it
+        // still runs migrate() once instead of taking the fast path forever.
+        const current = await conn.queryOne(
+          "SELECT 1 FROM sqlite_master WHERE name = 'campus_drive_registrations' AND sql LIKE '%''cancelled''%'",
+        );
+        migrated = !!seeded && !!current;
       } catch {
         migrated = false;
       }
@@ -496,6 +501,25 @@ CREATE TABLE IF NOT EXISTS ring_progress (
 `;
 
 /**
+ * `campus_drive_registrations`, its own constant for the same reason as
+ * SCHEMA_ALERTS: 'cancelled' was added to the CHECK after release (a donor
+ * cancelling their registration was refused by the database), and SQLite can
+ * only change a CHECK by rebuilding the table.
+ */
+const SCHEMA_DRIVE_REGISTRATIONS = `
+CREATE TABLE IF NOT EXISTS campus_drive_registrations (
+  id         TEXT PRIMARY KEY,
+  drive_id   TEXT NOT NULL REFERENCES campus_blood_drives(id) ON DELETE CASCADE,
+  donor_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status     TEXT NOT NULL DEFAULT 'registered'
+               CHECK (status IN ('registered','checked_in','participated','absent','cancelled')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (drive_id, donor_id)
+);
+`;
+
+/**
  * `donor_alerts`, kept as its own constant because `migrate()` rebuilds the
  * table in place when the status vocabulary changes — SQLite cannot ALTER a
  * CHECK constraint, so the corrected DDL has to be available on its own.
@@ -603,17 +627,6 @@ CREATE TABLE IF NOT EXISTS campus_blood_drives (
   updated_at       TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS campus_drive_registrations (
-  id         TEXT PRIMARY KEY,
-  drive_id   TEXT NOT NULL REFERENCES campus_blood_drives(id) ON DELETE CASCADE,
-  donor_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status     TEXT NOT NULL DEFAULT 'registered'
-               CHECK (status IN ('registered','checked_in','participated','absent')),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (drive_id, donor_id)
-);
-
 CREATE TABLE IF NOT EXISTS request_reports (
   id          TEXT PRIMARY KEY,
   request_id  TEXT NOT NULL REFERENCES blood_requests(id) ON DELETE CASCADE,
@@ -708,6 +721,7 @@ async function migrate(db: Driver): Promise<void> {
 
   await db.exec(SCHEMA_REQUESTS);
   await db.exec(SCHEMA_ALERTS);
+  await db.exec(SCHEMA_DRIVE_REGISTRATIONS);
   await db.exec(SCHEMA_REQUESTS_GUARD);
 
   // The session's active profile. It lives on the row rather than in a cookie so
@@ -844,6 +858,22 @@ async function migrate(db: Driver): Promise<void> {
          FROM donor_alerts_legacy`,
     );
     await db.exec("DROP TABLE donor_alerts_legacy");
+  }
+
+  const registrationsSql = String(
+    (
+      (await db.queryOne("SELECT sql FROM sqlite_master WHERE type='table' AND name='campus_drive_registrations'", [])) as { sql?: string } | undefined
+    )?.sql ?? "",
+  );
+  if (!registrationsSql.includes("'cancelled'")) {
+    // Same rename-create-copy as donor_alerts above: every row keeps its id and status.
+    await db.exec("ALTER TABLE campus_drive_registrations RENAME TO campus_drive_registrations_legacy");
+    await db.exec(SCHEMA_DRIVE_REGISTRATIONS);
+    await db.exec(
+      `INSERT INTO campus_drive_registrations (id, drive_id, donor_id, status, created_at, updated_at)
+       SELECT id, drive_id, donor_id, status, created_at, updated_at FROM campus_drive_registrations_legacy`,
+    );
+    await db.exec("DROP TABLE campus_drive_registrations_legacy");
   }
 
   // Created last, once donor_alerts is guaranteed to be in its final shape.

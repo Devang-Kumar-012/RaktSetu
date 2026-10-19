@@ -484,7 +484,7 @@ async function main() {
     );
   });
 
-  await check("H1. /request-blood has no hospital FIELDS and shows static blood groups", async () => {
+  await check("H1. /request-blood has no hospital FIELDS", async () => {
     const res = await page("/request-blood", box);
     assert.equal(res.status, 200, `the form must load (got ${res.status} -> ${res.location})`);
     // Attribute order is React's business, not ours, so match the TAG and look
@@ -499,18 +499,6 @@ async function main() {
     assert.ok(!names.includes("hospital_locality"), "no hospital_locality field");
     assert.ok(names.includes("locality"), `the locality field is present (saw: ${names})`);
     assert.ok(/Blood needed near/i.test(res.body), "with the right label");
-    // The informational list is a plain <ul> of <li>, inside a `select-none`
-    // container — static, not a control. Assert the STRUCTURE, not the wording.
-    assert.ok(
-      /aria-label="Supported blood groups"/.test(res.body),
-      "the supported blood groups list is rendered",
-    );
-    assert.ok(
-      /aria-label="Supported blood groups"[\s\S]{0,400}?<li/.test(res.body) &&
-        !/aria-label="Supported blood groups"[\s\S]{0,400}?<input/.test(res.body),
-      "and its entries are static list items, not inputs",
-    );
-    assert.ok(/select-none/.test(res.body), "marked non-selectable");
   });
 
   await check("H2. the blood-group list is informational, not selectable", async () => {
@@ -768,7 +756,7 @@ async function main() {
 
   console.log("");
   if (failures.length) {
-    console.error(`${failures.length} await check(s) FAILED:`);
+    console.error(`${failures.length} check(s) FAILED:`);
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
@@ -779,7 +767,7 @@ async function main() {
 if (process.argv.includes("--cleanup")) {
   cleanupRun();
 } else {
-  await main().catch((e) => {
+  main().catch((e) => {
     console.error(e);
     process.exit(1);
   });

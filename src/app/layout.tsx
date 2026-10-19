@@ -48,7 +48,7 @@ export default async function RootLayout({
           unreadNotifications={unreadNotifications}
         />
         <main className="flex-1">{children}</main>
-        <Footer />
+        <Footer signedIn={Boolean(user)} />
       </body>
     </html>
   );

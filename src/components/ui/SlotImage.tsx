@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { ImageMask } from "@/components/ui/ImageMask";
-import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { EditorialImage } from "@/components/ui/EditorialImage";
 import { findPhoto } from "@/lib/photos";
 import {
@@ -18,13 +17,13 @@ import {
  *   - EditorialImage inside an ImageMask when the photograph exists in the
  *     manifest (typo-proof at compile time via PhotoId) AND every art-directed
  *     crop file is present on disk;
- *   - ImagePlaceholder otherwise — same mask, same dimensions, no layout shift,
- *     no broken-image icon, and never a URL that would 404.
+ *   - nothing otherwise — no "coming soon" box, no broken-image icon, and
+ *     never a URL that would 404. The surrounding layout simply closes up.
  *
  * The on-disk check is deliberately all-or-nothing: `<picture>` emits a
  * `srcset` covering the whole width ladder of every art-directed aspect, so a
  * PARTIAL generation would still ship missing files as broken requests. If any
- * required file is absent the slot falls back whole; `npm run check:images`
+ * required file is absent the slot is omitted whole; `npm run check:images`
  * reports exactly which files are missing.
  *
  * This is the single component every page should use for configured images.
@@ -69,16 +68,8 @@ export function SlotImage({
       );
     });
 
-  if (!photoId || !entry || !hasEveryCropFile) {
-    return (
-      <ImagePlaceholder
-        slot={slot}
-        mask={config.mask}
-        className={className}
-        label={config.placeholder}
-      />
-    );
-  }
+  // No photo yet: render nothing rather than an "image coming soon" box.
+  if (!photoId || !entry || !hasEveryCropFile) return null;
 
   const position = objectPosition ?? config.focalPosition;
 

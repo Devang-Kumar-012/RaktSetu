@@ -54,7 +54,7 @@ export function RequestTable({
           <tr className="border-b border-ink-200">
             <Th>Group</Th>
             <Th>Details</Th>
-            <Th>Hospital</Th>
+            <Th>Area</Th>
             <Th>Urgency</Th>
             <Th>Required by</Th>
             <Th>Status</Th>
@@ -74,9 +74,6 @@ export function RequestTable({
               </td>
               <td className="max-w-[240px] px-4 py-4 text-base text-ink-900">
                 <span className="block max-w-[240px] truncate font-semibold" title={r.locality}>
-                  {r.locality}
-                </span>
-                <span className="block truncate text-sm text-ink-600" title={r.locality}>
                   {r.locality}
                 </span>
               </td>
