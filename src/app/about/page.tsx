@@ -36,6 +36,19 @@ export default function AboutPage() {
               least able to arrange it, so family, friends, volunteers, or hospital
               staff run the request on their behalf.
             </p>
+            <dl className="grid gap-4 border-t border-ink-200 pt-6 text-base sm:grid-cols-2">
+              {[
+                ["Requesters", "Family, friends or hospital staff who post a request and follow it."],
+                ["Donors", "People who give their blood group and area, and answer alerts."],
+                ["Volunteers", "Help spread a request and support requesters who ask."],
+                ["Blood banks", "Screen every donor and decide eligibility — always."],
+              ].map(([role, text]) => (
+                <div key={role}>
+                  <dt className="font-semibold text-ink-900">{role}</dt>
+                  <dd className="mt-1 text-ink-600">{text}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
           <div className="space-y-6">

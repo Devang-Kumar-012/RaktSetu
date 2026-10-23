@@ -6,6 +6,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Textarea } from "@/components/ui/Input";
 import { ComingSoon } from "@/components/ui/States";
+import { ALERT_RINGS_KM } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Contact & help" };
 
@@ -21,6 +22,14 @@ const faqs = [
   {
     q: "Who decides if a donor is eligible?",
     a: "Always the blood bank's medical staff. RaktSetu never makes eligibility or screening decisions.",
+  },
+  {
+    q: "How far away are donors alerted?",
+    a: `Within ${ALERT_RINGS_KM[0]} km of the hospital first. If nobody responds in time, the search widens to ${ALERT_RINGS_KM[1]} km, then ${ALERT_RINGS_KM[2]} km, and stops as soon as help is secured.`,
+  },
+  {
+    q: "Who can see my phone number?",
+    a: "Nobody, until a donor accepts a request. Then only that donor and the requester see each other's details, for a limited time.",
   },
 ];
 

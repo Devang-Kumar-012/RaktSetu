@@ -11,20 +11,29 @@ const points = [
 export function DonorSection() {
   return (
     <Section>
-      <div className="max-w-3xl">
-        <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
-          For donors
-        </p>
-        <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-          Be the person nearby who can help
-        </h2>
-        <p className="mt-4 text-lg leading-relaxed text-ink-600">
-          Register once with your blood group and area. When a nearby request
-          needs your type, the alert reaches you — and every time, the choice is
-          yours.
-        </p>
-
-        <ul className="mt-6 space-y-3">
+      <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
+            For donors
+          </p>
+          <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
+            Be the person nearby who can help
+          </h2>
+          <p className="mt-4 text-lg leading-relaxed text-ink-600">
+            Register once with your blood group and area. When a nearby request
+            needs your type, the alert reaches you — and every time, the choice is
+            yours.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-4">
+            <ButtonLink href="/donor" size="lg">
+              Become a donor
+            </ButtonLink>
+            <ButtonLink href="/register?role=donor" variant="secondary" size="lg">
+              Create a free account
+            </ButtonLink>
+          </div>
+        </div>
+        <ul className="space-y-3">
           {points.map((point) => (
             <li key={point} className="text-base text-ink-800">
               <span aria-hidden="true" className="font-bold text-blood-700">
@@ -34,15 +43,6 @@ export function DonorSection() {
             </li>
           ))}
         </ul>
-
-        <div className="mt-8 flex flex-wrap gap-4">
-          <ButtonLink href="/donor" size="lg">
-            Become a donor
-          </ButtonLink>
-          <ButtonLink href="/register?role=donor" variant="secondary" size="lg">
-            Create a free account
-          </ButtonLink>
-        </div>
       </div>
     </Section>
   );

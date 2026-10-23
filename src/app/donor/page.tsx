@@ -72,57 +72,59 @@ export default async function DonorPage() {
           ))}
         </div>
 
-        {user ? (
-          // Signed in without the donor role: same account, one more role.
-          <div className="mt-12 max-w-2xl">
-            <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
-              Add the donor role to your account
-            </h2>
-            <p className="mt-3 text-lg text-ink-600">
-              You are already signed in as <strong>{user.email}</strong>. Add the
-              donor role to this account and we will take you to your donor
-              profile. Nothing new to create — everything you already do stays
-              exactly as it is.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-4">
-              <BecomeDonorButton />
-              <ButtonLink href="/profile" variant="secondary" size="lg">
-                View my profiles
-              </ButtonLink>
+        <div className="mt-12 grid gap-10 lg:grid-cols-2">
+          {user ? (
+            // Signed in without the donor role: same account, one more role.
+            <div>
+              <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
+                Add the donor role to your account
+              </h2>
+              <p className="mt-3 text-lg text-ink-600">
+                You are already signed in as <strong>{user.email}</strong>. Add the
+                donor role to this account and we will take you to your donor
+                profile. Nothing new to create — everything you already do stays
+                exactly as it is.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-4">
+                <BecomeDonorButton />
+                <ButtonLink href="/profile" variant="secondary" size="lg">
+                  View my profiles
+                </ButtonLink>
+              </div>
             </div>
-          </div>
-        ) : (
-          // Signed out: keep the original registration path.
-          <div className="mt-12 max-w-2xl">
-            <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
-              Ready to register?
-            </h2>
-            <p className="mt-3 text-lg text-ink-600">
-              Create a donor account, then fill in your donor profile. You can
-              edit everything later from your profile page.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-4">
-              <ButtonLink href="/register?role=donor" size="lg">
-                Create a donor account
-              </ButtonLink>
-              <ButtonLink href="/login" variant="secondary" size="lg">
-                I already have an account
-              </ButtonLink>
+          ) : (
+            // Signed out: keep the original registration path.
+            <div>
+              <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
+                Ready to register?
+              </h2>
+              <p className="mt-3 text-lg text-ink-600">
+                Create a donor account, then fill in your donor profile. You can
+                edit everything later from your profile page.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-4">
+                <ButtonLink href="/register?role=donor" size="lg">
+                  Create a donor account
+                </ButtonLink>
+                <ButtonLink href="/login" variant="secondary" size="lg">
+                  I already have an account
+                </ButtonLink>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="mt-12 max-w-2xl">
-          <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
-            How alerts reach you
-          </h2>
-          <p className="mt-3 text-lg text-ink-600">
-            When a request matches your blood group, RaktSetu alerts donors in
-            expanding rings — nearby first, then wider — with a short window per
-            ring. Accept or decline with one tap. Only after you accept do you get
-            the requester's contact to coordinate; the blood bank's screening
-            always comes first.
-          </p>
+          <div>
+            <h2 className="text-2xl font-extrabold tracking-tight text-ink-900">
+              How alerts reach you
+            </h2>
+            <p className="mt-3 text-lg text-ink-600">
+              When a request matches your blood group, RaktSetu alerts donors in
+              expanding rings — nearby first, then wider — with a short window per
+              ring. Accept or decline with one tap. Only after you accept do you get
+              the requester's contact to coordinate; the blood bank's screening
+              always comes first.
+            </p>
+          </div>
         </div>
       </Section>
     </>

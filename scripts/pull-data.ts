@@ -1,6 +1,6 @@
 /**
  * Download the LIVE production data (Turso) into data/production/:
- * one CSV per table plus a plain-English report.md.
+ * one JSON file per table plus a plain-English report.md.
  *
  * The deployed site cannot write files you can open (Vercel's disk is
  * read-only and temporary), so this pulls them on demand instead. Read-only:

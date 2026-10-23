@@ -33,7 +33,7 @@ export function DonorMotivation({
       glass={glass}
       className={cn(!glass && "border-blood-200 bg-blood-50/60", className)}
     >
-      <CardBody>
+      <CardBody className="pt-6">
         <h2 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">
           Your donation can make a difference.
         </h2>

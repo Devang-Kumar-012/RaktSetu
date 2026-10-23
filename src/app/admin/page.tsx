@@ -99,10 +99,12 @@ export default async function AdminOverviewPage() {
       />
       <Section>
         <div className="grid gap-6 lg:grid-cols-2">
-          <StatList title="Users" stats={userStats} />
+          <div className="space-y-6">
+            <StatList title="Users" stats={userStats} />
+            <StatList title="Alerts & donors" stats={alertStats} />
+          </div>
           <div className="space-y-6">
             <StatList title="Requests & donations" stats={requestStats} />
-            <StatList title="Alerts & donors" stats={alertStats} />
             <StatList title="Report moderation" stats={reportStats} />
           </div>
         </div>

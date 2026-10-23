@@ -37,7 +37,7 @@ export default async function RequestBloodPage() {
           className="mb-10 h-72 w-full sm:h-80 lg:h-64"
         />
         {!isRequester ? (
-          <div className="max-w-2xl">
+          <div>
             <Alert variant="info" title="One quick account needed">
               Blood requests are created by a family member, friend, or volunteer
               with a requester account — the patient never touches the app. If that
@@ -59,7 +59,7 @@ export default async function RequestBloodPage() {
               </div>
             )}
 
-            <div className="mt-12 space-y-6">
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
               {[
                 {
                   title: "Someone on the ground creates the request",
@@ -74,7 +74,7 @@ export default async function RequestBloodPage() {
                   body: "Once a donor agrees, they go through the usual medical eligibility checks at the blood bank."
                 },
               ].map((s, i) => (
-                <Card key={s.title} className="max-w-3xl">
+                <Card key={s.title}>
                   <CardBody className="pt-6">
                     <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
                       Step {i + 1}

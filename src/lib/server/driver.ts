@@ -150,7 +150,7 @@ function loadSqlite(): SqliteCtor {
 
 let localDriver: Driver | null = null;
 
-/** Where the local readable copies go: `data/csv/<table>.csv` and `data/report.md`. */
+/** Where the local readable copies go: `data/json/<table>.json` and `data/report.md`. */
 export const LOCAL_EXPORT_DIR = DATA_DIR;
 
 function makeLocalDriver(conn: SqliteConn, inTx = false): Driver {

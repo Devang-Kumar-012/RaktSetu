@@ -12,11 +12,11 @@ import { SlotImage } from "@/components/ui/SlotImage";
 export function HeroSection({ appName }: { appName: string }) {
   return (
     <section className="border-b border-ink-200 hero-wash">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:pt-20 sm:pb-24 lg:px-8 lg:py-24 lg:pb-32">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-14">
         <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16 items-start lg:items-center">
 
           {/* LEFT — editorial copy surface */}
-          <div className="glass rounded-2xl px-6 py-10 sm:px-10 sm:py-12 lg:px-12 lg:py-16">
+          <div className="glass rounded-2xl px-6 py-10 sm:px-10 sm:py-10 lg:px-12 lg:py-12">
             <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
               Emergency blood coordination
             </p>

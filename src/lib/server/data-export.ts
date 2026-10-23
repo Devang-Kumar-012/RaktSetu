@@ -1,5 +1,5 @@
 /**
- * Turns the database into files a person can open: one CSV per table, plus a
+ * Turns the database into files a person can open: one JSON file per table, plus a
  * plain-English `report.md` (names, dates, blood groups — no ids, no hashes).
  *
  * Used two ways, so both always look the same:
@@ -43,30 +43,23 @@ export async function snapshotAsync(all: (sql: string) => Promise<Row[]>): Promi
   return out;
 }
 
-/** One CSV field, quoted per RFC 4180 when it contains a comma, quote or newline. */
-export function csvField(v: unknown): string {
-  let s = v == null ? "" : String(v);
-  // User-typed text starting with = + - @ would run as a spreadsheet formula.
-  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
-}
-
 /** Temp file + rename, so a crash mid-write never leaves a half-written file. */
 function writeAtomic(file: string, text: string): void {
   writeFileSync(`${file}.tmp`, text);
   renameSync(`${file}.tmp`, file);
 }
 
-/** Write `<dir>/csv/<table>.csv` for every table and `<dir>/report.md`. */
+/** Write `<dir>/json/<table>.json` (an array of row objects) for every table and `<dir>/report.md`. */
 export function writeDataFiles(snapshot: Snapshot, dir: string): void {
-  const csvDir = join(dir, "csv");
-  mkdirSync(csvDir, { recursive: true });
+  const jsonDir = join(dir, "json");
+  mkdirSync(jsonDir, { recursive: true });
   for (const [name, { columns, rows }] of Object.entries(snapshot)) {
-    const lines = [columns.map(csvField).join(",")];
-    for (const row of rows) {
-      lines.push(columns.map((c) => csvField(REDACTED_COLUMNS.has(c) ? "[redacted]" : row[c])).join(","));
-    }
-    writeAtomic(join(csvDir, `${name}.csv`), lines.join("\r\n") + "\r\n");
+    const out = rows.map((row) =>
+      Object.fromEntries(columns.map((c) => [c, REDACTED_COLUMNS.has(c) ? "[redacted]" : row[c]])),
+    );
+    // JSON.stringify throws on bigint, which SQLite can return for large integers.
+    const json = JSON.stringify(out, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+    writeAtomic(join(jsonDir, `${name}.json`), json + "\n");
   }
   writeAtomic(join(dir, "report.md"), buildReport(snapshot));
 }

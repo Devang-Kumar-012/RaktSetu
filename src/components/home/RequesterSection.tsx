@@ -28,20 +28,29 @@ const steps = [
 export function RequesterSection() {
   return (
     <Section>
-      <div className="max-w-3xl">
-        <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
-          For requesters
-        </p>
-        <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-          You don&apos;t have to be on your phone the whole time
-        </h2>
-        <p className="mt-4 text-lg leading-relaxed text-ink-600">
-          A relative or friend can raise the request on your behalf. RaktSetu
-          coordinates who gets asked and when — arranging the transfusion stays
-          with you and the hospital.
-        </p>
-
-        <ol className="mt-8 space-y-5">
+      <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
+            For requesters
+          </p>
+          <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
+            You don&apos;t have to be on your phone the whole time
+          </h2>
+          <p className="mt-4 text-lg leading-relaxed text-ink-600">
+            A relative or friend can raise the request on your behalf. RaktSetu
+            coordinates who gets asked and when — arranging the transfusion stays
+            with you and the hospital.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-4">
+            <ButtonLink href="/request-blood" size="lg">
+              Request blood
+            </ButtonLink>
+            <ButtonLink href="/register?role=requester" variant="secondary" size="lg">
+              Create a requester account
+            </ButtonLink>
+          </div>
+        </div>
+        <ol className="space-y-5">
           {steps.map((step, i) => (
             <li key={step.title} className="flex gap-4">
               <span
@@ -59,15 +68,6 @@ export function RequesterSection() {
             </li>
           ))}
         </ol>
-
-        <div className="mt-8 flex flex-wrap gap-4">
-          <ButtonLink href="/request-blood" size="lg">
-            Request blood
-          </ButtonLink>
-          <ButtonLink href="/register?role=requester" variant="secondary" size="lg">
-            Create a requester account
-          </ButtonLink>
-        </div>
       </div>
     </Section>
   );
