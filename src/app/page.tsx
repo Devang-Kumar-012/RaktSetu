@@ -6,8 +6,12 @@ import { DonorSection } from "@/components/home/DonorSection";
 import { RequesterSection } from "@/components/home/RequesterSection";
 import { VolunteerSection } from "@/components/home/VolunteerSection";
 import { CampusDrivesSection } from "@/components/home/CampusDrivesSection";
+import { DonationHistorySection } from "@/components/home/DonationHistorySection";
 import { EmergencyCtaSection } from "@/components/home/EmergencyCtaSection";
 import { APP_NAME } from "@/lib/constants";
+
+// The donation history wall reads live records, so the page can't be prerendered once at build time.
+export const dynamic = "force-dynamic";
 
 /**
  * Homepage — hero, workflow, emergency alert explainer, trust & privacy,
@@ -20,6 +24,7 @@ export default function HomePage() {
       <HeroSection appName={APP_NAME} />
       <HowItWorksSection />
       <EmergencyAlertSection />
+      <DonationHistorySection />
       <TrustSection />
       <DonorSection />
       <RequesterSection />

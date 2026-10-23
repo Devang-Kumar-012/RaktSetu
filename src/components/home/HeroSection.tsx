@@ -13,7 +13,7 @@ export function HeroSection({ appName }: { appName: string }) {
   return (
     <section className="border-b border-ink-200 hero-wash">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-14">
-        <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16 items-start lg:items-center">
+        <div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:gap-10 items-start lg:items-stretch">
 
           {/* LEFT — editorial copy surface */}
           <div className="glass rounded-2xl px-6 py-10 sm:px-10 sm:py-10 lg:px-12 lg:py-12">
@@ -47,7 +47,7 @@ export function HeroSection({ appName }: { appName: string }) {
           <SlotImage
             slot="hero"
             sizes="(max-width: 1023px) 92vw, 560px"
-            className="aspect-[4/5] w-full sm:aspect-square lg:max-w-[560px] lg:justify-self-end"
+            className="aspect-[4/5] w-full sm:aspect-square lg:aspect-auto lg:h-full"
             priority
           />
         </div>
