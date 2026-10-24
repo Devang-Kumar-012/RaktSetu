@@ -22,9 +22,9 @@ export default function HomePage() {
   return (
     <>
       <HeroSection appName={APP_NAME} />
+      <DonationHistorySection />
       <HowItWorksSection />
       <EmergencyAlertSection />
-      <DonationHistorySection />
       <TrustSection />
       <DonorSection />
       <RequesterSection />
