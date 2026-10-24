@@ -383,6 +383,7 @@ export default function RequesterDashboardPage() {
       <LiveRefresh />
 
       <PageHeader
+        className="lg:min-h-[17rem]" // fits the layout's overlaid photo (pt-8 + h-56) so it never spills onto the content below
         eyebrow="Requester dashboard"
         title={`Hi, ${firstName}`}
         description="You run blood requests for the people who need them — the patient never has to."

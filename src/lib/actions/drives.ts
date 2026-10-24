@@ -18,6 +18,7 @@
  *     columns are updatable.
  */
 import { revalidatePath } from "next/cache";
+import { parseIST, todayIST } from "@/lib/utils";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionInfo } from "@/lib/profile";
@@ -136,8 +137,8 @@ function readDriveFields(
     };
   }
 
-  const startsAt = new Date(startsRaw);
-  const endsAt = new Date(endsRaw);
+  const startsAt = parseIST(startsRaw);
+  const endsAt = parseIST(endsRaw);
   if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
     return { ok: false, error: "Please give a valid start and end time." };
   }
@@ -537,7 +538,7 @@ export async function recordDriveDonation(
   ) {
     return { ok: false, error: "Please give a valid donation date." };
   }
-  if (donatedOn > new Date().toISOString().slice(0, 10)) {
+  if (donatedOn > todayIST()) {
     return { ok: false, error: "The donation date cannot be in the future." };
   }
   if (!(BLOOD_COMPONENTS as readonly { value: string }[]).some((c) => c.value === component)) {

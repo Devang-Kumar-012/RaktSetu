@@ -306,6 +306,77 @@ export async function getUserForToken(
     updated_at: String(row.updated_at),
   };
 }
+const RESET_MINUTES = 30;
+// The prefix keeps an emailed reset token from ever matching as a session cookie.
+const resetHash = (token: string) => sha256(`reset:${token}`);
+
+/**
+ * Issue a single-use password-reset token for this email, stored as a short
+ * session row. Returns null when no active account has that email.
+ */
+export async function createPasswordResetToken(
+  email: string,
+): Promise<{ token: string; fullName: string } | null> {
+  const db = await getDriver();
+  const user = await db.queryOne<{ id: string; full_name: string }>(
+    "SELECT id, full_name FROM users WHERE email = ? AND status = 'active'",
+    [email.toLowerCase().trim()],
+  );
+  if (!user) return null;
+  const token = randomBytes(32).toString("base64url");
+  const now = new Date();
+  await db.run(
+    `INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    [
+      randomUUID(),
+      user.id,
+      resetHash(token),
+      now.toISOString(),
+      new Date(now.getTime() + RESET_MINUTES * 60_000).toISOString(),
+    ],
+  );
+  return { token, fullName: String(user.full_name) };
+}
+
+/** Read-only check, so the page can say "expired" before the user types anything. */
+export async function isPasswordResetTokenLive(token: string): Promise<boolean> {
+  if (!token) return false;
+  const row = await (await getDriver()).queryOne(
+    "SELECT 1 FROM sessions WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?",
+    [resetHash(token), new Date().toISOString()],
+  );
+  return Boolean(row);
+}
+
+/** Spend a reset token: returns its user id once, then the token is dead. */
+export async function consumePasswordResetToken(token: string): Promise<string | null> {
+  if (!token) return null;
+  const db = await getDriver();
+  const now = new Date().toISOString();
+  // Revoke first and check the row count, so two clicks at once can't both win.
+  const spent = await db.run(
+    `UPDATE sessions SET revoked_at = ?
+      WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?`,
+    [now, resetHash(token), now],
+  );
+  if (spent.changes !== 1) return null;
+  const row = await db.queryOne<{ user_id: string }>(
+    "SELECT user_id FROM sessions WHERE token_hash = ?",
+    [resetHash(token)],
+  );
+  return row ? String(row.user_id) : null;
+}
+
+/** After a password change, sign out every other device (and unused reset links). */
+export async function revokeOtherSessions(userId: string, keepToken: string): Promise<void> {
+  const db = await getDriver();
+  await db.run(
+    "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND token_hash <> ? AND revoked_at IS NULL",
+    [new Date().toISOString(), userId, sha256(keepToken)],
+  );
+}
+
 /** Revoke ONE session. Other devices are untouched. */
 export async function revokeSession(token: string): Promise<void> {
   if (!token) return;

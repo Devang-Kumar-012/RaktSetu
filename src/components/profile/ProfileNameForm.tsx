@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
@@ -16,7 +17,7 @@ export function ProfileNameForm({ fullName }: { fullName: string }) {
   );
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form onSubmit={submitWithoutReset(formAction)} className="space-y-5">
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 

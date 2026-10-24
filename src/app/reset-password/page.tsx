@@ -5,6 +5,7 @@ import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonLink } from "@/components/ui/Button";
 import { getSessionInfo } from "@/lib/profile";
+import { isPasswordResetTokenLive } from "@/lib/server/session";
 
 export const metadata: Metadata = { title: "Set a new password" };
 
@@ -12,12 +13,20 @@ export const metadata: Metadata = { title: "Set a new password" };
 // check must run per request — never baked into a static prerender.
 export const dynamic = "force-dynamic";
 
-export default async function ResetPasswordPage() {
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
+  const { token } = await searchParams;
   const { user } = await getSessionInfo();
 
-  // A valid recovery session is required to change the password.
-  // If the link is missing, expired, or already used, say so plainly.
-  const hasRecoverySession = Boolean(user);
+  // The emailed token is checked here but only spent on submit, so mail
+  // scanners that open the link can't use it up. Signed-in users need no token.
+  const resetToken = typeof token === "string" ? token : undefined;
+  const hasRecoverySession = resetToken
+    ? await isPasswordResetTokenLive(resetToken).catch(() => false)
+    : Boolean(user);
 
   return (
     <AuthShell
@@ -34,7 +43,7 @@ export default async function ResetPasswordPage() {
           </div>
         </Alert>
       ) : (
-        <ResetPasswordForm />
+        <ResetPasswordForm resetToken={resetToken} />
       )}
     </AuthShell>
   );

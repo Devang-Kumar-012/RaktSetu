@@ -210,6 +210,7 @@ export default function DonorDashboardPage() {
       <LiveRefresh />
 
       <PageHeader
+        className="lg:min-h-[17rem]" // fits the layout's overlaid photo (pt-8 + h-56) so it never spills onto the content below
         eyebrow="Donor dashboard"
         title={`Hi, ${firstName}`}
         description="Your availability and donation details — visible only to you and platform administrators."

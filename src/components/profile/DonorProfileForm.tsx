@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { startTransition, useActionState, type MouseEvent } from "react";
+import { todayIST } from "@/lib/utils";
 
 import { Alert } from "@/components/ui/Alert";
+import { submitWithoutReset } from "@/lib/form-submit";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { initialProfileActionState } from "@/lib/actions/action-state";
@@ -27,13 +29,19 @@ export function DonorProfileForm({ donor }: { donor: DonorProfile | null }) {
     initialLocationLookupState
   );
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIST();
   const hasStoredLocation =
     donor?.latitude !== null && donor?.latitude !== undefined &&
     donor?.longitude !== null && donor?.longitude !== undefined;
 
+  // A plain button, not a second submit: a form-action submit would reset every field.
+  function onLookup(event: MouseEvent<HTMLButtonElement>) {
+    const data = new FormData(event.currentTarget.form!);
+    startTransition(() => lookupAction(data));
+  }
+
   return (
-    <form action={formAction} className="space-y-6" noValidate>
+    <form onSubmit={submitWithoutReset(formAction)} className="space-y-6" noValidate>
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 
@@ -103,9 +111,8 @@ export function DonorProfileForm({ donor }: { donor: DonorProfile | null }) {
 
         <div className="flex flex-wrap items-end gap-4">
           <Button
-            type="submit"
-            formAction={lookupAction}
-            formNoValidate
+            type="button"
+            onClick={onLookup}
             variant="secondary"
             disabled={lookupPending}
           >
@@ -140,7 +147,7 @@ export function DonorProfileForm({ donor }: { donor: DonorProfile | null }) {
               </label>
             ))}
             <p className="text-sm text-ink-600">
-              Then press “Save donor profile” below to store it.
+              Then press “{donor ? "Save" : "Create"} donor profile” below to store it.
             </p>
           </div>
         )}

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { todayIST } from "@/lib/utils";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ProfileActionState } from "@/lib/actions/action-state";
@@ -357,7 +358,7 @@ export async function recordDonation(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(donatedOn) || Number.isNaN(Date.parse(`${donatedOn}T00:00:00Z`))) {
     return { ok: false, error: "Please provide a valid donation date." };
   }
-  if (donatedOn > new Date().toISOString().slice(0, 10)) {
+  if (donatedOn > todayIST()) {
     return { ok: false, error: "The donation date cannot be in the future." };
   }
   const units = Number(unitsRaw);
@@ -370,6 +371,7 @@ export async function recordDonation(
     donor_id: donorId,
     request_id: requestRaw === "" ? null : requestRaw,
     donated_on: donatedOn,
+    blood_component: "whole_blood",
     units,
   });
 

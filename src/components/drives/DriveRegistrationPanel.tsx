@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import { registerForDrive, unregisterFromDrive } from "@/lib/actions/drives";
@@ -107,7 +108,7 @@ export function DriveRegistrationPanel({
   }
 
   return (
-    <form action={registerAction} className="space-y-4">
+    <form onSubmit={submitWithoutReset(registerAction)} className="space-y-4">
       {registerState.error && <Alert variant="error">{registerState.error}</Alert>}
       <input type="hidden" name="driveId" value={driveId} />
       <Input

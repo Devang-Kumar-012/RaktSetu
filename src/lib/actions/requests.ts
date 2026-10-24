@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { parseIST } from "@/lib/utils";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -101,7 +102,7 @@ export async function createBloodRequest(
     units: Number(units),
     locality,
     urgency: urgency as RequestUrgency,
-    required_by: new Date(requiredBy).toISOString(),
+    required_by: parseIST(requiredBy).toISOString(),
     note: note === "" ? null : note,
     latitude: areaCoords?.lat ?? null,
     longitude: areaCoords?.lng ?? null,

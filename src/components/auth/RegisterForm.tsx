@@ -32,6 +32,7 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
       ? initialRole
       : "donor"
   );
+  const [accountExists, setAccountExists] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
@@ -39,6 +40,7 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setAccountExists(false);
 
     if (fullName.trim().length < 2) {
       setError("Please enter your full name.");
@@ -78,7 +80,8 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
         // re-deriving it here) is what keeps the wording in one place.
         // There is deliberately no generic message: if something goes wrong, the
         // user is told what.
-        setError(friendlyAuthError({ code: result.error, errorId: result.errorId }));
+        if (result.error === "DUPLICATE_ACCOUNT") setAccountExists(true);
+        else setError(friendlyAuthError({ code: result.error, errorId: result.errorId }));
         setLoading(false);
         return;
       }
@@ -113,6 +116,14 @@ export function RegisterForm({ initialRole }: { initialRole?: string }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       {error && <Alert variant="error">{error}</Alert>}
+      {accountExists && (
+        <Alert variant="info" title="You already have a RaktSetu account">
+          <strong>{email.trim()}</strong> is already registered.{" "}
+          <Link href="/login" className="font-semibold underline">Log in</Link>, or{" "}
+          <Link href="/forgot-password" className="font-semibold underline">reset your password</Link>{" "}
+          if you don&apos;t remember it.
+        </Alert>
+      )}
 
       <Input
         label="Full name"

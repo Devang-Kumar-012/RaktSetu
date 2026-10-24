@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import {
@@ -66,7 +67,7 @@ export function VolunteerRequestActions({
       )}
 
       {meAssisting && (
-        <form action={noteAction} className="space-y-3">
+        <form onSubmit={submitWithoutReset(noteAction)} className="space-y-3">
           <input type="hidden" name="requestId" value={requestId} />
           <Input
             label="Coordination note (only you can see it)"

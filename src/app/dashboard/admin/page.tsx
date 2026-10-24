@@ -16,6 +16,8 @@ export default async function AdminDashboardPage() {
   if (user && profile?.role === "admin" && profile.status === "active") {
     redirect("/admin");
   }
+  // A suspended admin would otherwise be sent back to this same page forever.
+  if (profile?.status === "suspended") redirect("/account-suspended");
   redirect(profile ? `/dashboard/${profile.role}` : "/dashboard");
 }
 

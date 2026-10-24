@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import { createCampusDrive, updateCampusDrive } from "@/lib/actions/drives";
@@ -60,7 +61,7 @@ export function AdminDriveForm({ drive = null }: { drive?: CampusDrive | null })
   const action = editing ? updateAction : createAction;
 
   return (
-    <form action={action} className="space-y-6">
+    <form onSubmit={submitWithoutReset(action)} className="space-y-6">
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 

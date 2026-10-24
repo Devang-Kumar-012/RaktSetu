@@ -17,7 +17,11 @@
  * component.
  */
 
+import { randomUUID } from "node:crypto";
+
 import { getDriver, type SqlParam } from "./driver";
+
+const INTEGER_ID_TABLES = new Set(["donor_alerts", "notifications", "platform_settings", "platform_safety_limits"]);
 
 /** Values a driver will bind. Our params are `unknown` until bound. */
 type Bindable = SqlParam;
@@ -124,6 +128,7 @@ const BOOL_COLUMNS = new Set(["published", "available"]);
 
 function resolveTable(table: string): string | null {
   if (table === "profiles") return "users";
+  if (table === "donation_history") return "donations";
   return TABLES.has(table) ? table : null;
 }
 
@@ -135,6 +140,8 @@ function cols(table: string): string[] {
 function toStorage(value: unknown, column: string): unknown {
   if (value === undefined) return null;
   if (BOOL_COLUMNS.has(column) && typeof value === "boolean") return value ? 1 : 0;
+  // Postgres array columns (alert_rings_km) are stored as "3,7,15" text here.
+  if (Array.isArray(value)) return value.join(",");
   return value;
 }
 
@@ -382,6 +389,8 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
       for (const row of incoming) {
         const rec: Row = { ...row };
         if (!rec.created_at) rec.created_at = new Date().toISOString();
+        // Postgres generated ids by default; SQLite would store NULL in a TEXT primary key.
+        if (rec.id == null && allowed.has("id") && !INTEGER_ID_TABLES.has(table)) rec.id = randomUUID();
         if (allowed.has("updated_at")) rec.updated_at = new Date().toISOString();
         const keys = Object.keys(rec).filter((k) => allowed.has(k));
         if (keys.length === 0) continue;
@@ -394,6 +403,16 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
           );
           if (table === "donor_alerts" && info.lastInsertRowid) {
             rec.id = Number(info.lastInsertRowid);
+          }
+          // Stands in for the old Postgres trigger: a recorded donation starts the
+          // donor's interval and bumps their count (sql-requests does the same inline).
+          if (table === "donations") {
+            await db.run(
+              `UPDATE donor_profiles SET donation_count = COALESCE(donation_count, 0) + 1,
+                      last_donation_date = MAX(COALESCE(last_donation_date, ''), ?), updated_at = ?
+                WHERE user_id = ?`,
+              [String(rec.donated_on), new Date().toISOString(), String(rec.donor_id)],
+            );
           }
           out.push(fromStorage(rec, this.table));
         } catch (err) {
@@ -440,7 +459,8 @@ export class SqlTableQuery implements PromiseLike<QueryResult> {
         `UPDATE "${table}" SET ${sets.join(", ")}${where}`,
         [...(params as Bindable[]), ...(wp as Bindable[])],
       );
-      return ok({ updated: info.changes } as Row);
+      // One row per changed row, so `.maybeSingle()` after an update reports success.
+      return ok(Array.from({ length: info.changes }, () => ({ ...patch })) as unknown as Row);
     } catch (err) {
       return sqliteError(err);
     }

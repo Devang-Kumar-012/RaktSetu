@@ -36,6 +36,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { todayIST } from "@/lib/utils";
 
 import { getDriver, type Tx } from "./driver";
 import { isBloodCompatible } from "@/lib/blood-compat";
@@ -686,7 +687,7 @@ export async function recordDonation(
       return { ok: false as const, error: "A different donor accepted this request." };
     }
 
-    const donatedOn = nowIso().slice(0, 10);
+    const donatedOn = todayIST();
     const duplicate = (await db.queryOne("SELECT 1 FROM donations WHERE donor_id = ? AND donated_on = ? LIMIT 1", [caller.id, donatedOn]));
     if (duplicate) {
       return {
@@ -698,7 +699,7 @@ export async function recordDonation(
     const count = Number.isFinite(units) && units > 0 ? Math.floor(units) : 1;
     await db.run(`INSERT INTO donations
          (id, donor_id, request_id, drive_id, donated_on, blood_component, units, created_at)
-       async VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`, [`don-${randomUUID()}`, caller.id, requestId, donatedOn, String(request.blood_component), count, nowIso()]);
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`, [`don-${randomUUID()}`, caller.id, requestId, donatedOn, String(request.blood_component), count, nowIso()]);
 
     // Keep the donor's own eligibility tracking in step with the ledger.
     await db.run(`UPDATE donor_profiles

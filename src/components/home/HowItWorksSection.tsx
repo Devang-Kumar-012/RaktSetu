@@ -23,10 +23,10 @@ const steps = [
 export function HowItWorksSection() {
   return (
     <Section>
-      <h2 className="text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
+      <h2 className="text-2xl font-extrabold tracking-tight text-ink-900 sm:text-3xl">
         How RaktSetu works
       </h2>
-      <p className="mt-4 max-w-2xl text-lg text-ink-600">
+      <p className="mt-4 max-w-2xl text-base text-ink-600">
         Four steps between “someone needs blood” and a donor on their way.
       </p>
 

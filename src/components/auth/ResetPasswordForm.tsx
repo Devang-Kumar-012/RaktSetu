@@ -9,8 +9,8 @@ import { PasswordInput } from "@/components/ui/Input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { updateCurrentPassword } from "@/lib/actions/auth";
 
-/** Sets a new password after the reset link (user has a recovery session). */
-export function ResetPasswordForm() {
+/** Sets a new password — for the signed-in user, or via the emailed reset token. */
+export function ResetPasswordForm({ resetToken }: { resetToken?: string }) {
   const router = useRouter();
 
   const [password, setPassword] = useState("");
@@ -33,7 +33,7 @@ export function ResetPasswordForm() {
 
     setLoading(true);
     try {
-      const { error: updateError } = await updateCurrentPassword({ password });
+      const { error: updateError } = await updateCurrentPassword({ password, resetToken });
 
       if (updateError) {
         setError(updateError);

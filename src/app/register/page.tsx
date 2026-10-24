@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { JoinAside } from "@/components/auth/JoinAside";
 import { getSessionInfo } from "@/lib/profile";
 
 export const metadata: Metadata = { title: "Create account" };
@@ -26,6 +27,7 @@ export default async function RegisterPage({
 
   return (
     <AuthShell
+      aside={<JoinAside />}
       eyebrow="Join the network"
       title="Create your RaktSetu account"
       description="We collect the minimum: your name, email, and the role you play. No Aadhaar, no addresses, no health records at signup."

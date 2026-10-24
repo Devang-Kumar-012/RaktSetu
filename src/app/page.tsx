@@ -7,6 +7,7 @@ import { RequesterSection } from "@/components/home/RequesterSection";
 import { VolunteerSection } from "@/components/home/VolunteerSection";
 import { CampusDrivesSection } from "@/components/home/CampusDrivesSection";
 import { DonationHistorySection } from "@/components/home/DonationHistorySection";
+import { BloodFactsSection } from "@/components/home/BloodFactsSection";
 import { EmergencyCtaSection } from "@/components/home/EmergencyCtaSection";
 import { APP_NAME } from "@/lib/constants";
 
@@ -26,6 +27,7 @@ export default function HomePage() {
       <HowItWorksSection />
       <EmergencyAlertSection />
       <TrustSection />
+      <BloodFactsSection />
       <DonorSection />
       <RequesterSection />
       <VolunteerSection />

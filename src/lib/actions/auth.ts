@@ -32,13 +32,17 @@ import {
   type RegistrationErrorCode,
   type RegistrationFailure,
 } from "@/lib/registration-errors";
+import { sendEmail, siteOrigin } from "@/lib/server/mailer";
 import {
   authenticate,
+  consumePasswordResetToken,
+  createPasswordResetToken,
   createSession,
   createUser,
   getUserForToken,
   getUserRoles,
   grantRole,
+  revokeOtherSessions,
   revokeSession,
   setPassword,
   setSessionActiveRole,
@@ -181,7 +185,12 @@ export async function signUpNewAccount(input: {
   try {
     user = await createUser({ email, password, fullName, role });
   } catch (err) {
-    return fail(classifyRegistrationError(err, "create-user"), "create-user", err);
+    const code = classifyRegistrationError(err, "create-user");
+    if (code !== "DUPLICATE_ACCOUNT") return fail(code, "create-user", err);
+    // Already registered: the right password just signs them in, no error.
+    const existing = await authenticate(email, password).catch(() => null);
+    if (!existing) return { error: code, signedIn: false };
+    user = existing;
   }
 
   let session: { token: string; expiresAt: Date };
@@ -326,15 +335,85 @@ export async function getClientSession(): Promise<SessionUser | null> {
  * Set a new password for the signed-in account (the reset-password page).
  * The account comes from the session cookie, never from the request body.
  */
-export async function updateCurrentPassword(input: { password: unknown }): Promise<{ error: string | null }> {
+/**
+ * Sets a new password for the signed-in user, or — with `resetToken` from the
+ * emailed link — for that token's owner, who is then signed in. Either way every
+ * other device is signed out.
+ */
+export async function updateCurrentPassword(input: {
+  password: unknown;
+  resetToken?: unknown;
+}): Promise<{ error: string | null }> {
   const password = typeof input?.password === "string" ? input.password : "";
+  const resetToken = typeof input?.resetToken === "string" ? input.resetToken : "";
   if (password.length < 8) return { error: "Password must be at least 8 characters long." };
   try {
-    const user = await getUserForToken(await readSessionToken());
-    if (!user) return { error: "Your session has ended. Please sign in again." };
-    await setPassword(user.id, password);
+    let userId: string;
+    let keepToken: string;
+    if (resetToken) {
+      const owner = await consumePasswordResetToken(resetToken);
+      if (!owner) return { error: "This reset link has expired or was already used. Please request a new one." };
+      userId = owner;
+      const session = await createSession(owner);
+      await setSessionCookie(session.token, session.expiresAt);
+      keepToken = session.token;
+    } else {
+      const token = await readSessionToken();
+      const user = await getUserForToken(token);
+      if (!user || !token) return { error: "Your session has ended. Please sign in again." };
+      userId = user.id;
+      keepToken = token;
+    }
+    await setPassword(userId, password);
+    await revokeOtherSessions(userId, keepToken);
     return { error: null };
   } catch {
     return { error: "That password could not be saved. Please try again." };
+  }
+}
+
+// shortcut: per-process memory, so limits reset on restart and aren't shared across
+// serverless instances; move to a DB column if reset emails are ever abused.
+const lastResetRequest = new Map<string, number>();
+const RESET_COOLDOWN_MS = 60_000;
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/**
+ * Emails a single-use reset link. The answer is the same whether or not the
+ * account exists, so this can't be used to discover who is registered.
+ */
+export async function requestPasswordReset(input: { email: unknown }): Promise<{ error: string | null }> {
+  const email = typeof input?.email === "string" ? input.email.trim().toLowerCase() : "";
+  if (!isValidEmail(email)) return { error: "Please enter a valid email address." };
+
+  const last = lastResetRequest.get(email) ?? 0;
+  if (Date.now() - last < RESET_COOLDOWN_MS) return { error: null };
+  lastResetRequest.set(email, Date.now());
+
+  try {
+    const reset = await createPasswordResetToken(email);
+    if (!reset) return { error: null };
+
+    const link = `${await siteOrigin()}/reset-password?token=${reset.token}`;
+    const name = reset.fullName.split(" ")[0] || "there";
+    const sent = await sendEmail({
+      to: email,
+      subject: "Reset your RaktSetu password",
+      text: `Hi ${name},\n\nUse this link to set a new RaktSetu password. It works once and expires in 30 minutes:\n${link}\n\nIf you didn't ask for this, ignore this email — your password stays the same.`,
+      html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;color:#1f1f1f">
+<h2 style="color:#b91c1c;margin:0 0 16px">RaktSetu</h2>
+<p>Hi ${escapeHtml(name)},</p>
+<p>Use the button below to set a new password. The link works once and expires in 30 minutes.</p>
+<p style="margin:28px 0"><a href="${link}" style="background:#b91c1c;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Set a new password</a></p>
+<p style="font-size:13px;color:#666">If you didn't ask for this, ignore this email — your password stays the same.</p>
+</div>`,
+    });
+    if (!sent) return { error: "We couldn't send the email right now. Please try again in a few minutes." };
+    return { error: null };
+  } catch (err) {
+    console.error("requestPasswordReset failed:", err instanceof Error ? err.message : err);
+    return { error: "Something went wrong. Please try again in a few minutes." };
   }
 }

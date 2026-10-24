@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import { updatePlatformSettings, recordDonation } from "@/lib/actions/admin";
@@ -22,7 +23,7 @@ export function AdminSettingsForm({ settings }: { settings: PlatformSettings }) 
   );
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={submitWithoutReset(formAction)} className="space-y-6">
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 
@@ -147,7 +148,7 @@ export function AdminRecordDonationForm() {
   );
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form onSubmit={submitWithoutReset(formAction)} className="space-y-5">
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 

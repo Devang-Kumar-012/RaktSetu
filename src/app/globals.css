@@ -22,8 +22,11 @@
   --color-ink-50: #f7f7f6;
   --color-ink-100: #efeeec;
   --color-ink-200: #e0dedb;
+  --color-ink-300: #c4c1bc;
   --color-ink-400: #a3a09a;
+  --color-ink-500: #6e6b64;
   --color-ink-600: #5c5952;
+  --color-ink-700: #44413b;
   --color-ink-800: #2b2925;
   --color-ink-900: #1c1a17;
 
@@ -32,6 +35,8 @@
 }
 
 html {
+  /* 15px root: the whole rem-based scale (type, spacing, buttons) sits one notch tighter. */
+  font-size: 93.75%;
   scroll-behavior: smooth;
   /* In-page jumps and focused fields land below the sticky navbar, not under it. */
   scroll-padding-top: 5.5rem;

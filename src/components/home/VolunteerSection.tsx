@@ -28,10 +28,10 @@ export function VolunteerSection() {
           <p className="text-sm font-bold uppercase tracking-widest text-blood-700">
             For volunteers
           </p>
-          <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-ink-900 sm:text-3xl">
             Help with coordination, not with medicine
           </h2>
-          <p className="mt-4 text-lg leading-relaxed text-ink-600">
+          <p className="mt-4 text-base leading-relaxed text-ink-600">
             Volunteers see emergency requests that may benefit from extra
             coordination and help a requester who has asked for support. The role
             is deliberately narrow.

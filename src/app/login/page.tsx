@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth/AuthShell";
+import { JoinAside } from "@/components/auth/JoinAside";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { getSessionInfo, sanitizeNextPath } from "@/lib/profile";
 import { DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD } from "@/lib/demo-account";
@@ -22,6 +23,7 @@ export default async function LoginPage({
 
   return (
     <AuthShell
+      aside={<JoinAside />}
       eyebrow="Welcome back"
       title="Log in to RaktSetu"
       description="Requesters, donors, volunteers, and hospital staff use the same door."

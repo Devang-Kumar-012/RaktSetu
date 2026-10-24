@@ -951,19 +951,21 @@ eq(
   // The restriction is unchanged in spirit and sharper in form: the permitted
   // set is named exactly, so a THIRD reader, or a reader anywhere else, fails.
   const STORAGE_MODULES = ["src/lib/server/db.ts", "src/lib/server/driver.ts"];
+  // The mailer is the one other server-only reader: the email API key and site URL.
+  const ENV_MODULES = [...STORAGE_MODULES, "src/lib/server/mailer.ts"];
   const envReaders = walk(join(ROOT, "src"))
     .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
     .filter((f) => /process\.env/.test(stripJsComments(readFileSync(f, "utf8"))))
     .map((f) => f.replace(`${join(ROOT, "src")}/`, "src/"))
     .sort();
   ok(
-    "only the two server storage modules read process.env",
-    envReaders.length === STORAGE_MODULES.length &&
-      STORAGE_MODULES.every((f) => envReaders.includes(f)),
+    "only the server storage modules and the mailer read process.env",
+    envReaders.length === ENV_MODULES.length &&
+      ENV_MODULES.every((f) => envReaders.includes(f)),
   );
   if (
-    envReaders.length !== STORAGE_MODULES.length ||
-    !STORAGE_MODULES.every((f) => envReaders.includes(f))
+    envReaders.length !== ENV_MODULES.length ||
+    !ENV_MODULES.every((f) => envReaders.includes(f))
   ) {
     failures.push(`   → env readers were: ${envReaders.join(", ") || "none"}`);
   }
@@ -1002,12 +1004,12 @@ eq(
   const SECRET_RE = /process\.env\.[A-Z0-9_]*(SECRET|TOKEN|KEY|PASSWORD|CREDENTIAL)/;
   ok("no source file ever reads a NEXT_PUBLIC_ variable", !/NEXT_PUBLIC_/.test(ALL_SRC));
   ok(
-    "a secret-shaped variable is read only by a server storage module",
+    "a secret-shaped variable is read only by a server storage module or the mailer",
     walk(join(ROOT, "src"))
       .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
       .filter((f) => SECRET_RE.test(stripJsComments(readFileSync(f, "utf8"))))
       .map((f) => f.replace(`${join(ROOT, "src")}/`, "src/"))
-      .every((f) => STORAGE_MODULES.includes(f)),
+      .every((f) => ENV_MODULES.includes(f)),
   );
   ok(
     "no client component imports a storage module, so the token cannot be bundled",
@@ -1016,7 +1018,7 @@ eq(
       .some((f) => {
         const src = readFileSync(f, "utf8");
         return (
-          /^\s*["']use client["']/m.test(src) && /server\/(driver|db)["']/.test(src)
+          /^\s*["']use client["']/m.test(src) && /server\/(driver|db|mailer)["']/.test(src)
         );
       }),
   );

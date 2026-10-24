@@ -6,6 +6,7 @@
  * what it returns now and why.
  */
 import { createSqlClient } from "@/lib/server/sql-adapter";
+import { runDashboardRpc } from "@/lib/server/sql-dashboard";
 import { runServerOpsRpc } from "@/lib/server/sql-ops";
 import {
   closeRequestAsRequester,
@@ -49,7 +50,7 @@ async function requestWorkflowRpc(
         return { data: "not_found", error: null };
       }
       return {
-        data: markAlertResponded(caller, alertId, String(args.p_response ?? "")),
+        data: await markAlertResponded(caller, alertId, String(args.p_response ?? "")),
         error: null,
       };
     }
@@ -95,20 +96,20 @@ async function requestWorkflowRpc(
     case "match_donors_for_request": {
       const radius = args.p_radius_km;
       return {
-        ...matchDonorsForRequest(
+        ...(await matchDonorsForRequest(
           caller,
           String(args.p_request_id ?? ""),
           typeof radius === "number" ? radius : null,
           Number(args.p_limit ?? 50),
-        ),
+        )),
       };
     }
     case "matching_donor_stats":
-      return { ...matchingDonorStats(caller, String(args.p_request_id ?? "")) };
+      return { ...(await matchingDonorStats(caller, String(args.p_request_id ?? ""))) };
 
     // --- ring engine ---------------------------------------------------------
     case "expand_alert_rings":
-      return { data: expandAlertRings(), error: null };
+      return { data: await expandAlertRings(), error: null };
 
     default:
       return null; // not a request-workflow function
@@ -169,7 +170,8 @@ export async function createSupabaseServerClient() {
       const { user } = await getSessionInfo();
       if (!user) return { data: null, error: { message: "Please sign in first." } };
       const result = await runServerOpsRpc(name, args, { id: user.id, role: user.role });
-      return result ?? { data: null, error: { message: `Unknown function: ${name}`, code: "42883" } };
+      // Request-page projections (reveal_accepted_donors, requester_ring_status) live here.
+      return result ?? runDashboardRpc(name, args, { id: user.id, role: user.role });
     },
   };
 }

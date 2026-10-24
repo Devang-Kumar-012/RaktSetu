@@ -60,3 +60,15 @@ export function describeGap(ms: number): string {
   return `${minutes} m left`;
 }
 
+
+/** Today's date (YYYY-MM-DD) in India, whatever timezone the server or browser runs in. */
+export function todayIST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+
+/** A `datetime-local` value ("2026-10-24T18:00") read as India time, not the server's UTC. */
+export function parseIST(local: string): Date {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local.trim())
+    ? new Date(`${local.trim()}:00+05:30`)
+    : new Date(local);
+}

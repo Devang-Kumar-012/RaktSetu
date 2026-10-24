@@ -19,6 +19,7 @@ export function AuthShell({
   description,
   children,
   footer,
+  aside,
 }: {
   eyebrow: string;
   title: string;
@@ -27,9 +28,10 @@ export function AuthShell({
   children: ReactNode;
   /** Optional quiet content rendered BELOW the panel, outside the glass. */
   footer?: ReactNode;
+  /** Optional supporting column beside the form on wide screens (below it on phones). */
+  aside?: ReactNode;
 }) {
-  return (
-    <section className="auth-wash">
+  const main = (
       <div className="mx-auto w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
         <div className="text-center">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-blood-700">
@@ -38,7 +40,7 @@ export function AuthShell({
           <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
             {title}
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-lg text-ink-600">{description}</p>
+          <p className="mx-auto mt-3 max-w-md text-base text-ink-600">{description}</p>
         </div>
 
         {/* The single glass surface on the route. */}
@@ -48,6 +50,17 @@ export function AuthShell({
           <div className="mt-6 text-center text-base text-ink-600">{footer}</div>
         ) : null}
       </div>
+  );
+  return (
+    <section className="auth-wash">
+      {aside ? (
+        <div className="mx-auto grid max-w-6xl gap-2 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-8 lg:px-6">
+          {main}
+          <aside className="px-4 pb-12 sm:px-6 lg:px-0 lg:pt-16">{aside}</aside>
+        </div>
+      ) : (
+        main
+      )}
     </section>
   );
 }

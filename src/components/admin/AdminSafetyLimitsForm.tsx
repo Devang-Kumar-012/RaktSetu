@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import { updateSafetyLimits } from "@/lib/actions/admin";
@@ -29,7 +30,7 @@ export function AdminSafetyLimitsForm({ limits }: { limits: PlatformSafetyLimits
   const B = SAFETY_LIMITS_BOUNDS;
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={submitWithoutReset(formAction)} className="space-y-6">
       {state.error && <Alert variant="error">{state.error}</Alert>}
       {state.success && <Alert variant="success">{state.success}</Alert>}
 

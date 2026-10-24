@@ -11,7 +11,7 @@ import {
   BLOOD_COMPONENTS,
   DRIVE_REGISTRATION_STATUS_LABELS,
 } from "@/lib/constants";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, todayIST } from "@/lib/utils";
 import type { DriveRegistration } from "@/types";
 
 /**
@@ -104,8 +104,8 @@ function DonationControl({
           name="donatedOn"
           type="date"
           required
-          max={new Date().toISOString().slice(0, 10)}
-          defaultValue={new Date().toISOString().slice(0, 10)}
+          max={todayIST()}
+          defaultValue={todayIST()}
           disabled={pending}
         />
         <Select label="Component" name="bloodComponent" defaultValue="whole_blood" disabled={pending}>

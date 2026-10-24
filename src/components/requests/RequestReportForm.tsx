@@ -1,5 +1,6 @@
 "use client";
 
+import { submitWithoutReset } from "@/lib/form-submit";
 import { useActionState } from "react";
 
 import { submitRequestReport } from "@/lib/actions/admin";
@@ -47,7 +48,7 @@ export function RequestReportForm({
   }
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={submitWithoutReset(formAction)} className="space-y-4">
       {state.error && <Alert variant="error">{state.error}</Alert>}
       <input type="hidden" name="requestId" value={requestId} />
       <label className="block">
